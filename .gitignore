@@ -19,3 +19,16 @@ buildtmp*/
 
 # Local development secrets
 HabiHamAIAPI/appsettings.Development.json
+
+# UI (Vite/React) artifacts
+HabiHamAIUi/node_modules/
+HabiHamAIUi/dist/
+HabiHamAIUi/.vite/
+HabiHamAIUi/.env.local
+HabiHamAIUi/.env.development.local
+HabiHamAIUi/.env.test.local
+HabiHamAIUi/.env.production.local
+HabiHamAIUi/npm-debug.log*
+HabiHamAIUi/yarn-debug.log*
+HabiHamAIUi/yarn-error.log*
+HabiHamAIUi/pnpm-debug.log*
