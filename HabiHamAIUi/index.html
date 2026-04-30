@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HabiHamAI API Test UI</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-soft: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --border: #374151;
+      --ok: #22c55e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      background: linear-gradient(135deg, #020617, #0f172a);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      padding: 28px 14px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 860px;
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(6px);
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 26px;
+    }
+
+    .subtitle {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .card {
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: #cbd5e1;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 6px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      color: var(--text);
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25);
+    }
+
+    button {
+      cursor: pointer;
+      background: var(--primary);
+      border: 0;
+      font-weight: 600;
+      transition: background 0.15s ease-in-out, transform 0.08s ease-in-out;
+    }
+
+    button:hover {
+      background: var(--primary-hover);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    pre {
+      margin: 0;
+      background: #0b1220;
+      border: 1px solid var(--border);
+      color: #bfdbfe;
+      padding: 12px;
+      border-radius: 10px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 56px;
+    }
+
+    .token {
+      color: #86efac;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>HabiHamAI API Test UI</h1>
+    <p class="subtitle">Simple page for login and testing protected ping endpoint</p>
+
+    <section class="card">
+      <h3>API Connection</h3>
+      <label for="baseUrl">API Base URL</label>
+      <input id="baseUrl" value="http://localhost:5193" />
+    </section>
+
+    <section class="card">
+      <h3>Login</h3>
+      <input id="username" value="admin" placeholder="Username" />
+      <input id="password" value="admin123" placeholder="Password" type="password" />
+      <button id="loginBtn">POST /auth/login</button>
+    </section>
+
+    <section class="card">
+      <h3>Ping</h3>
+      <button id="pingBtn">GET /Ping (Bearer token)</button>
+    </section>
+
+    <section class="card">
+      <h3>Token</h3>
+      <pre id="tokenView" class="token">No token yet.</pre>
+    </section>
+
+    <section class="card">
+      <h3>Response</h3>
+      <pre id="responseView">No requests yet.</pre>
+    </section>
+  </main>
+
+  <script>
+    let accessToken = "";
+    const tokenView = document.getElementById("tokenView");
+    const responseView = document.getElementById("responseView");
+
+    function getBaseUrl() {
+      return document.getElementById("baseUrl").value.trim().replace(/\/+$/, "");
+    }
+
+    function showResponse(payload) {
+      responseView.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    document.getElementById("loginBtn").addEventListener("click", async () => {
+      try {
+        const baseUrl = getBaseUrl();
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
+
+        const response = await fetch(baseUrl + "/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showResponse({ status: response.status, error: data });
+          return;
+        }
+
+        accessToken = data.accessToken || "";
+        tokenView.textContent = accessToken || "Token missing in response.";
+        showResponse({ status: response.status, data });
+      } catch (error) {
+        showResponse({ error: String(error) });
+      }
+    });
+
+    document.getElementById("pingBtn").addEventListener("click", async () => {
+      try {
+        const baseUrl = getBaseUrl();
+        const headers = {};
+        if (accessToken) {
+          headers["Authorization"] = "Bearer " + accessToken;
+        }
+
+        const response = await fetch(baseUrl + "/Ping", {
+          method: "GET",
+          headers
+        });
+
+        const data = await response.json().catch(() => ({}));
+        showResponse({ status: response.status, data });
+      } catch (error) {
+        showResponse({ error: String(error) });
+      }
+    });
+  </script>
+</body>
+</html>

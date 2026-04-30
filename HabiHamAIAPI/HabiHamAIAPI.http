@@ -1,0 +1,6 @@
+@HabiHamAIAPI_HostAddress = http://localhost:5193
+
+GET {{HabiHamAIAPI_HostAddress}}/Ping
+Accept: application/json
+
+###

@@ -1,0 +1,14 @@
+# .NET build artifacts
+bin/
+obj/
+
+# Temporary build output folders
+buildtmp*/
+
+# User-specific files
+*.user
+*.suo
+
+# IDE folders
+.vs/
+.vscode/
