@@ -1,6 +1,7 @@
 using System.Text;
 using HabiHamAIAPI.Data;
 using HabiHamAIAPI.Models;
+using HabiHamAIAPI.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using HabiHamAIAPI.Services;
 
+LoadDotEnv();
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -15,10 +17,19 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSingleton<TokenService>();
+builder.Services.Configure<KernestalOptions>(builder.Configuration.GetSection("Kernestal"));
+builder.Services.PostConfigure<KernestalOptions>(options =>
+{
+    options.BaseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL") ?? options.BaseUrl;
+    options.ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? options.ApiKey;
+    options.Model = Environment.GetEnvironmentVariable("OPENAI_MODEL") ?? options.Model;
+});
+builder.Services.AddHttpClient<KernestalAiService>();
 builder.Services.AddScoped<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+        ?? builder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
     options.UseNpgsql(connectionString);
 });
@@ -34,9 +45,15 @@ builder.Services.AddCors(options =>
 });
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
-var jwtKey = jwtSettings["Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
-var jwtIssuer = jwtSettings["Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer is not configured.");
-var jwtAudience = jwtSettings["Audience"] ?? throw new InvalidOperationException("Jwt:Audience is not configured.");
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
+    ?? jwtSettings["Key"]
+    ?? throw new InvalidOperationException("Jwt:Key is not configured.");
+var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER")
+    ?? jwtSettings["Issuer"]
+    ?? throw new InvalidOperationException("Jwt:Issuer is not configured.");
+var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE")
+    ?? jwtSettings["Audience"]
+    ?? throw new InvalidOperationException("Jwt:Audience is not configured.");
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 
 builder.Services
@@ -88,8 +105,12 @@ using (var scope = app.Services.CreateScope())
         """);
 
     var adminSection = builder.Configuration.GetSection("AdminBootstrap");
-    var adminUsername = (adminSection["Username"] ?? "admin").Trim().ToLowerInvariant();
-    var adminPassword = adminSection["Password"] ?? "admin123";
+    var adminUsername = (Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_USERNAME")
+        ?? adminSection["Username"]
+        ?? "admin").Trim().ToLowerInvariant();
+    var adminPassword = Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_PASSWORD")
+        ?? adminSection["Password"]
+        ?? "admin123";
 
     var adminUser = await dbContext.Users.FirstOrDefaultAsync(x => x.Username == adminUsername);
     if (adminUser is null)
@@ -129,3 +150,36 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static void LoadDotEnv()
+{
+    var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+    if (!File.Exists(envPath))
+    {
+        return;
+    }
+
+    foreach (var rawLine in File.ReadAllLines(envPath))
+    {
+        var line = rawLine.Trim();
+        if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
+        {
+            continue;
+        }
+
+        var separatorIndex = line.IndexOf('=');
+        if (separatorIndex <= 0)
+        {
+            continue;
+        }
+
+        var key = line[..separatorIndex].Trim();
+        var value = line[(separatorIndex + 1)..].Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            continue;
+        }
+
+        Environment.SetEnvironmentVariable(key, value);
+    }
+}

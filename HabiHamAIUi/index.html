@@ -126,7 +126,7 @@
 
     .tabs {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 8px;
       margin-bottom: 12px;
     }
@@ -228,6 +228,65 @@
     .mini-btn.danger:hover {
       background: #991b1b;
     }
+
+    .chat-box {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .chat-messages {
+      min-height: 220px;
+      max-height: 420px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: #0b1220;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .chat-msg {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .chat-msg.user {
+      align-self: flex-end;
+      max-width: 80%;
+      background: #1e3a8a;
+      border-color: #1d4ed8;
+    }
+
+    .chat-msg.assistant {
+      align-self: flex-start;
+      max-width: 86%;
+      background: #1f2937;
+    }
+
+    .chat-controls {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .chat-controls input {
+      margin: 0;
+      flex: 1;
+    }
+
+    .chat-controls button {
+      width: auto;
+      margin: 0;
+      min-width: 130px;
+    }
   </style>
 </head>
 <body>
@@ -243,6 +302,7 @@
 
     <section class="tabs">
       <button id="tabUser" class="tab-btn active" type="button">User</button>
+      <button id="tabAi" class="tab-btn" type="button">AI Chat</button>
       <button id="tabAdmin" class="tab-btn" type="button">Admin</button>
     </section>
 
@@ -264,6 +324,28 @@
       <section class="card">
         <h3>Ping</h3>
         <button id="pingBtn">GET /Ping (Bearer token)</button>
+      </section>
+
+    </section>
+
+    <section id="panelAi" class="tab-panel">
+      <section class="card">
+        <h3>AI Token</h3>
+        <input id="aiTokenInput" placeholder="Paste JWT token for AI chat" />
+      </section>
+
+      <section class="card">
+        <h3>AI Chat</h3>
+        <p class="subtitle">Uses `POST /ai/chat` with your current JWT token</p>
+        <div class="chat-box">
+          <div id="chatMessages" class="chat-messages">
+            <div class="chat-msg assistant">Привет! Войди через Login и отправь сообщение.</div>
+          </div>
+          <div class="chat-controls">
+            <input id="chatPrompt" placeholder="Type your message..." />
+            <button id="chatSendBtn" type="button">Send to AI</button>
+          </div>
+        </div>
       </section>
     </section>
 
@@ -357,11 +439,15 @@
   <script>
     let accessToken = "";
     let adminToken = "";
+    let aiToken = "";
     const tokenView = document.getElementById("tokenView");
     const responseView = document.getElementById("responseView");
     const errorView = document.getElementById("errorView");
     const adminTokenInput = document.getElementById("adminTokenInput");
+    const aiTokenInput = document.getElementById("aiTokenInput");
     const usersTableBody = document.getElementById("usersTableBody");
+    const chatMessages = document.getElementById("chatMessages");
+    const chatPrompt = document.getElementById("chatPrompt");
 
     function getBaseUrl() {
       return document.getElementById("baseUrl").value.trim().replace(/\/+$/, "");
@@ -466,19 +552,36 @@
       }).join("");
     }
 
+    function appendChatMessage(role, text) {
+      const item = document.createElement("div");
+      item.className = "chat-msg " + role;
+      item.textContent = text;
+      chatMessages.appendChild(item);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
     function activateTab(tab) {
       const isUser = tab === "user";
+      const isAi = tab === "ai";
+      const isAdmin = tab === "admin";
       document.getElementById("tabUser").classList.toggle("active", isUser);
-      document.getElementById("tabAdmin").classList.toggle("active", !isUser);
+      document.getElementById("tabAi").classList.toggle("active", isAi);
+      document.getElementById("tabAdmin").classList.toggle("active", isAdmin);
       document.getElementById("panelUser").classList.toggle("active", isUser);
-      document.getElementById("panelAdmin").classList.toggle("active", !isUser);
+      document.getElementById("panelAi").classList.toggle("active", isAi);
+      document.getElementById("panelAdmin").classList.toggle("active", isAdmin);
     }
 
     document.getElementById("tabUser").addEventListener("click", () => activateTab("user"));
+    document.getElementById("tabAi").addEventListener("click", () => activateTab("ai"));
     document.getElementById("tabAdmin").addEventListener("click", () => activateTab("admin"));
 
     adminTokenInput.addEventListener("input", () => {
       adminToken = adminTokenInput.value.trim();
+    });
+
+    aiTokenInput.addEventListener("input", () => {
+      aiToken = aiTokenInput.value.trim();
     });
 
     document.getElementById("registerBtn").addEventListener("click", async () => {
@@ -507,6 +610,8 @@
         tokenView.textContent = accessToken || "Token missing in response.";
         adminTokenInput.value = accessToken;
         adminToken = accessToken;
+        aiTokenInput.value = accessToken;
+        aiToken = accessToken;
         handleResult(result);
       } catch (error) {
         showError(String(error));
@@ -519,6 +624,34 @@
         handleResult(result);
       } catch (error) {
         showError(String(error));
+      }
+    });
+
+    document.getElementById("chatSendBtn").addEventListener("click", async () => {
+      const prompt = chatPrompt.value.trim();
+      if (!prompt) {
+        showError("Enter a message for AI chat.");
+        return;
+      }
+      if (!aiToken) {
+        showError("Login first or paste JWT token in AI Token field.");
+        return;
+      }
+
+      appendChatMessage("user", prompt);
+      chatPrompt.value = "";
+
+      try {
+        const result = await request("POST", "/ai/chat", { prompt }, aiToken);
+        handleResult(result);
+        if (result.ok) {
+          appendChatMessage("assistant", result.data?.response || "No response text.");
+        } else {
+          appendChatMessage("assistant", "AI request failed.");
+        }
+      } catch (error) {
+        showError(String(error));
+        appendChatMessage("assistant", "Network error while calling AI.");
       }
     });
 

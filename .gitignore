@@ -12,3 +12,10 @@ buildtmp*/
 # IDE folders
 .vs/
 .vscode/
+
+# Environment files with secrets
+.env
+**/.env
+
+# Local development secrets
+HabiHamAIAPI/appsettings.Development.json
