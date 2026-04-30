@@ -75,7 +75,7 @@
       font-size: 13px;
     }
 
-    input, button {
+    input, select, button {
       width: 100%;
       padding: 10px 12px;
       margin-top: 6px;
@@ -86,7 +86,7 @@
       outline: none;
     }
 
-    input:focus {
+    input:focus, select:focus {
       border-color: #60a5fa;
       box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25);
     }
@@ -123,12 +123,117 @@
     .token {
       color: #86efac;
     }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .tab-btn {
+      background: #0b1220;
+      border: 1px solid var(--border);
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .error-box {
+      border-color: #7f1d1d;
+      background: rgba(127, 29, 29, 0.25);
+    }
+
+    .error-text {
+      color: #fecaca;
+      min-height: 28px;
+    }
+
+    .users-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0b1220;
+    }
+
+    .users-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 680px;
+      font-size: 13px;
+    }
+
+    .users-table th, .users-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid #253145;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .users-table th {
+      color: #cbd5e1;
+      background: #111c2f;
+    }
+
+    .users-table td {
+      color: #dbeafe;
+    }
+
+    .users-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .role-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      background: #1e293b;
+      color: #bfdbfe;
+    }
+
+    .row-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .mini-btn {
+      width: auto;
+      margin: 0;
+      padding: 6px 10px;
+      font-size: 12px;
+      border-radius: 8px;
+      background: #334155;
+    }
+
+    .mini-btn:hover {
+      background: #475569;
+    }
+
+    .mini-btn.danger {
+      background: #7f1d1d;
+    }
+
+    .mini-btn.danger:hover {
+      background: #991b1b;
+    }
   </style>
 </head>
 <body>
   <main class="app">
     <h1>HabiHamAI API Test UI</h1>
-    <p class="subtitle">Simple page for login and testing protected ping endpoint</p>
+    <p class="subtitle">Test user and admin API endpoints</p>
 
     <section class="card">
       <h3>API Connection</h3>
@@ -136,16 +241,101 @@
       <input id="baseUrl" value="http://localhost:5193" />
     </section>
 
-    <section class="card">
-      <h3>Login</h3>
-      <input id="username" value="admin" placeholder="Username" />
-      <input id="password" value="admin123" placeholder="Password" type="password" />
-      <button id="loginBtn">POST /auth/login</button>
+    <section class="tabs">
+      <button id="tabUser" class="tab-btn active" type="button">User</button>
+      <button id="tabAdmin" class="tab-btn" type="button">Admin</button>
     </section>
 
-    <section class="card">
-      <h3>Ping</h3>
-      <button id="pingBtn">GET /Ping (Bearer token)</button>
+    <section id="panelUser" class="tab-panel active">
+      <section class="card">
+        <h3>Register User</h3>
+        <input id="registerUsername" value="user1" placeholder="Username" />
+        <input id="registerPassword" value="user1234" placeholder="Password" type="password" />
+        <button id="registerBtn">POST /auth/register</button>
+      </section>
+
+      <section class="card">
+        <h3>Login</h3>
+        <input id="username" value="admin" placeholder="Username" />
+        <input id="password" value="admin123" placeholder="Password" type="password" />
+        <button id="loginBtn">POST /auth/login</button>
+      </section>
+
+      <section class="card">
+        <h3>Ping</h3>
+        <button id="pingBtn">GET /Ping (Bearer token)</button>
+      </section>
+    </section>
+
+    <section id="panelAdmin" class="tab-panel">
+      <section class="card">
+        <h3>Admin Token</h3>
+        <input id="adminTokenInput" placeholder="Paste admin JWT token here" />
+      </section>
+
+      <section class="card">
+        <h3>List Users</h3>
+        <button id="adminListBtn">GET /admin/users</button>
+      </section>
+
+      <section class="card">
+        <h3>Users List (Pretty View)</h3>
+        <div class="users-table-wrap">
+          <table class="users-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Created</th>
+                <th>User ID</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr>
+                <td colspan="5">No users loaded yet. Click "GET /admin/users".</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Create User (Admin)</h3>
+        <input id="adminCreateUsername" value="ai-user-1" placeholder="Username" />
+        <input id="adminCreatePassword" value="aiuser123" placeholder="Password" type="password" />
+        <select id="adminCreateRole">
+          <option value="User">User</option>
+          <option value="AiUser" selected>AiUser</option>
+          <option value="Admin">Admin</option>
+        </select>
+        <button id="adminCreateBtn">POST /admin/users</button>
+      </section>
+
+      <section class="card">
+        <h3>Update User</h3>
+        <input id="adminUpdateUserId" placeholder="User ID (GUID)" />
+        <input id="adminUpdateUsername" placeholder="New username" />
+        <select id="adminUpdateRole">
+          <option value="User">User</option>
+          <option value="AiUser">AiUser</option>
+          <option value="Admin">Admin</option>
+        </select>
+        <button id="adminUpdateBtn">PUT /admin/users/{id}</button>
+      </section>
+
+      <section class="card">
+        <h3>Update Password</h3>
+        <input id="adminPasswordUserId" placeholder="User ID (GUID)" />
+        <input id="adminPasswordValue" placeholder="New password" type="password" />
+        <button id="adminPasswordBtn">PUT /admin/users/{id}/password</button>
+      </section>
+
+      <section class="card">
+        <h3>Delete User</h3>
+        <input id="adminDeleteUserId" placeholder="User ID (GUID)" />
+        <button id="adminDeleteBtn">DELETE /admin/users/{id}</button>
+      </section>
     </section>
 
     <section class="card">
@@ -157,12 +347,21 @@
       <h3>Response</h3>
       <pre id="responseView">No requests yet.</pre>
     </section>
+
+    <section class="card error-box">
+      <h3>Error</h3>
+      <pre id="errorView" class="error-text">No errors.</pre>
+    </section>
   </main>
 
   <script>
     let accessToken = "";
+    let adminToken = "";
     const tokenView = document.getElementById("tokenView");
     const responseView = document.getElementById("responseView");
+    const errorView = document.getElementById("errorView");
+    const adminTokenInput = document.getElementById("adminTokenInput");
+    const usersTableBody = document.getElementById("usersTableBody");
 
     function getBaseUrl() {
       return document.getElementById("baseUrl").value.trim().replace(/\/+$/, "");
@@ -172,49 +371,238 @@
       responseView.textContent = JSON.stringify(payload, null, 2);
     }
 
+    function clearError() {
+      errorView.textContent = "No errors.";
+    }
+
+    function showError(payload) {
+      errorView.textContent = typeof payload === "string"
+        ? payload
+        : JSON.stringify(payload, null, 2);
+    }
+
+    async function request(method, path, body, token) {
+      try {
+        const response = await fetch(getBaseUrl() + path, {
+          method,
+          headers: {
+            ...(body ? { "Content-Type": "application/json" } : {}),
+            ...(token ? { "Authorization": "Bearer " + token } : {})
+          },
+          ...(body ? { body: JSON.stringify(body) } : {})
+        });
+        const data = await response.json().catch(() => ({}));
+        return { status: response.status, ok: response.ok, data };
+      } catch (error) {
+        return {
+          status: 0,
+          ok: false,
+          data: { message: "Network error", detail: String(error) }
+        };
+      }
+    }
+
+    function handleResult(result) {
+      showResponse(result);
+      if (result.ok) {
+        clearError();
+      } else {
+        showError({
+          status: result.status,
+          message: result.data?.message || "Request failed",
+          detail: result.data
+        });
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function fillAdminFormFromUser(user) {
+      document.getElementById("adminUpdateUserId").value = user.id || "";
+      document.getElementById("adminUpdateUsername").value = user.username || "";
+      document.getElementById("adminUpdateRole").value = user.role || "";
+      document.getElementById("adminPasswordUserId").value = user.id || "";
+      document.getElementById("adminDeleteUserId").value = user.id || "";
+    }
+
+    function renderUsersTable(users) {
+      if (!Array.isArray(users) || users.length === 0) {
+        usersTableBody.innerHTML = "<tr><td colspan=\"5\">No users found.</td></tr>";
+        return;
+      }
+
+      usersTableBody.innerHTML = users.map((user) => {
+        const safeUser = {
+          id: user.id || "",
+          username: user.username || "",
+          role: user.role || "",
+          createdAtUtc: user.createdAtUtc || ""
+        };
+        const data = encodeURIComponent(JSON.stringify(safeUser));
+        const created = safeUser.createdAtUtc
+          ? new Date(safeUser.createdAtUtc).toLocaleString()
+          : "-";
+        return `
+          <tr>
+            <td>${escapeHtml(safeUser.username)}</td>
+            <td><span class="role-badge">${escapeHtml(safeUser.role)}</span></td>
+            <td>${escapeHtml(created)}</td>
+            <td>${escapeHtml(safeUser.id)}</td>
+            <td>
+              <div class="row-actions">
+                <button class="mini-btn use-user-btn" data-user="${data}" type="button">Use</button>
+                <button class="mini-btn danger quick-delete-btn" data-user-id="${escapeHtml(safeUser.id)}" type="button">Delete</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function activateTab(tab) {
+      const isUser = tab === "user";
+      document.getElementById("tabUser").classList.toggle("active", isUser);
+      document.getElementById("tabAdmin").classList.toggle("active", !isUser);
+      document.getElementById("panelUser").classList.toggle("active", isUser);
+      document.getElementById("panelAdmin").classList.toggle("active", !isUser);
+    }
+
+    document.getElementById("tabUser").addEventListener("click", () => activateTab("user"));
+    document.getElementById("tabAdmin").addEventListener("click", () => activateTab("admin"));
+
+    adminTokenInput.addEventListener("input", () => {
+      adminToken = adminTokenInput.value.trim();
+    });
+
+    document.getElementById("registerBtn").addEventListener("click", async () => {
+      try {
+        const username = document.getElementById("registerUsername").value.trim();
+        const password = document.getElementById("registerPassword").value;
+        const result = await request("POST", "/auth/register", { username, password });
+        handleResult(result);
+      } catch (error) {
+        showError(String(error));
+      }
+    });
+
     document.getElementById("loginBtn").addEventListener("click", async () => {
       try {
-        const baseUrl = getBaseUrl();
         const username = document.getElementById("username").value.trim();
         const password = document.getElementById("password").value;
 
-        const response = await fetch(baseUrl + "/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password })
-        });
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          showResponse({ status: response.status, error: data });
+        const result = await request("POST", "/auth/login", { username, password });
+        if (!result.ok) {
+          handleResult(result);
           return;
         }
 
-        accessToken = data.accessToken || "";
+        accessToken = result.data.accessToken || "";
         tokenView.textContent = accessToken || "Token missing in response.";
-        showResponse({ status: response.status, data });
+        adminTokenInput.value = accessToken;
+        adminToken = accessToken;
+        handleResult(result);
       } catch (error) {
-        showResponse({ error: String(error) });
+        showError(String(error));
       }
     });
 
     document.getElementById("pingBtn").addEventListener("click", async () => {
       try {
-        const baseUrl = getBaseUrl();
-        const headers = {};
-        if (accessToken) {
-          headers["Authorization"] = "Bearer " + accessToken;
-        }
-
-        const response = await fetch(baseUrl + "/Ping", {
-          method: "GET",
-          headers
-        });
-
-        const data = await response.json().catch(() => ({}));
-        showResponse({ status: response.status, data });
+        const result = await request("GET", "/Ping", null, accessToken);
+        handleResult(result);
       } catch (error) {
-        showResponse({ error: String(error) });
+        showError(String(error));
+      }
+    });
+
+    document.getElementById("adminListBtn").addEventListener("click", async () => {
+      try {
+        const result = await request("GET", "/admin/users", null, adminToken);
+        handleResult(result);
+        if (result.ok) {
+          renderUsersTable(result.data);
+        }
+      } catch (error) {
+        showError(String(error));
+      }
+    });
+
+    document.getElementById("adminCreateBtn").addEventListener("click", async () => {
+      try {
+        const username = document.getElementById("adminCreateUsername").value.trim();
+        const password = document.getElementById("adminCreatePassword").value;
+        const role = document.getElementById("adminCreateRole").value.trim();
+        const result = await request("POST", "/admin/users", { username, password, role }, adminToken);
+        handleResult(result);
+      } catch (error) {
+        showError(String(error));
+      }
+    });
+
+    document.getElementById("adminUpdateBtn").addEventListener("click", async () => {
+      try {
+        const userId = document.getElementById("adminUpdateUserId").value.trim();
+        const username = document.getElementById("adminUpdateUsername").value.trim();
+        const role = document.getElementById("adminUpdateRole").value.trim();
+        const result = await request("PUT", "/admin/users/" + userId, { username, role }, adminToken);
+        handleResult(result);
+      } catch (error) {
+        showError(String(error));
+      }
+    });
+
+    document.getElementById("adminPasswordBtn").addEventListener("click", async () => {
+      try {
+        const userId = document.getElementById("adminPasswordUserId").value.trim();
+        const password = document.getElementById("adminPasswordValue").value;
+        const result = await request("PUT", "/admin/users/" + userId + "/password", { password }, adminToken);
+        handleResult(result);
+      } catch (error) {
+        showError(String(error));
+      }
+    });
+
+    document.getElementById("adminDeleteBtn").addEventListener("click", async () => {
+      try {
+        const userId = document.getElementById("adminDeleteUserId").value.trim();
+        const result = await request("DELETE", "/admin/users/" + userId, null, adminToken);
+        handleResult(result);
+      } catch (error) {
+        showError(String(error));
+      }
+    });
+
+    usersTableBody.addEventListener("click", async (event) => {
+      const useBtn = event.target.closest(".use-user-btn");
+      if (useBtn) {
+        const user = JSON.parse(decodeURIComponent(useBtn.dataset.user || "{}"));
+        fillAdminFormFromUser(user);
+        return;
+      }
+
+      const deleteBtn = event.target.closest(".quick-delete-btn");
+      if (deleteBtn) {
+        const userId = deleteBtn.dataset.userId || "";
+        if (!userId) return;
+        const confirmed = confirm("Delete user " + userId + "?");
+        if (!confirmed) return;
+
+        const result = await request("DELETE", "/admin/users/" + userId, null, adminToken);
+        handleResult(result);
+        if (result.ok) {
+          const refreshed = await request("GET", "/admin/users", null, adminToken);
+          handleResult(refreshed);
+          if (refreshed.ok) {
+            renderUsersTable(refreshed.data);
+          }
+        }
       }
     });
   </script>

@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using HabiHamAIAPI.Models;
 using Microsoft.IdentityModel.Tokens;
 
 namespace HabiHamAIAPI.Services;
@@ -8,23 +9,13 @@ namespace HabiHamAIAPI.Services;
 public sealed class TokenService
 {
     private readonly IConfiguration _configuration;
-    private static readonly Dictionary<string, string> Users = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["admin"] = "admin123",
-        ["user"] = "user123"
-    };
 
     public TokenService(IConfiguration configuration)
     {
         _configuration = configuration;
     }
 
-    public bool ValidateCredentials(string username, string password)
-    {
-        return Users.TryGetValue(username, out var expectedPassword) && expectedPassword == password;
-    }
-
-    public string GenerateToken(string username)
+    public string GenerateToken(string username, AppUserRole role)
     {
         var jwtSection = _configuration.GetSection("Jwt");
         var key = jwtSection["Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
@@ -36,6 +27,7 @@ public sealed class TokenService
         {
             new Claim(JwtRegisteredClaimNames.Sub, username),
             new Claim(ClaimTypes.Name, username),
+            new Claim(ClaimTypes.Role, role.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 

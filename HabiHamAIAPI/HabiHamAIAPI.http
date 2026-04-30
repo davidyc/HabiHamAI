@@ -1,6 +1,45 @@
 @HabiHamAIAPI_HostAddress = http://localhost:5193
+@AdminBearerToken = REPLACE_WITH_ADMIN_JWT
+
+POST {{HabiHamAIAPI_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "user1",
+  "password": "user1234"
+}
+
+###
+
+POST {{HabiHamAIAPI_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+###
 
 GET {{HabiHamAIAPI_HostAddress}}/Ping
 Accept: application/json
+
+###
+
+GET {{HabiHamAIAPI_HostAddress}}/admin/users
+Authorization: Bearer {{AdminBearerToken}}
+Accept: application/json
+
+###
+
+POST {{HabiHamAIAPI_HostAddress}}/admin/users
+Authorization: Bearer {{AdminBearerToken}}
+Content-Type: application/json
+
+{
+  "username": "ai-user-1",
+  "password": "aiuser123",
+  "role": "AiUser"
+}
 
 ###
