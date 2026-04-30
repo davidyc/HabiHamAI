@@ -36,6 +36,10 @@ function AppContent() {
   const [editUserName, setEditUserName] = useState("");
   const [editUserRole, setEditUserRole] = useState("User");
   const [newPasswordValue, setNewPasswordValue] = useState("");
+  const [adminDialogUserId, setAdminDialogUserId] = useState("");
+  const [adminDialogs, setAdminDialogs] = useState([]);
+  const [adminCurrentDialogId, setAdminCurrentDialogId] = useState("");
+  const [adminDialogMessages, setAdminDialogMessages] = useState([]);
 
   async function request(method, path, body, token) {
     try {
@@ -137,7 +141,74 @@ function AppContent() {
   async function loadUsers() {
     const result = await request("GET", "/admin/users", null, adminToken);
     handleResult(result);
-    if (result.ok) setUsers(Array.isArray(result.data) ? result.data : []);
+    if (!result.ok) return;
+    const incomingUsers = Array.isArray(result.data) ? result.data : [];
+    setUsers(incomingUsers);
+    if (!adminDialogUserId && incomingUsers[0]?.id) {
+      setAdminDialogUserId(incomingUsers[0].id);
+    }
+  }
+
+  async function loadAdminDialogs(forceUserId = adminDialogUserId, forceDialogId = "") {
+    if (!adminToken) return;
+    const query = forceUserId ? `?userId=${encodeURIComponent(forceUserId)}` : "";
+    const result = await request("GET", `/admin/dialogs${query}`, null, adminToken);
+    handleResult(result);
+    if (!result.ok) return;
+    const incoming = Array.isArray(result.data) ? result.data : [];
+    setAdminDialogs(incoming);
+    const nextDialogId = forceDialogId || (incoming.some((d) => d.id === adminCurrentDialogId) ? adminCurrentDialogId : incoming[0]?.id || "");
+    setAdminCurrentDialogId(nextDialogId);
+    if (nextDialogId) {
+      await loadAdminDialogMessages(nextDialogId);
+    } else {
+      setAdminDialogMessages([]);
+    }
+  }
+
+  async function loadAdminDialogMessages(dialogId = adminCurrentDialogId) {
+    if (!dialogId) {
+      setAdminDialogMessages([]);
+      return;
+    }
+    const result = await request("GET", `/admin/dialogs/${dialogId}/messages`, null, adminToken);
+    handleResult(result);
+    if (!result.ok) return;
+    setAdminDialogMessages(Array.isArray(result.data) ? result.data : []);
+  }
+
+  async function createAdminDialog() {
+    if (!adminDialogUserId) return setErrorView("Выбери пользователя для нового диалога.");
+    const title = window.prompt("Название нового диалога:", "Новый диалог");
+    if (title === null) return;
+    const result = await request("POST", "/admin/dialogs", { userId: adminDialogUserId, title }, adminToken);
+    handleResult(result);
+    if (result.ok) {
+      await loadAdminDialogs(adminDialogUserId, result.data?.id);
+    }
+  }
+
+  async function renameAdminDialog() {
+    if (!adminCurrentDialogId) return setErrorView("Сначала выбери диалог.");
+    const current = adminDialogs.find((d) => d.id === adminCurrentDialogId);
+    const title = window.prompt("Новое название диалога:", current?.title || "Новый диалог");
+    if (!title || !title.trim()) return;
+    const result = await request("PUT", `/admin/dialogs/${adminCurrentDialogId}`, { title }, adminToken);
+    handleResult(result);
+    if (result.ok) {
+      await loadAdminDialogs(adminDialogUserId, adminCurrentDialogId);
+    }
+  }
+
+  async function deleteAdminDialog() {
+    if (!adminCurrentDialogId) return setErrorView("Сначала выбери диалог.");
+    if (!window.confirm("Удалить выбранный диалог?")) return;
+    const deletingId = adminCurrentDialogId;
+    const result = await request("DELETE", `/admin/dialogs/${deletingId}`, null, adminToken);
+    handleResult(result);
+    if (result.ok) {
+      await loadAdminDialogs(adminDialogUserId);
+    }
   }
 
   async function createAdminUser() {
@@ -223,6 +294,14 @@ function AppContent() {
     () => dialogs.map((d) => <option key={d.id} value={d.id}>{d.title || "Dialog"}</option>),
     [dialogs]
   );
+  const adminUserOptions = useMemo(
+    () => users.map((u) => <option key={u.id} value={u.id}>{u.username} ({u.role})</option>),
+    [users]
+  );
+  const adminDialogOptions = useMemo(
+    () => adminDialogs.map((d) => <option key={d.id} value={d.id}>{d.title || "Dialog"} ({d.username || "unknown"})</option>),
+    [adminDialogs]
+  );
 
   const isLoggedIn = Boolean(accessToken);
 
@@ -283,6 +362,7 @@ function AppContent() {
                   setTab(id);
                   if (id === "admin") {
                     loadUsers();
+                    loadAdminDialogs();
                   }
                 }}
                 onLogout={() => {
@@ -353,6 +433,45 @@ function AppContent() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </section>
+
+          <section className="card full-span">
+            <h3>Диалоги (Admin)</h3>
+            <label>Пользователь</label>
+            <div className="row">
+              <select
+                value={adminDialogUserId}
+                onChange={(e) => {
+                  const nextUserId = e.target.value;
+                  setAdminDialogUserId(nextUserId);
+                  setAdminCurrentDialogId("");
+                  setAdminDialogMessages([]);
+                  loadAdminDialogs(nextUserId);
+                }}
+              >
+                <option value="">All users</option>
+                {adminUserOptions}
+              </select>
+            </div>
+
+            <label>Диалог</label>
+            <div className="row">
+              <select value={adminCurrentDialogId} onChange={(e) => { setAdminCurrentDialogId(e.target.value); loadAdminDialogMessages(e.target.value); }}>
+                <option value="">No dialogs</option>
+                {adminDialogOptions}
+              </select>
+              <button onClick={renameAdminDialog}>Rename</button>
+              <button className="danger-btn" onClick={deleteAdminDialog}>Delete</button>
+            </div>
+
+            <div className="chat-messages small">
+              {adminDialogMessages.length === 0 && <div className="chat-msg assistant">Нет сообщений для выбранного диалога.</div>}
+              {adminDialogMessages.map((m) => (
+                <div key={m.id} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>
+                  {m.content}
+                </div>
+              ))}
             </div>
           </section>
         </section>}

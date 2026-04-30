@@ -10,6 +10,12 @@ namespace HabiHamAIAPI.Controllers;
 [Authorize(Roles = "Admin")]
 public sealed class AdminDialogsController : ControllerBase
 {
+    public sealed class UpsertAdminDialogRequest
+    {
+        public Guid UserId { get; set; }
+        public string? Title { get; set; }
+    }
+
     private readonly AppDbContext _dbContext;
 
     public AdminDialogsController(AppDbContext dbContext)
@@ -72,6 +78,67 @@ public sealed class AdminDialogsController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(messages);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateDialog([FromBody] UpsertAdminDialogRequest request, CancellationToken cancellationToken)
+    {
+        if (request.UserId == Guid.Empty)
+        {
+            return BadRequest(new { message = "UserId is required." });
+        }
+
+        var userExists = await _dbContext.Users.AsNoTracking().AnyAsync(x => x.Id == request.UserId, cancellationToken);
+        if (!userExists)
+        {
+            return NotFound(new { message = "User not found." });
+        }
+
+        var now = DateTime.UtcNow;
+        var dialog = new Models.ChatDialog
+        {
+            Id = Guid.NewGuid(),
+            UserId = request.UserId,
+            Title = string.IsNullOrWhiteSpace(request.Title) ? "Новый диалог" : request.Title.Trim(),
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
+
+        _dbContext.ChatDialogs.Add(dialog);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            id = dialog.Id,
+            userId = dialog.UserId,
+            title = dialog.Title,
+            createdAtUtc = dialog.CreatedAtUtc,
+            updatedAtUtc = dialog.UpdatedAtUtc
+        });
+    }
+
+    [HttpPut("{dialogId:guid}")]
+    public async Task<IActionResult> RenameDialog(Guid dialogId, [FromBody] UpsertAdminDialogRequest request, CancellationToken cancellationToken)
+    {
+        var dialog = await _dbContext.ChatDialogs.FirstOrDefaultAsync(x => x.Id == dialogId, cancellationToken);
+        if (dialog is null)
+        {
+            return NotFound(new { message = "Dialog not found." });
+        }
+
+        dialog.Title = string.IsNullOrWhiteSpace(request.Title) ? dialog.Title : request.Title.Trim();
+        dialog.UpdatedAtUtc = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            id = dialog.Id,
+            userId = dialog.UserId,
+            title = dialog.Title,
+            createdAtUtc = dialog.CreatedAtUtc,
+            updatedAtUtc = dialog.UpdatedAtUtc
+        });
     }
 
     [HttpDelete("{dialogId:guid}")]
