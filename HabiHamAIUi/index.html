@@ -235,6 +235,25 @@
       gap: 10px;
     }
 
+    .dialog-toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .dialog-toolbar input,
+    .dialog-toolbar select,
+    .dialog-toolbar button {
+      margin: 0;
+      width: 100%;
+    }
+
+    .dialog-toolbar button {
+      width: auto;
+      min-width: 120px;
+    }
+
     .chat-messages {
       min-height: 220px;
       max-height: 420px;
@@ -336,7 +355,13 @@
 
       <section class="card">
         <h3>AI Chat</h3>
-        <p class="subtitle">Uses `POST /ai/chat` with your current JWT token</p>
+        <p class="subtitle">Uses dialog history and sends full context to `POST /ai/chat`</p>
+        <div class="dialog-toolbar">
+          <select id="dialogSelect"></select>
+          <button id="dialogCreateBtn" type="button">New Dialog</button>
+          <button id="dialogRenameBtn" type="button">Rename</button>
+          <button id="dialogDeleteBtn" type="button">Delete</button>
+        </div>
         <div class="chat-box">
           <div id="chatMessages" class="chat-messages">
             <div class="chat-msg assistant">Привет! Войди через Login и отправь сообщение.</div>
@@ -418,6 +443,27 @@
         <input id="adminDeleteUserId" placeholder="User ID (GUID)" />
         <button id="adminDeleteBtn">DELETE /admin/users/{id}</button>
       </section>
+
+      <section class="card">
+        <h3>Admin Dialogs</h3>
+        <p class="subtitle">Просмотр и удаление диалогов пользователей</p>
+        <label for="adminDialogUserSelect">User</label>
+        <select id="adminDialogUserSelect">
+          <option value="">Select user</option>
+        </select>
+        <button id="adminLoadDialogsBtn" type="button">GET /admin/dialogs?userId=...</button>
+        <label for="adminDialogSelect">Dialog</label>
+        <select id="adminDialogSelect">
+          <option value="">Select dialog</option>
+        </select>
+        <div class="row-actions" style="margin-top: 8px;">
+          <button id="adminViewDialogBtn" class="mini-btn" type="button">View Messages</button>
+          <button id="adminDeleteDialogBtn" class="mini-btn danger" type="button">Delete Dialog</button>
+        </div>
+        <div id="adminDialogMessages" class="chat-messages" style="margin-top: 10px; min-height: 180px;">
+          <div class="chat-msg assistant">Выбери пользователя и диалог.</div>
+        </div>
+      </section>
     </section>
 
     <section class="card">
@@ -440,6 +486,10 @@
     let accessToken = "";
     let adminToken = "";
     let aiToken = "";
+    let dialogs = [];
+    let currentDialogId = "";
+    let adminUsersCache = [];
+    let adminDialogs = [];
     const tokenView = document.getElementById("tokenView");
     const responseView = document.getElementById("responseView");
     const errorView = document.getElementById("errorView");
@@ -448,6 +498,10 @@
     const usersTableBody = document.getElementById("usersTableBody");
     const chatMessages = document.getElementById("chatMessages");
     const chatPrompt = document.getElementById("chatPrompt");
+    const dialogSelect = document.getElementById("dialogSelect");
+    const adminDialogUserSelect = document.getElementById("adminDialogUserSelect");
+    const adminDialogSelect = document.getElementById("adminDialogSelect");
+    const adminDialogMessages = document.getElementById("adminDialogMessages");
 
     function getBaseUrl() {
       return document.getElementById("baseUrl").value.trim().replace(/\/+$/, "");
@@ -552,12 +606,97 @@
       }).join("");
     }
 
+    function renderAdminUserOptions(users) {
+      const items = Array.isArray(users) ? users : [];
+      adminDialogUserSelect.innerHTML = "<option value=\"\">Select user</option>" + items
+        .map((user) => `<option value="${escapeHtml(user.id || "")}">${escapeHtml(user.username || "unknown")} (${escapeHtml(user.role || "-")})</option>`)
+        .join("");
+    }
+
+    function renderAdminDialogOptions() {
+      if (!Array.isArray(adminDialogs) || adminDialogs.length === 0) {
+        adminDialogSelect.innerHTML = "<option value=\"\">No dialogs</option>";
+        return;
+      }
+      adminDialogSelect.innerHTML = adminDialogs
+        .map((dialog) => `<option value="${escapeHtml(dialog.id || "")}">${escapeHtml(dialog.title || "Dialog")} (${dialog.messagesCount || 0})</option>`)
+        .join("");
+    }
+
+    function renderAdminDialogMessages(messages) {
+      const items = Array.isArray(messages) ? messages : [];
+      if (items.length === 0) {
+        adminDialogMessages.innerHTML = "<div class=\"chat-msg assistant\">В диалоге нет сообщений.</div>";
+        return;
+      }
+      adminDialogMessages.innerHTML = "";
+      for (const msg of items) {
+        const item = document.createElement("div");
+        item.className = "chat-msg " + (msg.role === "user" ? "user" : "assistant");
+        item.textContent = msg.content || "";
+        adminDialogMessages.appendChild(item);
+      }
+      adminDialogMessages.scrollTop = adminDialogMessages.scrollHeight;
+    }
+
     function appendChatMessage(role, text) {
       const item = document.createElement("div");
       item.className = "chat-msg " + role;
       item.textContent = text;
       chatMessages.appendChild(item);
       chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function renderDialogOptions() {
+      if (!Array.isArray(dialogs) || dialogs.length === 0) {
+        dialogSelect.innerHTML = "<option value=\"\">No dialogs yet</option>";
+        currentDialogId = "";
+        return;
+      }
+
+      dialogSelect.innerHTML = dialogs
+        .map((dialog) => `<option value="${escapeHtml(dialog.id)}">${escapeHtml(dialog.title || "Dialog")}</option>`)
+        .join("");
+
+      const selectedExists = dialogs.some((x) => x.id === currentDialogId);
+      if (!selectedExists) {
+        currentDialogId = dialogs[0].id;
+      }
+      dialogSelect.value = currentDialogId;
+    }
+
+    async function loadDialogs() {
+      if (!aiToken) return;
+      const result = await request("GET", "/ai/dialogs", null, aiToken);
+      handleResult(result);
+      if (!result.ok) return;
+      dialogs = Array.isArray(result.data) ? result.data : [];
+      renderDialogOptions();
+      if (currentDialogId) {
+        await loadDialogMessages(currentDialogId);
+      }
+    }
+
+    async function loadDialogMessages(dialogId) {
+      if (!dialogId) {
+        chatMessages.innerHTML = "<div class=\"chat-msg assistant\">Создай диалог, чтобы начать чат.</div>";
+        return;
+      }
+
+      const result = await request("GET", "/ai/dialogs/" + dialogId + "/messages", null, aiToken);
+      handleResult(result);
+      if (!result.ok) return;
+
+      const items = Array.isArray(result.data) ? result.data : [];
+      if (items.length === 0) {
+        chatMessages.innerHTML = "<div class=\"chat-msg assistant\">Пустой диалог. Отправь первое сообщение.</div>";
+        return;
+      }
+
+      chatMessages.innerHTML = "";
+      for (const msg of items) {
+        appendChatMessage(msg.role === "user" ? "user" : "assistant", msg.content || "");
+      }
     }
 
     function activateTab(tab) {
@@ -582,6 +721,7 @@
 
     aiTokenInput.addEventListener("input", () => {
       aiToken = aiTokenInput.value.trim();
+      loadDialogs();
     });
 
     document.getElementById("registerBtn").addEventListener("click", async () => {
@@ -612,6 +752,7 @@
         adminToken = accessToken;
         aiTokenInput.value = accessToken;
         aiToken = accessToken;
+        await loadDialogs();
         handleResult(result);
       } catch (error) {
         showError(String(error));
@@ -642,10 +783,14 @@
       chatPrompt.value = "";
 
       try {
-        const result = await request("POST", "/ai/chat", { prompt }, aiToken);
+        const result = await request("POST", "/ai/chat", { prompt, dialogId: currentDialogId || null }, aiToken);
         handleResult(result);
         if (result.ok) {
+          if (result.data?.dialogId) {
+            currentDialogId = result.data.dialogId;
+          }
           appendChatMessage("assistant", result.data?.response || "No response text.");
+          await loadDialogs();
         } else {
           appendChatMessage("assistant", "AI request failed.");
         }
@@ -655,12 +800,67 @@
       }
     });
 
+    dialogSelect.addEventListener("change", async () => {
+      currentDialogId = dialogSelect.value;
+      await loadDialogMessages(currentDialogId);
+    });
+
+    document.getElementById("dialogCreateBtn").addEventListener("click", async () => {
+      if (!aiToken) {
+        showError("Login first or paste JWT token in AI Token field.");
+        return;
+      }
+
+      const title = prompt("Введите название диалога:", "Новый диалог") || "";
+      const result = await request("POST", "/ai/dialogs", { title }, aiToken);
+      handleResult(result);
+      if (!result.ok) return;
+      currentDialogId = result.data?.id || "";
+      await loadDialogs();
+      await loadDialogMessages(currentDialogId);
+    });
+
+    document.getElementById("dialogRenameBtn").addEventListener("click", async () => {
+      if (!currentDialogId) {
+        showError("Сначала выбери диалог.");
+        return;
+      }
+      const current = dialogs.find((x) => x.id === currentDialogId);
+      const title = prompt("Новое название:", current?.title || "Новый диалог");
+      if (!title || !title.trim()) return;
+
+      const result = await request("PUT", "/ai/dialogs/" + currentDialogId, { title }, aiToken);
+      handleResult(result);
+      if (!result.ok) return;
+      await loadDialogs();
+    });
+
+    document.getElementById("dialogDeleteBtn").addEventListener("click", async () => {
+      if (!currentDialogId) {
+        showError("Сначала выбери диалог.");
+        return;
+      }
+      const confirmed = confirm("Удалить текущий диалог?");
+      if (!confirmed) return;
+
+      const deletingId = currentDialogId;
+      const result = await request("DELETE", "/ai/dialogs/" + deletingId, null, aiToken);
+      handleResult(result);
+      if (!result.ok) return;
+      dialogs = dialogs.filter((x) => x.id !== deletingId);
+      currentDialogId = dialogs[0]?.id || "";
+      renderDialogOptions();
+      await loadDialogMessages(currentDialogId);
+    });
+
     document.getElementById("adminListBtn").addEventListener("click", async () => {
       try {
         const result = await request("GET", "/admin/users", null, adminToken);
         handleResult(result);
         if (result.ok) {
           renderUsersTable(result.data);
+          adminUsersCache = Array.isArray(result.data) ? result.data : [];
+          renderAdminUserOptions(adminUsersCache);
         }
       } catch (error) {
         showError(String(error));
@@ -712,6 +912,50 @@
       }
     });
 
+    document.getElementById("adminLoadDialogsBtn").addEventListener("click", async () => {
+      const userId = adminDialogUserSelect.value.trim();
+      if (!userId) {
+        showError("Выбери пользователя.");
+        return;
+      }
+      const result = await request("GET", "/admin/dialogs?userId=" + encodeURIComponent(userId), null, adminToken);
+      handleResult(result);
+      if (!result.ok) return;
+      adminDialogs = Array.isArray(result.data) ? result.data : [];
+      renderAdminDialogOptions();
+      renderAdminDialogMessages([]);
+    });
+
+    document.getElementById("adminViewDialogBtn").addEventListener("click", async () => {
+      const dialogId = adminDialogSelect.value.trim();
+      if (!dialogId) {
+        showError("Выбери диалог.");
+        return;
+      }
+      const result = await request("GET", "/admin/dialogs/" + dialogId + "/messages", null, adminToken);
+      handleResult(result);
+      if (!result.ok) return;
+      renderAdminDialogMessages(result.data);
+    });
+
+    document.getElementById("adminDeleteDialogBtn").addEventListener("click", async () => {
+      const dialogId = adminDialogSelect.value.trim();
+      if (!dialogId) {
+        showError("Выбери диалог.");
+        return;
+      }
+      const confirmed = confirm("Удалить выбранный диалог?");
+      if (!confirmed) return;
+
+      const result = await request("DELETE", "/admin/dialogs/" + dialogId, null, adminToken);
+      handleResult(result);
+      if (!result.ok) return;
+
+      adminDialogs = adminDialogs.filter((x) => x.id !== dialogId);
+      renderAdminDialogOptions();
+      renderAdminDialogMessages([]);
+    });
+
     usersTableBody.addEventListener("click", async (event) => {
       const useBtn = event.target.closest(".use-user-btn");
       if (useBtn) {
@@ -738,6 +982,8 @@
         }
       }
     });
+
+    renderDialogOptions();
   </script>
 </body>
 </html>

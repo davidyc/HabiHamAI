@@ -7,4 +7,5 @@ public sealed class AppUser
     public string PasswordHash { get; set; } = string.Empty;
     public AppUserRole Role { get; set; } = AppUserRole.User;
     public DateTime CreatedAtUtc { get; set; }
+    public List<ChatDialog> Dialogs { get; set; } = [];
 }

@@ -17,11 +17,11 @@ public sealed class KernestalAiService
         _options = options.Value;
     }
 
-    public async Task<string> GetCompletionAsync(string prompt, CancellationToken cancellationToken)
+    public async Task<string> GetCompletionAsync(IReadOnlyList<AiChatMessage> messages, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(prompt))
+        if (messages.Count == 0 || messages.All(x => string.IsNullOrWhiteSpace(x.Content)))
         {
-            throw new ArgumentException("Prompt must not be empty.", nameof(prompt));
+            throw new ArgumentException("Messages must not be empty.", nameof(messages));
         }
 
         if (string.IsNullOrWhiteSpace(_options.BaseUrl))
@@ -39,7 +39,10 @@ public sealed class KernestalAiService
 
         var request = new KernestalChatRequest(
             _options.Model,
-            [new KernestalMessage("user", prompt)]);
+            messages
+                .Where(x => !string.IsNullOrWhiteSpace(x.Content))
+                .Select(x => new KernestalMessage(x.Role, x.Content))
+                .ToList());
 
         var response = await _httpClient.PostAsJsonAsync(_options.ChatCompletionsPath, request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -61,6 +64,7 @@ public sealed class KernestalAiService
 
     private sealed record KernestalChatRequest(string Model, IReadOnlyList<KernestalMessage> Messages);
     private sealed record KernestalMessage(string Role, string Content);
+    public sealed record AiChatMessage(string Role, string Content);
 
     private sealed class KernestalChatResponse
     {

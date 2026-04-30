@@ -98,11 +98,6 @@ using (var scope = app.Services.CreateScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
     await dbContext.Database.EnsureCreatedAsync();
-    await dbContext.Database.ExecuteSqlRawAsync(
-        """
-        ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS role character varying(30) NOT NULL DEFAULT 'User';
-        """);
 
     var adminSection = builder.Configuration.GetSection("AdminBootstrap");
     var adminUsername = (Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_USERNAME")
