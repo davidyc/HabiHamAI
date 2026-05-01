@@ -202,6 +202,7 @@ h3 {
 
 input,
 select,
+textarea,
 button,
 pre {
   width: 100%;
@@ -219,7 +220,8 @@ input::placeholder {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: #4f8cff;
   box-shadow: 0 0 0 3px var(--primary-soft);
@@ -247,6 +249,10 @@ button:active {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.profile-row > div {
+  flex: 1;
 }
 
 .chat-messages {

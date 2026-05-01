@@ -29,6 +29,12 @@ public sealed class AppDbContext : DbContext
                 .HasDefaultValue(AppUserRole.User)
                 .IsRequired();
             entity.Property(x => x.CreatedAtUtc).IsRequired();
+            entity.Property(x => x.BirthDate).HasColumnType("date");
+            entity.Property(x => x.HeightCm).HasPrecision(5, 2);
+            entity.Property(x => x.WeightKg).HasPrecision(5, 2);
+            entity.Property(x => x.Phone).HasMaxLength(30);
+            entity.Property(x => x.City).HasMaxLength(120);
+            entity.Property(x => x.About).HasMaxLength(500);
             entity.HasIndex(x => x.Username).IsUnique();
         });
 

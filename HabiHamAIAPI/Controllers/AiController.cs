@@ -9,7 +9,7 @@ namespace HabiHamAIAPI.Controllers;
 
 [ApiController]
 [Route("ai")]
-[Authorize]
+[Authorize(Roles = "Admin,AiUser")]
 public sealed class AiController : ControllerBase
 {
     private readonly KernestalAiService _kernestalAiService;
@@ -24,15 +24,6 @@ public sealed class AiController : ControllerBase
     [HttpPost("chat")]
     public async Task<IActionResult> Chat([FromBody] AiChatRequest request, CancellationToken cancellationToken)
     {
-        var hasAiAccess = User.IsInRole("Admin") || User.IsInRole("AiUser");
-        if (!hasAiAccess)
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                message = "К сожалению ты не иммешь прав к лрступа к ии асистениу."
-            });
-        }
-
         if (string.IsNullOrWhiteSpace(request.Prompt))
         {
             return BadRequest(new { message = "Prompt is required." });

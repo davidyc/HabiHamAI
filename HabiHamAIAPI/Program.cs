@@ -97,7 +97,8 @@ using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
-    await dbContext.Database.EnsureCreatedAsync();
+    await BaselineExistingDatabaseForMigrationsAsync(dbContext);
+    await dbContext.Database.MigrateAsync();
 
     var adminSection = builder.Configuration.GetSection("AdminBootstrap");
     var adminUsername = (Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_USERNAME")
@@ -145,6 +146,35 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static async Task BaselineExistingDatabaseForMigrationsAsync(AppDbContext dbContext)
+{
+    const string initialMigrationId = "20260430091114_AddChatDialogsAndMessages";
+    const string efProductVersion = "9.0.9";
+
+    // Legacy databases created with EnsureCreated have tables but no migrations history.
+    // This baseline marks the initial migration as applied to avoid recreating existing tables.
+    await dbContext.Database.ExecuteSqlRawAsync($"""
+        CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+            "MigrationId" character varying(150) NOT NULL,
+            "ProductVersion" character varying(32) NOT NULL,
+            CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
+        );
+
+        INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+        SELECT '{initialMigrationId}', '{efProductVersion}'
+        WHERE EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = 'users'
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM "__EFMigrationsHistory"
+            WHERE "MigrationId" = '{initialMigrationId}'
+        );
+        """);
+}
 
 static void LoadDotEnv()
 {

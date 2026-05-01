@@ -10,6 +10,7 @@ function AppContent() {
   const [adminToken, setAdminToken] = useState("");
   const [aiToken, setAiToken] = useState("");
   const [currentUserName, setCurrentUserName] = useState("");
+  const [currentUserRole, setCurrentUserRole] = useState("");
   const [errorView, setErrorView] = useState("No errors.");
 
   const [registerUsername, setRegisterUsername] = useState("user1");
@@ -23,6 +24,12 @@ function AppContent() {
   const [chatMessages, setChatMessages] = useState([
     { role: "assistant", content: "Привет! Войди через Login и отправь сообщение." }
   ]);
+  const [profileBirthDate, setProfileBirthDate] = useState("");
+  const [profileHeightCm, setProfileHeightCm] = useState("");
+  const [profileWeightKg, setProfileWeightKg] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileCity, setProfileCity] = useState("");
+  const [profileAbout, setProfileAbout] = useState("");
 
   const [users, setUsers] = useState([]);
   const [adminCreateUsername, setAdminCreateUsername] = useState("");
@@ -33,6 +40,7 @@ function AppContent() {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedAdminUser, setSelectedAdminUser] = useState(null);
+  const [adminManageUserId, setAdminManageUserId] = useState("");
   const [editUserName, setEditUserName] = useState("");
   const [editUserRole, setEditUserRole] = useState("User");
   const [newPasswordValue, setNewPasswordValue] = useState("");
@@ -79,6 +87,21 @@ function AppContent() {
     }
   }
 
+  function tryGetRoleFromToken(token) {
+    try {
+      const payloadPart = token.split(".")[1];
+      if (!payloadPart) return "";
+      const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+      const payload = JSON.parse(window.atob(padded));
+      const rawRole = payload.role || payload.roles || payload["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "";
+      if (Array.isArray(rawRole)) return rawRole[0] || "";
+      return String(rawRole || "");
+    } catch {
+      return "";
+    }
+  }
+
   async function loadDialogs(token = aiToken, forceDialogId = "") {
     if (!token) return;
     const result = await request("GET", "/ai/dialogs", null, token);
@@ -112,8 +135,14 @@ function AppContent() {
     setAccessToken(token);
     setAdminToken(token);
     setAiToken(token);
+    const nextRole = tryGetRoleFromToken(token);
     setCurrentUserName(tryGetUserNameFromToken(token) || username.trim());
-    await loadDialogs(token);
+    setCurrentUserRole(nextRole);
+    setTab(nextRole === "Admin" || nextRole === "AiUser" ? "ai" : "profile");
+    if (nextRole === "Admin" || nextRole === "AiUser") {
+      await loadDialogs(token);
+    }
+    await loadMyProfile(token);
     navigate("/app");
   }
 
@@ -144,8 +173,52 @@ function AppContent() {
     if (!result.ok) return;
     const incomingUsers = Array.isArray(result.data) ? result.data : [];
     setUsers(incomingUsers);
+    if (!adminManageUserId && incomingUsers[0]?.id) {
+      setAdminManageUserId(incomingUsers[0].id);
+    }
     if (!adminDialogUserId && incomingUsers[0]?.id) {
       setAdminDialogUserId(incomingUsers[0].id);
+    }
+  }
+
+  async function loadMyProfile(token = accessToken) {
+    if (!token) return;
+    const result = await request("GET", "/users/me", null, token);
+    handleResult(result);
+    if (!result.ok) return;
+
+    const profile = result.data || {};
+    setProfileBirthDate(profile.birthDate || "");
+    setProfileHeightCm(profile.heightCm === null || profile.heightCm === undefined ? "" : String(profile.heightCm));
+    setProfileWeightKg(profile.weightKg === null || profile.weightKg === undefined ? "" : String(profile.weightKg));
+    setProfilePhone(profile.phone || "");
+    setProfileCity(profile.city || "");
+    setProfileAbout(profile.about || "");
+  }
+
+  async function saveMyProfile() {
+    if (!accessToken) return;
+
+    const toNumberOrNull = (value) => {
+      const raw = value.trim();
+      if (!raw) return null;
+      const parsed = Number(raw);
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
+    const body = {
+      birthDate: profileBirthDate || null,
+      heightCm: toNumberOrNull(profileHeightCm),
+      weightKg: toNumberOrNull(profileWeightKg),
+      phone: profilePhone.trim() || null,
+      city: profileCity.trim() || null,
+      about: profileAbout.trim() || null
+    };
+
+    const result = await request("PUT", "/users/me", body, accessToken);
+    handleResult(result);
+    if (result.ok) {
+      await loadMyProfile(accessToken);
     }
   }
 
@@ -302,8 +375,14 @@ function AppContent() {
     () => adminDialogs.map((d) => <option key={d.id} value={d.id}>{d.title || "Dialog"} ({d.username || "unknown"})</option>),
     [adminDialogs]
   );
+  const adminManageSelectedUser = useMemo(
+    () => users.find((u) => u.id === adminManageUserId) || null,
+    [users, adminManageUserId]
+  );
 
   const isLoggedIn = Boolean(accessToken);
+  const isAdmin = currentUserRole === "Admin";
+  const hasAiAccess = currentUserRole === "Admin" || currentUserRole === "AiUser";
 
   return (
     <Routes>
@@ -358,8 +437,15 @@ function AppContent() {
               <TopNav
                 tab={tab}
                 currentUserName={currentUserName || username || "unknown"}
+                isAdmin={isAdmin}
+                hasAiAccess={hasAiAccess}
                 onTabChange={(id) => {
+                  if (id === "admin" && !isAdmin) return;
+                  if (id === "ai" && !hasAiAccess) return;
                   setTab(id);
+                  if (id === "profile") {
+                    loadMyProfile();
+                  }
                   if (id === "admin") {
                     loadUsers();
                     loadAdminDialogs();
@@ -370,11 +456,18 @@ function AppContent() {
                   setAdminToken("");
                   setAiToken("");
                   setCurrentUserName("");
+                  setCurrentUserRole("");
+                  setProfileBirthDate("");
+                  setProfileHeightCm("");
+                  setProfileWeightKg("");
+                  setProfilePhone("");
+                  setProfileCity("");
+                  setProfileAbout("");
                   navigate("/login");
                 }}
               />
 
-        {tab === "ai" && <section className="card-grid">
+        {tab === "ai" && hasAiAccess && <section className="card-grid">
           <section className="card">
             <h3>AI Chat</h3>
             <div className="row">
@@ -396,12 +489,64 @@ function AppContent() {
           </section>
         </section>}
 
-        {tab === "admin" && <section className="card-grid">
+        {tab === "profile" && <section className="card-grid">
           <section className="card full-span">
-            <h3>Пользователи</h3>
+            <h3>Мой профиль</h3>
+            <p className="subtitle">Заполни дополнительные данные (все поля необязательные).</p>
+            <div className="row profile-row">
+              <div>
+                <label>Дата рождения</label>
+                <input type="date" value={profileBirthDate} onChange={(e) => setProfileBirthDate(e.target.value)} />
+              </div>
+              <div>
+                <label>Рост (см)</label>
+                <input
+                  type="number"
+                  value={profileHeightCm}
+                  onChange={(e) => setProfileHeightCm(e.target.value)}
+                  placeholder="например, 175"
+                  min="0"
+                  max="300"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label>Вес (кг)</label>
+                <input
+                  type="number"
+                  value={profileWeightKg}
+                  onChange={(e) => setProfileWeightKg(e.target.value)}
+                  placeholder="например, 72.5"
+                  min="0"
+                  max="700"
+                  step="0.01"
+                />
+              </div>
+            </div>
+            <label>Телефон</label>
+            <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="+7..." />
+            <label>Город</label>
+            <input value={profileCity} onChange={(e) => setProfileCity(e.target.value)} placeholder="Алматы" />
+            <label>О себе</label>
+            <textarea
+              value={profileAbout}
+              onChange={(e) => setProfileAbout(e.target.value)}
+              placeholder="Любая полезная информация"
+              rows={4}
+            />
+            <div className="row">
+              <button onClick={saveMyProfile}>Сохранить профиль</button>
+              <button className="ghost-btn" onClick={() => loadMyProfile()}>Обновить</button>
+            </div>
+          </section>
+        </section>}
+
+        {tab === "admin" && isAdmin && <section className="card-grid">
+          <section className="card full-span">
+            <h3>Управление пользователем</h3>
             <div className="row">
               <button onClick={() => setIsCreateUserModalOpen(true)}>New User</button>
-              <button onClick={loadUsers}>Reload</button>
+              <button onClick={loadUsers}>Reload Users</button>
             </div>
             <div className="users-table-wrap">
               <table className="users-table">
@@ -409,23 +554,18 @@ function AppContent() {
                   <tr>
                     <th>Username</th>
                     <th>Role</th>
-                    <th>New Password</th>
-                    <th>Created</th>
-                    <th>User ID</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.length === 0 && <tr><td colSpan="6">No users loaded</td></tr>}
+                  {users.length === 0 && <tr><td colSpan="3">No users loaded</td></tr>}
                   {users.map((u) => (
-                    <tr key={u.id}>
+                    <tr key={`manage-${u.id}`}>
                       <td>{u.username}</td>
                       <td>{u.role}</td>
-                      <td>••••••••</td>
-                      <td>{u.createdAtUtc ? new Date(u.createdAtUtc).toLocaleString() : "-"}</td>
-                      <td>{u.id}</td>
                       <td className="admin-actions">
-                        <button onClick={() => openEditModal(u)}>Edit</button>
+                        <button className="ghost-btn" onClick={() => setAdminManageUserId(u.id)}>Select</button>
+                        <button onClick={() => openEditModal(u)}>Edit Role/Username</button>
                         <button onClick={() => openPasswordModal(u)}>Password</button>
                         <button className="danger-btn" onClick={() => openDeleteModal(u)}>Delete</button>
                       </td>
@@ -434,6 +574,46 @@ function AppContent() {
                 </tbody>
               </table>
             </div>
+          </section>
+
+          <section className="card full-span">
+            <h3>Пользователи</h3>
+            <div className="users-table-wrap">
+              <table className="users-table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Birth Date</th>
+                    <th>Height (cm)</th>
+                    <th>Weight (kg)</th>
+                    <th>Phone</th>
+                    <th>City</th>
+                    <th>About</th>
+                    <th>Created</th>
+                    <th>User ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.length === 0 && <tr><td colSpan="10">No users loaded</td></tr>}
+                  {users.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.username}</td>
+                      <td>{u.role}</td>
+                      <td>{u.birthDate || "-"}</td>
+                      <td>{u.heightCm ?? "-"}</td>
+                      <td>{u.weightKg ?? "-"}</td>
+                      <td>{u.phone || "-"}</td>
+                      <td>{u.city || "-"}</td>
+                      <td>{u.about || "-"}</td>
+                      <td>{u.createdAtUtc ? new Date(u.createdAtUtc).toLocaleString() : "-"}</td>
+                      <td>{u.id}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="subtitle">Режим только чтение: редактирование данных пользователя для администратора отключено.</p>
           </section>
 
           <section className="card full-span">
@@ -476,7 +656,7 @@ function AppContent() {
           </section>
         </section>}
 
-        {tab === "admin" && isCreateUserModalOpen && (
+        {tab === "admin" && isAdmin && isCreateUserModalOpen && (
           <div className="modal-backdrop">
             <div className="modal-card">
               <h3>Создать пользователя</h3>
@@ -504,7 +684,7 @@ function AppContent() {
             </div>
           </div>
         )}
-        {tab === "admin" && isEditUserModalOpen && selectedAdminUser && (
+        {tab === "admin" && isAdmin && isEditUserModalOpen && selectedAdminUser && (
           <div className="modal-backdrop">
             <div className="modal-card">
               <h3>Редактировать пользователя</h3>
@@ -521,7 +701,7 @@ function AppContent() {
             </div>
           </div>
         )}
-        {tab === "admin" && isPasswordModalOpen && selectedAdminUser && (
+        {tab === "admin" && isAdmin && isPasswordModalOpen && selectedAdminUser && (
           <div className="modal-backdrop">
             <div className="modal-card">
               <h3>Сменить пароль</h3>
@@ -540,7 +720,7 @@ function AppContent() {
             </div>
           </div>
         )}
-        {tab === "admin" && isDeleteModalOpen && selectedAdminUser && (
+        {tab === "admin" && isAdmin && isDeleteModalOpen && selectedAdminUser && (
           <div className="modal-backdrop">
             <div className="modal-card">
               <h3>Удалить пользователя</h3>

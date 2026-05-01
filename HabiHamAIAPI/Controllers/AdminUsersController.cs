@@ -165,7 +165,13 @@ public sealed class AdminUsersController : ControllerBase
             Id = user.Id,
             Username = user.Username,
             Role = user.Role.ToString(),
-            CreatedAtUtc = user.CreatedAtUtc
+            CreatedAtUtc = user.CreatedAtUtc,
+            BirthDate = user.BirthDate,
+            HeightCm = user.HeightCm,
+            WeightKg = user.WeightKg,
+            Phone = user.Phone,
+            City = user.City,
+            About = user.About
         };
     }
 
@@ -176,7 +182,13 @@ public sealed class AdminUsersController : ControllerBase
             Id = user.Id,
             Username = user.Username,
             Role = user.Role.ToString(),
-            CreatedAtUtc = user.CreatedAtUtc
+            CreatedAtUtc = user.CreatedAtUtc,
+            BirthDate = user.BirthDate,
+            HeightCm = user.HeightCm,
+            WeightKg = user.WeightKg,
+            Phone = user.Phone,
+            City = user.City,
+            About = user.About
         };
     }
 }

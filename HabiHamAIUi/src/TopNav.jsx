@@ -1,4 +1,10 @@
-function TopNav({ tab, currentUserName, onTabChange, onLogout }) {
+function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLogout }) {
+  const tabs = [
+    ...(hasAiAccess ? ["ai"] : []),
+    "profile",
+    ...(isAdmin ? ["admin"] : [])
+  ];
+
   return (
     <div className="top-nav">
       <div className="top-nav-left">
@@ -6,13 +12,13 @@ function TopNav({ tab, currentUserName, onTabChange, onLogout }) {
         <span className="top-nav-subtitle">Рабочая зона</span>
       </div>
       <nav className="top-nav-center">
-        {["ai", "admin"].map((id) => (
+        {tabs.map((id) => (
           <button
             key={id}
             className={`top-nav-tab ${tab === id ? "active" : ""}`}
             onClick={() => onTabChange(id)}
           >
-            {id === "ai" ? "AI Chat" : "Admin"}
+            {id === "ai" ? "AI Chat" : id === "profile" ? "Profile" : "Admin"}
           </button>
         ))}
       </nav>

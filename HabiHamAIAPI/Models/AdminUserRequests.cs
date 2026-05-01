@@ -24,4 +24,10 @@ public sealed class AdminUserResponse
     public string Username { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }
+    public DateOnly? BirthDate { get; set; }
+    public decimal? HeightCm { get; set; }
+    public decimal? WeightKg { get; set; }
+    public string? Phone { get; set; }
+    public string? City { get; set; }
+    public string? About { get; set; }
 }
