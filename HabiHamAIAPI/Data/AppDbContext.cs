@@ -12,6 +12,9 @@ public sealed class AppDbContext : DbContext
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<ChatDialog> ChatDialogs => Set<ChatDialog>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
+    public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
+    public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,6 +39,10 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.City).HasMaxLength(120);
             entity.Property(x => x.About).HasMaxLength(500);
             entity.HasIndex(x => x.Username).IsUnique();
+            entity.HasMany(x => x.WorkoutSessions)
+                .WithOne(x => x.User)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ChatDialog>(entity =>
@@ -68,6 +75,55 @@ public sealed class AppDbContext : DbContext
                 .WithMany(x => x.Messages)
                 .HasForeignKey(x => x.DialogId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WorkoutSession>(entity =>
+        {
+            entity.ToTable("workout_sessions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("user_id");
+            entity.Property(x => x.SessionCode).HasColumnName("session_code").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Date).HasColumnName("date").HasColumnType("date").IsRequired();
+            entity.Property(x => x.Day).HasColumnName("day").HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(2000).IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.Date });
+            entity.HasIndex(x => new { x.UserId, x.SessionCode }).IsUnique();
+            entity.HasMany(x => x.Exercises)
+                .WithOne(x => x.Session)
+                .HasForeignKey(x => x.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WorkoutExercise>(entity =>
+        {
+            entity.ToTable("workout_exercises");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.SessionId).HasColumnName("session_id");
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Meta).HasColumnName("meta").HasMaxLength(4000).IsRequired();
+            entity.Property(x => x.Order).HasColumnName("order_no").IsRequired();
+            entity.HasIndex(x => new { x.SessionId, x.Order });
+            entity.HasMany(x => x.Sets)
+                .WithOne(x => x.Exercise)
+                .HasForeignKey(x => x.ExerciseId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WorkoutSet>(entity =>
+        {
+            entity.ToTable("workout_sets");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.ExerciseId).HasColumnName("exercise_id");
+            entity.Property(x => x.Weight).HasColumnName("weight").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Reps).HasColumnName("reps").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Rpe).HasColumnName("rpe").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Order).HasColumnName("order_no").IsRequired();
+            entity.HasIndex(x => new { x.ExerciseId, x.Order });
         });
     }
 }

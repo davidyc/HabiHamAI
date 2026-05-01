@@ -1,6 +1,7 @@
 function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLogout }) {
   const tabs = [
     ...(hasAiAccess ? ["ai"] : []),
+    "workouts",
     "profile",
     ...(isAdmin ? ["admin"] : [])
   ];
@@ -18,7 +19,7 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
             className={`top-nav-tab ${tab === id ? "active" : ""}`}
             onClick={() => onTabChange(id)}
           >
-            {id === "ai" ? "AI Chat" : id === "profile" ? "Profile" : "Admin"}
+            {id === "ai" ? "AI Chat" : id === "workouts" ? "Workouts" : id === "profile" ? "Profile" : "Admin"}
           </button>
         ))}
       </nav>

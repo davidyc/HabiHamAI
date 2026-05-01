@@ -255,6 +255,95 @@ button:active {
   flex: 1;
 }
 
+.workout-list {
+  display: grid;
+  gap: 10px;
+}
+
+.workouts-subtabs {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+
+.workout-builder {
+  border: 1px solid #324155;
+  border-radius: 12px;
+  padding: 12px;
+  background: #0a1020;
+  margin-bottom: 10px;
+}
+
+.workout-empty {
+  border: 1px dashed #324155;
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--muted);
+}
+
+.workout-item {
+  border: 1px solid #324155;
+  border-radius: 12px;
+  background: #0b1220;
+  padding: 12px;
+}
+
+.workout-item h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #dbeafe;
+}
+
+.workout-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workout-notes {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.workout-exercises {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.workout-exercise {
+  border: 1px solid #253145;
+  border-radius: 10px;
+  padding: 10px;
+  background: #0a1020;
+}
+
+.workout-exercise-name {
+  margin: 0 0 6px;
+  color: #c7d2fe;
+  font-weight: 600;
+}
+
+.workout-exercise-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workout-sets {
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.workout-set-row input {
+  min-width: 90px;
+}
+
 .chat-messages {
   min-height: 220px;
   max-height: 420px;

@@ -14,4 +14,5 @@ public sealed class AppUser
     public string? City { get; set; }
     public string? About { get; set; }
     public List<ChatDialog> Dialogs { get; set; } = [];
+    public List<WorkoutSession> WorkoutSessions { get; set; } = [];
 }

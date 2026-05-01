@@ -24,6 +24,23 @@ function AppContent() {
   const [chatMessages, setChatMessages] = useState([
     { role: "assistant", content: "Привет! Войди через Login и отправь сообщение." }
   ]);
+  const [workoutSessions, setWorkoutSessions] = useState([]);
+  const [workoutsSubTab, setWorkoutsSubTab] = useState("programs");
+  const [workoutExerciseCatalog, setWorkoutExerciseCatalog] = useState([]);
+  const [selectedCatalogExerciseId, setSelectedCatalogExerciseId] = useState("");
+  const [newCatalogExerciseName, setNewCatalogExerciseName] = useState("");
+  const [newCatalogExerciseMeta, setNewCatalogExerciseMeta] = useState("");
+  const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] = useState(false);
+  const [programCode, setProgramCode] = useState("");
+  const [programDay, setProgramDay] = useState("");
+  const [programNotes, setProgramNotes] = useState("");
+  const [programExercisesDraft, setProgramExercisesDraft] = useState([]);
+  const [isProgramModalOpen, setIsProgramModalOpen] = useState(false);
+  const [isProgramDeleteModalOpen, setIsProgramDeleteModalOpen] = useState(false);
+  const [editingProgramId, setEditingProgramId] = useState("");
+  const [pendingDeleteProgram, setPendingDeleteProgram] = useState(null);
+  const [selectedProgramCode, setSelectedProgramCode] = useState("");
+  const [currentWorkout, setCurrentWorkout] = useState(null);
   const [profileBirthDate, setProfileBirthDate] = useState("");
   const [profileHeightCm, setProfileHeightCm] = useState("");
   const [profileWeightKg, setProfileWeightKg] = useState("");
@@ -194,6 +211,373 @@ function AppContent() {
     setProfilePhone(profile.phone || "");
     setProfileCity(profile.city || "");
     setProfileAbout(profile.about || "");
+  }
+
+  async function loadWorkoutSessions(token = accessToken) {
+    if (!token) return;
+    const result = await request("GET", "/users/me/workouts", null, token);
+    handleResult(result);
+    if (!result.ok) return;
+    setWorkoutSessions(Array.isArray(result.data) ? result.data : []);
+  }
+
+  async function loadWorkoutExerciseCatalog(token = accessToken) {
+    if (!token) return;
+    const result = await request("GET", "/users/me/workouts/exercises", null, token);
+    handleResult(result);
+    if (!result.ok) return;
+
+    const incoming = Array.isArray(result.data) ? result.data : [];
+    const unique = [];
+    const seen = new Set();
+    for (const item of incoming) {
+      const key = (item.name || "").trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      unique.push(item);
+    }
+    setWorkoutExerciseCatalog(unique);
+    if (!selectedCatalogExerciseId && unique[0]?.id) {
+      setSelectedCatalogExerciseId(unique[0].id);
+    }
+  }
+
+  async function createCatalogExercise() {
+    if (!accessToken) return;
+    const name = (newCatalogExerciseName || "").trim();
+    if (!name) return setErrorView("Укажи название упражнения.");
+
+    const seedCode = `catalog::${slugifyProgramCode(name)}-${Date.now()}`;
+    const result = await request(
+      "POST",
+      "/users/me/workouts",
+      {
+        sessionCode: seedCode,
+        date: new Date().toISOString().slice(0, 10),
+        day: `Каталог: ${name}`,
+        notes: "Служебная запись для каталога упражнений",
+        exercises: [
+          {
+            name,
+            meta: (newCatalogExerciseMeta || "").trim(),
+            sets: []
+          }
+        ]
+      },
+      accessToken
+    );
+    handleResult(result);
+    if (!result.ok) return;
+
+    setNewCatalogExerciseName("");
+    setNewCatalogExerciseMeta("");
+    setIsCreateExerciseModalOpen(false);
+    await loadWorkoutExerciseCatalog(accessToken);
+  }
+
+  async function deleteCatalogExercise(exerciseId) {
+    if (!accessToken || !exerciseId) return;
+    if (!window.confirm("Удалить упражнение из каталога?")) return;
+
+    const result = await request("DELETE", `/users/me/workouts/exercises/${exerciseId}`, null, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+
+    if (String(selectedCatalogExerciseId) === String(exerciseId)) {
+      setSelectedCatalogExerciseId("");
+    }
+    await loadWorkoutExerciseCatalog(accessToken);
+  }
+
+  function slugifyProgramCode(value) {
+    const normalized = value.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9а-яё_-]/gi, "");
+    return normalized || `program-${Date.now()}`;
+  }
+
+  function parseProgramExerciseMeta(rawMeta) {
+    const raw = String(rawMeta || "").trim();
+    if (!raw) {
+      return { isStructured: false, sourceExerciseId: "", comment: "", legacy: "" };
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && ("sourceExerciseId" in parsed || "comment" in parsed)) {
+        return {
+          isStructured: true,
+          sourceExerciseId: parsed?.sourceExerciseId ? String(parsed.sourceExerciseId) : "",
+          comment: parsed?.comment ? String(parsed.comment) : "",
+          legacy: ""
+        };
+      }
+    } catch {
+      // keep legacy plain text meta
+    }
+
+    return { isStructured: false, sourceExerciseId: "", comment: "", legacy: raw };
+  }
+
+  function addExerciseToProgram(exercise) {
+    setProgramExercisesDraft((prev) => [
+      ...prev,
+      {
+        id: `pex-${Date.now()}-${Math.random()}`,
+        sourceExerciseId: exercise.id || "",
+        name: exercise.name || "",
+        comment: ""
+      }
+    ]);
+  }
+
+  function removeProgramExercise(exerciseId) {
+    setProgramExercisesDraft((prev) => prev.filter((x) => x.id !== exerciseId));
+  }
+
+  function updateProgramExerciseComment(exerciseId, comment) {
+    setProgramExercisesDraft((prev) =>
+      prev.map((x) =>
+        x.id === exerciseId
+          ? { ...x, comment }
+          : x
+      )
+    );
+  }
+
+  async function saveProgramToDb() {
+    if (!accessToken) return;
+    const normalizedDay = programDay.trim();
+    if (!normalizedDay) return setErrorView("Укажи название программы.");
+
+    const code = `program::${slugifyProgramCode(programCode || normalizedDay)}`;
+    const result = await request(
+      "POST",
+      "/users/me/workouts",
+      {
+        sessionCode: code,
+        date: new Date().toISOString().slice(0, 10),
+        day: normalizedDay,
+        notes: programNotes.trim(),
+        exercises: programExercisesDraft.map((x) => ({
+          name: (x.name || "").trim(),
+          meta: JSON.stringify({
+            sourceExerciseId: x.sourceExerciseId || null,
+            comment: (x.comment || "").trim()
+          }),
+          sets: []
+        }))
+      },
+      accessToken
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    await loadWorkoutSessions(accessToken);
+    setEditingProgramId("");
+    setProgramCode("");
+    setProgramDay("");
+    setProgramNotes("");
+    setProgramExercisesDraft([]);
+    setIsProgramModalOpen(false);
+  }
+
+  function openProgramCreateModal() {
+    setEditingProgramId("");
+    setProgramCode("");
+    setProgramDay("");
+    setProgramNotes("");
+    setProgramExercisesDraft([]);
+    setIsProgramModalOpen(true);
+  }
+
+  function openProgramEditModal(program) {
+    setEditingProgramId(program.id || "");
+    setProgramCode((program.sessionCode || "").replace(/^program::/, ""));
+    setProgramDay(program.day || "");
+    setProgramNotes(program.notes || "");
+    setProgramExercisesDraft(
+      (program.exercises || []).map((x, idx) => ({
+        ...parseProgramExerciseMeta(x.meta),
+        id: `edit-${idx}-${Date.now()}`,
+        name: x.name || ""
+      }))
+    );
+    setIsProgramModalOpen(true);
+  }
+
+  function closeProgramModal() {
+    setIsProgramModalOpen(false);
+    setEditingProgramId("");
+  }
+
+  function openProgramDeleteModal(program) {
+    setPendingDeleteProgram(program);
+    setIsProgramDeleteModalOpen(true);
+  }
+
+  async function deleteProgramFromModal() {
+    if (!pendingDeleteProgram?.id || !accessToken) return;
+    const result = await request("DELETE", `/users/me/workouts/${pendingDeleteProgram.id}`, null, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+
+    if (selectedProgramCode && pendingDeleteProgram.sessionCode === selectedProgramCode) {
+      setSelectedProgramCode("");
+    }
+    setPendingDeleteProgram(null);
+    setIsProgramDeleteModalOpen(false);
+    await loadWorkoutSessions(accessToken);
+  }
+
+  function startWorkoutFromProgram(program) {
+    setCurrentWorkout({
+      sessionCode: `workout::${Date.now()}`,
+      day: program.day || "Тренировка",
+      notes: "",
+      exercises: (program.exercises || []).map((x, idx) => {
+        const parsedMeta = parseProgramExerciseMeta(x.meta);
+        return {
+          id: `cw-${idx}-${Date.now()}`,
+          name: x.name || "",
+          meta: parsedMeta.comment || parsedMeta.legacy,
+          sets: [{ weight: "", reps: "", rpe: "" }]
+        };
+      })
+    });
+  }
+
+  function createWorkoutFromScratch() {
+    setCurrentWorkout({
+      sessionCode: `workout::${Date.now()}`,
+      day: "Новая тренировка",
+      notes: "",
+      exercises: []
+    });
+  }
+
+  function updateCurrentWorkoutField(field, value) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return { ...prev, [field]: value };
+    });
+  }
+
+  function addExerciseToCurrentWorkout() {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: [
+          ...prev.exercises,
+          {
+            id: `cw-manual-${Date.now()}-${Math.random()}`,
+            name: "",
+            meta: "",
+            sets: [{ weight: "", reps: "", rpe: "" }]
+          }
+        ]
+      };
+    });
+  }
+
+  function updateCurrentWorkoutExercise(exerciseId, field, value) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.map((x) => (x.id === exerciseId ? { ...x, [field]: value } : x))
+      };
+    });
+  }
+
+  function removeCurrentWorkoutExercise(exerciseId) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.filter((x) => x.id !== exerciseId)
+      };
+    });
+  }
+
+  function updateCurrentWorkoutSet(exerciseId, setIndex, field, value) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.map((x) =>
+          x.id === exerciseId
+            ? { ...x, sets: x.sets.map((s, idx) => (idx === setIndex ? { ...s, [field]: value } : s)) }
+            : x
+        )
+      };
+    });
+  }
+
+  function addCurrentWorkoutSet(exerciseId) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.map((x) =>
+          x.id === exerciseId
+            ? { ...x, sets: [...x.sets, { weight: "", reps: "", rpe: "" }] }
+            : x
+        )
+      };
+    });
+  }
+
+  function removeCurrentWorkoutSet(exerciseId, setIndex) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.map((x) =>
+          x.id === exerciseId
+            ? { ...x, sets: x.sets.filter((_, idx) => idx !== setIndex) }
+            : x
+        )
+      };
+    });
+  }
+
+  async function saveCurrentWorkout() {
+    if (!accessToken || !currentWorkout) return;
+    if (!(currentWorkout.day || "").trim()) return setErrorView("Укажи название тренировки.");
+    const result = await request(
+      "POST",
+      "/users/me/workouts",
+      {
+        sessionCode: currentWorkout.sessionCode,
+        date: new Date().toISOString().slice(0, 10),
+        day: currentWorkout.day.trim(),
+        notes: currentWorkout.notes || "",
+        exercises: currentWorkout.exercises.map((x) => ({
+          name: (x.name || "").trim(),
+          meta: x.meta,
+          sets: x.sets.map((s) => ({ weight: s.weight, reps: s.reps, rpe: s.rpe }))
+        })).filter((x) => x.name)
+      },
+      accessToken
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    setCurrentWorkout(null);
+    await loadWorkoutSessions(accessToken);
+  }
+
+  async function deleteWorkoutSession(sessionId) {
+    if (!accessToken) return;
+    if (!sessionId) return;
+    if (!window.confirm("Удалить выбранную тренировку?")) return;
+
+    const result = await request("DELETE", `/users/me/workouts/${sessionId}`, null, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+
+    if (selectedProgramCode && workoutPrograms.some((x) => x.id === sessionId && x.sessionCode === selectedProgramCode)) {
+      setSelectedProgramCode("");
+    }
+    await loadWorkoutSessions(accessToken);
   }
 
   async function saveMyProfile() {
@@ -379,6 +763,22 @@ function AppContent() {
     () => users.find((u) => u.id === adminManageUserId) || null,
     [users, adminManageUserId]
   );
+  const workoutPrograms = useMemo(
+    () => workoutSessions.filter((x) => String(x.sessionCode || "").startsWith("program::")),
+    [workoutSessions]
+  );
+  const workoutLogs = useMemo(
+    () => workoutSessions.filter((x) => String(x.sessionCode || "").startsWith("workout::")),
+    [workoutSessions]
+  );
+  const selectedProgram = useMemo(
+    () => workoutPrograms.find((x) => x.sessionCode === selectedProgramCode) || null,
+    [workoutPrograms, selectedProgramCode]
+  );
+  const selectedCatalogExercise = useMemo(
+    () => workoutExerciseCatalog.find((x) => String(x.id) === String(selectedCatalogExerciseId)) || null,
+    [workoutExerciseCatalog, selectedCatalogExerciseId]
+  );
 
   const isLoggedIn = Boolean(accessToken);
   const isAdmin = currentUserRole === "Admin";
@@ -446,6 +846,10 @@ function AppContent() {
                   if (id === "profile") {
                     loadMyProfile();
                   }
+                  if (id === "workouts") {
+                    loadWorkoutSessions();
+                    loadWorkoutExerciseCatalog();
+                  }
                   if (id === "admin") {
                     loadUsers();
                     loadAdminDialogs();
@@ -486,6 +890,232 @@ function AppContent() {
               <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Type your message..." />
               <button onClick={sendChat}>Send</button>
             </div>
+          </section>
+        </section>}
+
+        {tab === "workouts" && <section className="card-grid">
+          <section className="card full-span">
+            <h3>Тренировки</h3>
+            <p className="subtitle">Управляй программами, своими упражнениями и фактическими тренировками.</p>
+            <div className="workouts-subtabs">
+              <button className={workoutsSubTab === "programs" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("programs")}>Программы</button>
+              <button className={workoutsSubTab === "exercises" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("exercises")}>Мои упражнения</button>
+              <button className={workoutsSubTab === "my-workouts" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("my-workouts")}>Мои тренировки</button>
+            </div>
+            <div className="row">
+              <button className="ghost-btn" onClick={() => { loadWorkoutSessions(); loadWorkoutExerciseCatalog(); }}>Обновить список</button>
+            </div>
+
+            {workoutsSubTab === "programs" && (
+              <>
+                <div className="row">
+                  <button onClick={openProgramCreateModal}>Новая программа</button>
+                </div>
+
+                <h4>Сохраненные программы</h4>
+                <div className="workout-list">
+                  {workoutPrograms.length === 0 && <div className="workout-empty">Пока нет программ.</div>}
+                  {workoutPrograms.map((session) => (
+                    <article key={session.id} className="workout-item">
+                      <h4>{session.day}</h4>
+                      <div className="workout-meta">
+                        <span>Код: {session.sessionCode}</span>
+                        <span>Упражнений: {session.exercises.length}</span>
+                      </div>
+                      <div className="row">
+                        <button onClick={() => openProgramEditModal(session)}>Редактировать</button>
+                        <button className="ghost-btn" onClick={() => { setSelectedProgramCode(session.sessionCode); setWorkoutsSubTab("my-workouts"); }}>Начать тренировку</button>
+                        <button className="danger-btn" onClick={() => openProgramDeleteModal(session)}>Удалить</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {workoutsSubTab === "exercises" && (
+              <>
+                <p className="subtitle">Создай новое упражнение и используй его в программах и тренировках.</p>
+                <div className="row">
+                  <button onClick={() => setIsCreateExerciseModalOpen(true)}>Создать упражнение</button>
+                </div>
+                <div className="users-table-wrap">
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Упражнение</th>
+                        <th>Комментарий</th>
+                        <th>Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {workoutExerciseCatalog.length === 0 && (
+                        <tr>
+                          <td colSpan="3">Пока нет упражнений в базе.</td>
+                        </tr>
+                      )}
+                      {workoutExerciseCatalog.map((exercise) => {
+                        const parsedMeta = parseProgramExerciseMeta(exercise.meta);
+                        return (
+                          <tr key={exercise.id}>
+                            <td>{exercise.name}</td>
+                            <td>{!parsedMeta.isStructured ? parsedMeta.legacy || "-" : "-"}</td>
+                            <td>
+                              <button className="danger-btn" onClick={() => deleteCatalogExercise(exercise.id)}>Удалить</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {workoutsSubTab === "my-workouts" && (
+              <>
+                <label>Выбери программу</label>
+                <select value={selectedProgramCode} onChange={(e) => setSelectedProgramCode(e.target.value)}>
+                  <option value="">Нет выбранной программы</option>
+                  {workoutPrograms.map((program) => (
+                    <option key={program.id} value={program.sessionCode}>{program.day}</option>
+                  ))}
+                </select>
+                <div className="row">
+                  <button disabled={!selectedProgram} onClick={() => selectedProgram && startWorkoutFromProgram(selectedProgram)}>Начать тренировку</button>
+                  <button className="ghost-btn" onClick={createWorkoutFromScratch}>Создать с нуля</button>
+                </div>
+
+                {currentWorkout && (
+                  <div className="workout-exercises">
+                    <h4>Текущая тренировка: {currentWorkout.day}</h4>
+                    <label>Название тренировки</label>
+                    <input
+                      value={currentWorkout.day || ""}
+                      onChange={(e) => updateCurrentWorkoutField("day", e.target.value)}
+                      placeholder="Например: День ног"
+                    />
+                    <label>Заметки</label>
+                    <textarea
+                      value={currentWorkout.notes || ""}
+                      onChange={(e) => updateCurrentWorkoutField("notes", e.target.value)}
+                      rows={2}
+                      placeholder="Опционально"
+                    />
+                    <div className="row">
+                      <button className="ghost-btn" onClick={addExerciseToCurrentWorkout}>Добавить упражнение</button>
+                    </div>
+                    <div className="users-table-wrap">
+                      <table className="users-table">
+                        <thead>
+                          <tr>
+                            <th>Упражнение</th>
+                            <th>Комментарий</th>
+                            <th>Подходы</th>
+                            <th>Действия</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {currentWorkout.exercises.length === 0 && (
+                            <tr>
+                              <td colSpan="4">Нет упражнений. Добавь первое упражнение.</td>
+                            </tr>
+                          )}
+                          {currentWorkout.exercises.map((exercise) => (
+                            <tr key={exercise.id}>
+                              <td>
+                                <input
+                                  value={exercise.name || ""}
+                                  onChange={(e) => updateCurrentWorkoutExercise(exercise.id, "name", e.target.value)}
+                                  placeholder="Название упражнения"
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  value={exercise.meta || ""}
+                                  onChange={(e) => updateCurrentWorkoutExercise(exercise.id, "meta", e.target.value)}
+                                  placeholder="Комментарий к упражнению"
+                                />
+                              </td>
+                              <td>
+                                <div className="workout-sets">
+                                  {exercise.sets.map((setItem, setIdx) => (
+                                    <div key={`${exercise.id}-active-set-${setIdx}`} className="row workout-set-row">
+                                      <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        min="0"
+                                        step="0.5"
+                                        value={setItem.weight}
+                                        onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "weight", e.target.value)}
+                                        placeholder="Вес"
+                                      />
+                                      <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min="0"
+                                        step="1"
+                                        value={setItem.reps}
+                                        onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "reps", e.target.value)}
+                                        placeholder="Повт."
+                                      />
+                                      <select
+                                        value={setItem.rpe || "8"}
+                                        onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "rpe", e.target.value)}
+                                      >
+                                        <option value="6">6</option>
+                                        <option value="7">7</option>
+                                        <option value="8">8</option>
+                                        <option value="9">9</option>
+                                        <option value="10">10</option>
+                                      </select>
+                                      <button
+                                        className="danger-btn"
+                                        onClick={() => removeCurrentWorkoutSet(exercise.id, setIdx)}
+                                        disabled={exercise.sets.length <= 1}
+                                      >
+                                        Удалить
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                              <td>
+                                <div className="row">
+                                  <button className="ghost-btn" onClick={() => addCurrentWorkoutSet(exercise.id)}>+ Подход</button>
+                                  <button className="danger-btn" onClick={() => removeCurrentWorkoutExercise(exercise.id)}>Удалить</button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <div className="row">
+                  <button disabled={!currentWorkout} onClick={saveCurrentWorkout}>Сохранить выполненную тренировку</button>
+                </div>
+
+                <h4>История моих тренировок</h4>
+                <div className="workout-list">
+                  {workoutLogs.length === 0 && <div className="workout-empty">Пока нет сохраненных тренировок.</div>}
+                  {workoutLogs.map((session) => (
+                    <article key={session.id} className="workout-item">
+                      <h4>{session.day}</h4>
+                      <div className="workout-meta">
+                        <span>Дата: {session.date || session._date || "-"}</span>
+                        <span>Упражнений: {session.exercises.length}</span>
+                      </div>
+                      <div className="row">
+                        <button className="danger-btn" onClick={() => deleteWorkoutSession(session.id)}>Удалить</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
           </section>
         </section>}
 
@@ -728,6 +1358,94 @@ function AppContent() {
               <div className="row">
                 <button className="danger-btn" onClick={deleteAdminUserFromModal}>Delete</button>
                 <button className="ghost-btn" onClick={() => setIsDeleteModalOpen(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "workouts" && workoutsSubTab === "programs" && isProgramModalOpen && (
+          <div className="modal-backdrop">
+            <div className="modal-card">
+              <h3>{editingProgramId ? "Редактирование программы" : "Новая программа"}</h3>
+              <label>Код программы (латиницей, опционально)</label>
+              <input value={programCode} onChange={(e) => setProgramCode(e.target.value)} placeholder="upper-body-a" />
+              <label>Название программы</label>
+              <input value={programDay} onChange={(e) => setProgramDay(e.target.value)} placeholder="Верх тела A" />
+              <label>Заметки</label>
+              <textarea value={programNotes} onChange={(e) => setProgramNotes(e.target.value)} rows={3} placeholder="Комментарий к программе" />
+              <div className="row">
+                <select value={selectedCatalogExerciseId} onChange={(e) => setSelectedCatalogExerciseId(e.target.value)}>
+                  <option value="">Выбери упражнение из общего списка</option>
+                  {workoutExerciseCatalog.map((exercise) => (
+                    <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
+                  ))}
+                </select>
+                <button onClick={() => selectedCatalogExercise && addExerciseToProgram(selectedCatalogExercise)} disabled={!selectedCatalogExercise}>Добавить в программу</button>
+              </div>
+              <div className="workout-exercises">
+                {programExercisesDraft.map((exercise) => (
+                  <div key={exercise.id} className="workout-exercise">
+                    <p className="workout-exercise-name">{exercise.name}</p>
+                    <label>Комментарий к упражнению</label>
+                    <textarea
+                      value={exercise.comment || ""}
+                      onChange={(e) => updateProgramExerciseComment(exercise.id, e.target.value)}
+                      rows={2}
+                      placeholder="Например: техника, темп, акцент, ограничения"
+                    />
+                    <div className="row">
+                      <button className="danger-btn" onClick={() => removeProgramExercise(exercise.id)}>Удалить упражнение</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="row">
+                <button onClick={saveProgramToDb}>Сохранить программу</button>
+                <button className="ghost-btn" onClick={closeProgramModal}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "workouts" && workoutsSubTab === "programs" && isProgramDeleteModalOpen && pendingDeleteProgram && (
+          <div className="modal-backdrop">
+            <div className="modal-card">
+              <h3>Удалить программу</h3>
+              <p className="subtitle">Ты точно хочешь удалить программу: <b>{pendingDeleteProgram.day || pendingDeleteProgram.sessionCode}</b>?</p>
+              <div className="row">
+                <button className="danger-btn" onClick={deleteProgramFromModal}>Удалить</button>
+                <button
+                  className="ghost-btn"
+                  onClick={() => {
+                    setIsProgramDeleteModalOpen(false);
+                    setPendingDeleteProgram(null);
+                  }}
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {tab === "workouts" && workoutsSubTab === "exercises" && isCreateExerciseModalOpen && (
+          <div className="modal-backdrop">
+            <div className="modal-card">
+              <h3>Создать упражнение</h3>
+              <label>Название упражнения</label>
+              <input
+                value={newCatalogExerciseName}
+                onChange={(e) => setNewCatalogExerciseName(e.target.value)}
+                placeholder="Например: Жим лежа"
+              />
+              <label>Комментарий (опционально)</label>
+              <input
+                value={newCatalogExerciseMeta}
+                onChange={(e) => setNewCatalogExerciseMeta(e.target.value)}
+                placeholder="Например: гриф + 20 кг"
+              />
+              <div className="row">
+                <button onClick={createCatalogExercise}>Создать</button>
+                <button className="ghost-btn" onClick={() => setIsCreateExerciseModalOpen(false)}>Отмена</button>
               </div>
             </div>
           </div>
