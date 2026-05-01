@@ -18,6 +18,15 @@
   box-sizing: border-box;
 }
 
+#root {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -26,14 +35,12 @@ body {
   background:
     radial-gradient(1200px circle at top right, rgba(59, 130, 246, 0.14), transparent 60%),
     linear-gradient(140deg, var(--bg-start), var(--bg-end));
-  display: flex;
-  justify-content: center;
-  padding: 26px 14px 40px;
+  padding: 0 14px 40px;
 }
 
 .app {
-  width: 80%;
-  max-width: 80%;
+  width: 70%;
+  max-width: 70%;
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 18px;
@@ -136,7 +143,7 @@ h1 {
 .auth-page {
   width: 100%;
   max-width: 460px;
-  margin: 4vh auto 0;
+  margin: 0 auto;
 }
 
 .auth-card {
@@ -368,8 +375,8 @@ pre {
 
 @media (max-width: 760px) {
   .app {
-    width: 92%;
-    max-width: 92%;
+    width: 70%;
+    max-width: 70%;
     padding: 98px 14px 14px;
     border-radius: 14px;
   }
