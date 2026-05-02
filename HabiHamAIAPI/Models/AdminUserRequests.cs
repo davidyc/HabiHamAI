@@ -30,4 +30,7 @@ public sealed class AdminUserResponse
     public string? Phone { get; set; }
     public string? City { get; set; }
     public string? About { get; set; }
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
+    public string? AiSummary { get; set; }
 }

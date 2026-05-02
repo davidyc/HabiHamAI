@@ -73,6 +73,7 @@ public sealed class AiController : ControllerBase
             };
             _dbContext.ChatMessages.Add(assistantMessage);
             dialog.UpdatedAtUtc = DateTime.UtcNow;
+            currentUser.AiSummary = TruncateForSummary(response, 8000);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             return Ok(new
@@ -261,5 +262,21 @@ public sealed class AiController : ControllerBase
         }
 
         return normalized.Length > 200 ? normalized[..200] : normalized;
+    }
+
+    private static string? TruncateForSummary(string? text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
+        var t = text.Trim();
+        if (t.Length <= maxLength)
+        {
+            return t;
+        }
+
+        return t[..maxLength];
     }
 }

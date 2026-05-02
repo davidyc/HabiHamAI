@@ -47,6 +47,9 @@ function AppContent() {
   const [profilePhone, setProfilePhone] = useState("");
   const [profileCity, setProfileCity] = useState("");
   const [profileAbout, setProfileAbout] = useState("");
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [profileAiSummary, setProfileAiSummary] = useState("");
 
   const [users, setUsers] = useState([]);
   const [adminCreateUsername, setAdminCreateUsername] = useState("");
@@ -65,6 +68,14 @@ function AppContent() {
   const [adminDialogs, setAdminDialogs] = useState([]);
   const [adminCurrentDialogId, setAdminCurrentDialogId] = useState("");
   const [adminDialogMessages, setAdminDialogMessages] = useState([]);
+  const [isProfileEditModalOpen, setIsProfileEditModalOpen] = useState(false);
+  const [isActiveWorkoutModalOpen, setIsActiveWorkoutModalOpen] = useState(false);
+  const [aiDialogModalKind, setAiDialogModalKind] = useState(null);
+  const [aiDialogTitleDraft, setAiDialogTitleDraft] = useState("");
+  const [adminDialogModalKind, setAdminDialogModalKind] = useState(null);
+  const [adminDialogTitleDraft, setAdminDialogTitleDraft] = useState("");
+  const [pendingDeleteCatalogExerciseId, setPendingDeleteCatalogExerciseId] = useState(null);
+  const [pendingDeleteWorkoutSessionId, setPendingDeleteWorkoutSessionId] = useState(null);
 
   async function request(method, path, body, token) {
     try {
@@ -182,6 +193,41 @@ function AppContent() {
     setCurrentDialogId(dialogId);
     setChatMessages((prev) => [...prev, { role: "assistant", content: result.data?.response || "No response text." }]);
     await loadDialogs(aiToken, dialogId);
+    await loadMyProfile(aiToken);
+  }
+
+  async function submitAiNewDialog() {
+    const title = (aiDialogTitleDraft || "").trim() || "Новый диалог";
+    const r = await request("POST", "/ai/dialogs", { title }, aiToken);
+    handleResult(r);
+    if (r.ok) {
+      setAiDialogModalKind(null);
+      setAiDialogTitleDraft("");
+      await loadDialogs(aiToken, r.data?.id);
+    }
+  }
+
+  async function submitAiRenameDialog() {
+    if (!currentDialogId) return setErrorView("Нет выбранного диалога.");
+    const title = (aiDialogTitleDraft || "").trim();
+    if (!title) return setErrorView("Введи название.");
+    const r = await request("PUT", `/ai/dialogs/${currentDialogId}`, { title }, aiToken);
+    handleResult(r);
+    if (r.ok) {
+      setAiDialogModalKind(null);
+      setAiDialogTitleDraft("");
+      await loadDialogs(aiToken, currentDialogId);
+    }
+  }
+
+  async function submitAiDeleteDialog() {
+    if (!currentDialogId) return;
+    const r = await request("DELETE", `/ai/dialogs/${currentDialogId}`, null, aiToken);
+    handleResult(r);
+    if (r.ok) {
+      setAiDialogModalKind(null);
+      await loadDialogs(aiToken);
+    }
   }
 
   async function loadUsers() {
@@ -211,6 +257,9 @@ function AppContent() {
     setProfilePhone(profile.phone || "");
     setProfileCity(profile.city || "");
     setProfileAbout(profile.about || "");
+    setProfileFirstName(profile.firstName || "");
+    setProfileLastName(profile.lastName || "");
+    setProfileAiSummary(profile.aiSummary || "");
   }
 
   async function loadWorkoutSessions(token = accessToken) {
@@ -275,9 +324,14 @@ function AppContent() {
     await loadWorkoutExerciseCatalog(accessToken);
   }
 
-  async function deleteCatalogExercise(exerciseId) {
+  function openDeleteCatalogExerciseModal(exerciseId) {
+    if (!exerciseId) return;
+    setPendingDeleteCatalogExerciseId(exerciseId);
+  }
+
+  async function confirmDeleteCatalogExercise() {
+    const exerciseId = pendingDeleteCatalogExerciseId;
     if (!accessToken || !exerciseId) return;
-    if (!window.confirm("Удалить упражнение из каталога?")) return;
 
     const result = await request("DELETE", `/users/me/workouts/exercises/${exerciseId}`, null, accessToken);
     handleResult(result);
@@ -286,6 +340,7 @@ function AppContent() {
     if (String(selectedCatalogExerciseId) === String(exerciseId)) {
       setSelectedCatalogExerciseId("");
     }
+    setPendingDeleteCatalogExerciseId(null);
     await loadWorkoutExerciseCatalog(accessToken);
   }
 
@@ -442,6 +497,7 @@ function AppContent() {
         };
       })
     });
+    setIsActiveWorkoutModalOpen(true);
   }
 
   function createWorkoutFromScratch() {
@@ -451,6 +507,12 @@ function AppContent() {
       notes: "",
       exercises: []
     });
+    setIsActiveWorkoutModalOpen(true);
+  }
+
+  function closeActiveWorkoutModal() {
+    setCurrentWorkout(null);
+    setIsActiveWorkoutModalOpen(false);
   }
 
   function updateCurrentWorkoutField(field, value) {
@@ -562,18 +624,25 @@ function AppContent() {
     handleResult(result);
     if (!result.ok) return;
     setCurrentWorkout(null);
+    setIsActiveWorkoutModalOpen(false);
     await loadWorkoutSessions(accessToken);
   }
 
-  async function deleteWorkoutSession(sessionId) {
+  function openDeleteWorkoutLogModal(sessionId) {
+    if (!sessionId) return;
+    setPendingDeleteWorkoutSessionId(sessionId);
+  }
+
+  async function confirmDeleteWorkoutSession() {
+    const sessionId = pendingDeleteWorkoutSessionId;
     if (!accessToken) return;
     if (!sessionId) return;
-    if (!window.confirm("Удалить выбранную тренировку?")) return;
 
     const result = await request("DELETE", `/users/me/workouts/${sessionId}`, null, accessToken);
     handleResult(result);
     if (!result.ok) return;
 
+    setPendingDeleteWorkoutSessionId(null);
     if (selectedProgramCode && workoutPrograms.some((x) => x.id === sessionId && x.sessionCode === selectedProgramCode)) {
       setSelectedProgramCode("");
     }
@@ -596,12 +665,15 @@ function AppContent() {
       weightKg: toNumberOrNull(profileWeightKg),
       phone: profilePhone.trim() || null,
       city: profileCity.trim() || null,
-      about: profileAbout.trim() || null
+      about: profileAbout.trim() || null,
+      firstName: profileFirstName.trim() || null,
+      lastName: profileLastName.trim() || null
     };
 
     const result = await request("PUT", "/users/me", body, accessToken);
     handleResult(result);
     if (result.ok) {
+      setIsProfileEditModalOpen(false);
       await loadMyProfile(accessToken);
     }
   }
@@ -634,36 +706,38 @@ function AppContent() {
     setAdminDialogMessages(Array.isArray(result.data) ? result.data : []);
   }
 
-  async function createAdminDialog() {
+  async function submitCreateAdminDialog() {
     if (!adminDialogUserId) return setErrorView("Выбери пользователя для нового диалога.");
-    const title = window.prompt("Название нового диалога:", "Новый диалог");
-    if (title === null) return;
+    const title = (adminDialogTitleDraft || "").trim() || "Новый диалог";
     const result = await request("POST", "/admin/dialogs", { userId: adminDialogUserId, title }, adminToken);
     handleResult(result);
     if (result.ok) {
+      setAdminDialogModalKind(null);
+      setAdminDialogTitleDraft("");
       await loadAdminDialogs(adminDialogUserId, result.data?.id);
     }
   }
 
-  async function renameAdminDialog() {
+  async function submitRenameAdminDialog() {
     if (!adminCurrentDialogId) return setErrorView("Сначала выбери диалог.");
-    const current = adminDialogs.find((d) => d.id === adminCurrentDialogId);
-    const title = window.prompt("Новое название диалога:", current?.title || "Новый диалог");
-    if (!title || !title.trim()) return;
+    const title = (adminDialogTitleDraft || "").trim();
+    if (!title) return setErrorView("Введи название.");
     const result = await request("PUT", `/admin/dialogs/${adminCurrentDialogId}`, { title }, adminToken);
     handleResult(result);
     if (result.ok) {
+      setAdminDialogModalKind(null);
+      setAdminDialogTitleDraft("");
       await loadAdminDialogs(adminDialogUserId, adminCurrentDialogId);
     }
   }
 
-  async function deleteAdminDialog() {
+  async function submitDeleteAdminDialog() {
     if (!adminCurrentDialogId) return setErrorView("Сначала выбери диалог.");
-    if (!window.confirm("Удалить выбранный диалог?")) return;
     const deletingId = adminCurrentDialogId;
     const result = await request("DELETE", `/admin/dialogs/${deletingId}`, null, adminToken);
     handleResult(result);
     if (result.ok) {
+      setAdminDialogModalKind(null);
       await loadAdminDialogs(adminDialogUserId);
     }
   }
@@ -867,6 +941,9 @@ function AppContent() {
                   setProfilePhone("");
                   setProfileCity("");
                   setProfileAbout("");
+                  setProfileFirstName("");
+                  setProfileLastName("");
+                  setProfileAiSummary("");
                   navigate("/login");
                 }}
               />
@@ -879,9 +956,33 @@ function AppContent() {
                 <option value="">No dialogs</option>
                 {dialogOptions}
               </select>
-              <button onClick={async () => { const title = window.prompt("Введите название диалога:", "Новый диалог") || ""; const r = await request("POST", "/ai/dialogs", { title }, aiToken); handleResult(r); if (r.ok) await loadDialogs(aiToken, r.data?.id); }}>New</button>
-              <button onClick={async () => { if (!currentDialogId) return; const current = dialogs.find((d) => d.id === currentDialogId); const title = window.prompt("Новое название:", current?.title || "Новый диалог"); if (!title) return; const r = await request("PUT", `/ai/dialogs/${currentDialogId}`, { title }, aiToken); handleResult(r); if (r.ok) await loadDialogs(aiToken, currentDialogId); }}>Rename</button>
-              <button onClick={async () => { if (!currentDialogId) return; if (!window.confirm("Удалить диалог?")) return; const r = await request("DELETE", `/ai/dialogs/${currentDialogId}`, null, aiToken); handleResult(r); if (r.ok) await loadDialogs(aiToken); }}>Delete</button>
+              <button
+                onClick={() => {
+                  setAiDialogTitleDraft("");
+                  setAiDialogModalKind("new");
+                }}
+              >
+                New
+              </button>
+              <button
+                onClick={() => {
+                  if (!currentDialogId) return;
+                  const current = dialogs.find((d) => d.id === currentDialogId);
+                  setAiDialogTitleDraft(current?.title || "Новый диалог");
+                  setAiDialogModalKind("rename");
+                }}
+              >
+                Rename
+              </button>
+              <button
+                className="danger-btn"
+                onClick={() => {
+                  if (!currentDialogId) return;
+                  setAiDialogModalKind("delete");
+                }}
+              >
+                Delete
+              </button>
             </div>
             <div className="chat-messages">
               {chatMessages.map((m, i) => <div key={i} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>{m.content}</div>)}
@@ -901,9 +1002,6 @@ function AppContent() {
               <button className={workoutsSubTab === "programs" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("programs")}>Программы</button>
               <button className={workoutsSubTab === "exercises" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("exercises")}>Мои упражнения</button>
               <button className={workoutsSubTab === "my-workouts" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("my-workouts")}>Мои тренировки</button>
-            </div>
-            <div className="row">
-              <button className="ghost-btn" onClick={() => { loadWorkoutSessions(); loadWorkoutExerciseCatalog(); }}>Обновить список</button>
             </div>
 
             {workoutsSubTab === "programs" && (
@@ -961,7 +1059,7 @@ function AppContent() {
                             <td>{exercise.name}</td>
                             <td>{!parsedMeta.isStructured ? parsedMeta.legacy || "-" : "-"}</td>
                             <td>
-                              <button className="danger-btn" onClick={() => deleteCatalogExercise(exercise.id)}>Удалить</button>
+                              <button className="danger-btn" onClick={() => openDeleteCatalogExerciseModal(exercise.id)}>Удалить</button>
                             </td>
                           </tr>
                         );
@@ -985,118 +1083,7 @@ function AppContent() {
                   <button disabled={!selectedProgram} onClick={() => selectedProgram && startWorkoutFromProgram(selectedProgram)}>Начать тренировку</button>
                   <button className="ghost-btn" onClick={createWorkoutFromScratch}>Создать с нуля</button>
                 </div>
-
-                {currentWorkout && (
-                  <div className="workout-exercises">
-                    <h4>Текущая тренировка: {currentWorkout.day}</h4>
-                    <label>Название тренировки</label>
-                    <input
-                      value={currentWorkout.day || ""}
-                      onChange={(e) => updateCurrentWorkoutField("day", e.target.value)}
-                      placeholder="Например: День ног"
-                    />
-                    <label>Заметки</label>
-                    <textarea
-                      value={currentWorkout.notes || ""}
-                      onChange={(e) => updateCurrentWorkoutField("notes", e.target.value)}
-                      rows={2}
-                      placeholder="Опционально"
-                    />
-                    <div className="row">
-                      <button className="ghost-btn" onClick={addExerciseToCurrentWorkout}>Добавить упражнение</button>
-                    </div>
-                    <div className="users-table-wrap">
-                      <table className="users-table">
-                        <thead>
-                          <tr>
-                            <th>Упражнение</th>
-                            <th>Комментарий</th>
-                            <th>Подходы</th>
-                            <th>Действия</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {currentWorkout.exercises.length === 0 && (
-                            <tr>
-                              <td colSpan="4">Нет упражнений. Добавь первое упражнение.</td>
-                            </tr>
-                          )}
-                          {currentWorkout.exercises.map((exercise) => (
-                            <tr key={exercise.id}>
-                              <td>
-                                <input
-                                  value={exercise.name || ""}
-                                  onChange={(e) => updateCurrentWorkoutExercise(exercise.id, "name", e.target.value)}
-                                  placeholder="Название упражнения"
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  value={exercise.meta || ""}
-                                  onChange={(e) => updateCurrentWorkoutExercise(exercise.id, "meta", e.target.value)}
-                                  placeholder="Комментарий к упражнению"
-                                />
-                              </td>
-                              <td>
-                                <div className="workout-sets">
-                                  {exercise.sets.map((setItem, setIdx) => (
-                                    <div key={`${exercise.id}-active-set-${setIdx}`} className="row workout-set-row">
-                                      <input
-                                        type="number"
-                                        inputMode="decimal"
-                                        min="0"
-                                        step="0.5"
-                                        value={setItem.weight}
-                                        onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "weight", e.target.value)}
-                                        placeholder="Вес"
-                                      />
-                                      <input
-                                        type="number"
-                                        inputMode="numeric"
-                                        min="0"
-                                        step="1"
-                                        value={setItem.reps}
-                                        onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "reps", e.target.value)}
-                                        placeholder="Повт."
-                                      />
-                                      <select
-                                        value={setItem.rpe || "8"}
-                                        onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "rpe", e.target.value)}
-                                      >
-                                        <option value="6">6</option>
-                                        <option value="7">7</option>
-                                        <option value="8">8</option>
-                                        <option value="9">9</option>
-                                        <option value="10">10</option>
-                                      </select>
-                                      <button
-                                        className="danger-btn"
-                                        onClick={() => removeCurrentWorkoutSet(exercise.id, setIdx)}
-                                        disabled={exercise.sets.length <= 1}
-                                      >
-                                        Удалить
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                              <td>
-                                <div className="row">
-                                  <button className="ghost-btn" onClick={() => addCurrentWorkoutSet(exercise.id)}>+ Подход</button>
-                                  <button className="danger-btn" onClick={() => removeCurrentWorkoutExercise(exercise.id)}>Удалить</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                <div className="row">
-                  <button disabled={!currentWorkout} onClick={saveCurrentWorkout}>Сохранить выполненную тренировку</button>
-                </div>
+                <p className="subtitle">Заполнение и сохранение тренировки открывается в окне поверх страницы.</p>
 
                 <h4>История моих тренировок</h4>
                 <div className="workout-list">
@@ -1109,7 +1096,7 @@ function AppContent() {
                         <span>Упражнений: {session.exercises.length}</span>
                       </div>
                       <div className="row">
-                        <button className="danger-btn" onClick={() => deleteWorkoutSession(session.id)}>Удалить</button>
+                        <button className="danger-btn" onClick={() => openDeleteWorkoutLogModal(session.id)}>Удалить</button>
                       </div>
                     </article>
                   ))}
@@ -1122,51 +1109,50 @@ function AppContent() {
         {tab === "profile" && <section className="card-grid">
           <section className="card full-span">
             <h3>Мой профиль</h3>
-            <p className="subtitle">Заполни дополнительные данные (все поля необязательные).</p>
-            <div className="row profile-row">
-              <div>
-                <label>Дата рождения</label>
-                <input type="date" value={profileBirthDate} onChange={(e) => setProfileBirthDate(e.target.value)} />
+            <p className="subtitle">Все поля необязательные. Изменения вносятся в отдельном окне.</p>
+            <div className="profile-readonly">
+              <div className="profile-readonly-grid">
+                <div className="profile-readonly-item">
+                  <span className="profile-field-label">Имя</span>
+                  <div className="profile-field-value">{profileFirstName || "—"}</div>
+                </div>
+                <div className="profile-readonly-item">
+                  <span className="profile-field-label">Фамилия</span>
+                  <div className="profile-field-value">{profileLastName || "—"}</div>
+                </div>
+                <div className="profile-readonly-item">
+                  <span className="profile-field-label">Дата рождения</span>
+                  <div className="profile-field-value">{profileBirthDate || "—"}</div>
+                </div>
+                <div className="profile-readonly-item">
+                  <span className="profile-field-label">Рост (см)</span>
+                  <div className="profile-field-value">{profileHeightCm || "—"}</div>
+                </div>
+                <div className="profile-readonly-item">
+                  <span className="profile-field-label">Вес (кг)</span>
+                  <div className="profile-field-value">{profileWeightKg || "—"}</div>
+                </div>
+                <div className="profile-readonly-item">
+                  <span className="profile-field-label">Телефон</span>
+                  <div className="profile-field-value">{profilePhone || "—"}</div>
+                </div>
+                <div className="profile-readonly-item">
+                  <span className="profile-field-label">Город</span>
+                  <div className="profile-field-value">{profileCity || "—"}</div>
+                </div>
               </div>
-              <div>
-                <label>Рост (см)</label>
-                <input
-                  type="number"
-                  value={profileHeightCm}
-                  onChange={(e) => setProfileHeightCm(e.target.value)}
-                  placeholder="например, 175"
-                  min="0"
-                  max="300"
-                  step="0.01"
-                />
+              <div className="profile-readonly-item">
+                <span className="profile-field-label">О себе</span>
+                <div className="profile-field-value">{profileAbout || "—"}</div>
               </div>
-              <div>
-                <label>Вес (кг)</label>
-                <input
-                  type="number"
-                  value={profileWeightKg}
-                  onChange={(e) => setProfileWeightKg(e.target.value)}
-                  placeholder="например, 72.5"
-                  min="0"
-                  max="700"
-                  step="0.01"
-                />
+              <div className="profile-readonly-item profile-ai-summary-block">
+                <span className="profile-field-label">Саммари от ИИ</span>
+                <div className="profile-field-value profile-ai-summary-text">{profileAiSummary || "Появится после ответов ассистента в чате."}</div>
               </div>
             </div>
-            <label>Телефон</label>
-            <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="+7..." />
-            <label>Город</label>
-            <input value={profileCity} onChange={(e) => setProfileCity(e.target.value)} placeholder="Алматы" />
-            <label>О себе</label>
-            <textarea
-              value={profileAbout}
-              onChange={(e) => setProfileAbout(e.target.value)}
-              placeholder="Любая полезная информация"
-              rows={4}
-            />
             <div className="row">
-              <button onClick={saveMyProfile}>Сохранить профиль</button>
-              <button className="ghost-btn" onClick={() => loadMyProfile()}>Обновить</button>
+              <button onClick={() => setIsProfileEditModalOpen(true)}>Редактировать профиль</button>
+              <button className="ghost-btn" onClick={() => loadMyProfile()}>Обновить с сервера</button>
             </div>
           </section>
         </section>}
@@ -1214,28 +1200,34 @@ function AppContent() {
                   <tr>
                     <th>Username</th>
                     <th>Role</th>
+                    <th>Имя</th>
+                    <th>Фамилия</th>
                     <th>Birth Date</th>
                     <th>Height (cm)</th>
                     <th>Weight (kg)</th>
                     <th>Phone</th>
                     <th>City</th>
                     <th>About</th>
+                    <th>AI summary</th>
                     <th>Created</th>
                     <th>User ID</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.length === 0 && <tr><td colSpan="10">No users loaded</td></tr>}
+                  {users.length === 0 && <tr><td colSpan="13">No users loaded</td></tr>}
                   {users.map((u) => (
                     <tr key={u.id}>
                       <td>{u.username}</td>
                       <td>{u.role}</td>
+                      <td>{u.firstName || "-"}</td>
+                      <td>{u.lastName || "-"}</td>
                       <td>{u.birthDate || "-"}</td>
                       <td>{u.heightCm ?? "-"}</td>
                       <td>{u.weightKg ?? "-"}</td>
                       <td>{u.phone || "-"}</td>
                       <td>{u.city || "-"}</td>
                       <td>{u.about || "-"}</td>
+                      <td className="admin-ai-summary-cell">{u.aiSummary ? `${String(u.aiSummary).slice(0, 120)}${String(u.aiSummary).length > 120 ? "…" : ""}` : "-"}</td>
                       <td>{u.createdAtUtc ? new Date(u.createdAtUtc).toLocaleString() : "-"}</td>
                       <td>{u.id}</td>
                     </tr>
@@ -1271,8 +1263,33 @@ function AppContent() {
                 <option value="">No dialogs</option>
                 {adminDialogOptions}
               </select>
-              <button onClick={renameAdminDialog}>Rename</button>
-              <button className="danger-btn" onClick={deleteAdminDialog}>Delete</button>
+              <button
+                onClick={() => {
+                  setAdminDialogTitleDraft("");
+                  setAdminDialogModalKind("create");
+                }}
+              >
+                New dialog
+              </button>
+              <button
+                onClick={() => {
+                  if (!adminCurrentDialogId) return;
+                  const current = adminDialogs.find((d) => d.id === adminCurrentDialogId);
+                  setAdminDialogTitleDraft(current?.title || "Новый диалог");
+                  setAdminDialogModalKind("rename");
+                }}
+              >
+                Rename
+              </button>
+              <button
+                className="danger-btn"
+                onClick={() => {
+                  if (!adminCurrentDialogId) return;
+                  setAdminDialogModalKind("delete");
+                }}
+              >
+                Delete
+              </button>
             </div>
 
             <div className="chat-messages small">
@@ -1365,7 +1382,7 @@ function AppContent() {
 
         {tab === "workouts" && workoutsSubTab === "programs" && isProgramModalOpen && (
           <div className="modal-backdrop">
-            <div className="modal-card">
+            <div className="modal-card modal-card--wide modal-card--scroll">
               <h3>{editingProgramId ? "Редактирование программы" : "Новая программа"}</h3>
               <label>Код программы (латиницей, опционально)</label>
               <input value={programCode} onChange={(e) => setProgramCode(e.target.value)} placeholder="upper-body-a" />
@@ -1380,24 +1397,43 @@ function AppContent() {
                     <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                   ))}
                 </select>
-                <button onClick={() => selectedCatalogExercise && addExerciseToProgram(selectedCatalogExercise)} disabled={!selectedCatalogExercise}>Добавить в программу</button>
+                <button type="button" onClick={() => selectedCatalogExercise && addExerciseToProgram(selectedCatalogExercise)} disabled={!selectedCatalogExercise}>Добавить в программу</button>
               </div>
-              <div className="workout-exercises">
-                {programExercisesDraft.map((exercise) => (
-                  <div key={exercise.id} className="workout-exercise">
-                    <p className="workout-exercise-name">{exercise.name}</p>
-                    <label>Комментарий к упражнению</label>
-                    <textarea
-                      value={exercise.comment || ""}
-                      onChange={(e) => updateProgramExerciseComment(exercise.id, e.target.value)}
-                      rows={2}
-                      placeholder="Например: техника, темп, акцент, ограничения"
-                    />
-                    <div className="row">
-                      <button className="danger-btn" onClick={() => removeProgramExercise(exercise.id)}>Удалить упражнение</button>
-                    </div>
-                  </div>
-                ))}
+              <h4>Упражнения в программе</h4>
+              <div className="users-table-wrap program-draft-table-wrap">
+                <table className="users-table program-draft-table">
+                  <thead>
+                    <tr>
+                      <th>Упражнение</th>
+                      <th>Комментарий</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {programExercisesDraft.length === 0 && (
+                      <tr>
+                        <td colSpan="3" className="program-draft-empty">Нет строк. Выбери упражнение выше и нажми «Добавить в программу» — появится новая строка.</td>
+                      </tr>
+                    )}
+                    {programExercisesDraft.map((exercise) => (
+                      <tr key={exercise.id}>
+                        <td className="program-draft-name">{exercise.name}</td>
+                        <td>
+                          <textarea
+                            className="program-draft-comment"
+                            value={exercise.comment || ""}
+                            onChange={(e) => updateProgramExerciseComment(exercise.id, e.target.value)}
+                            rows={2}
+                            placeholder="Например: техника, темп, акцент"
+                          />
+                        </td>
+                        <td>
+                          <button type="button" className="danger-btn" onClick={() => removeProgramExercise(exercise.id)}>Удалить</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
               <div className="row">
                 <button onClick={saveProgramToDb}>Сохранить программу</button>
@@ -1427,6 +1463,301 @@ function AppContent() {
             </div>
           </div>
         )}
+        {tab === "profile" && isProfileEditModalOpen && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setIsProfileEditModalOpen(false); }}>
+            <div className="modal-card modal-card--scroll" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title" onClick={(e) => e.stopPropagation()}>
+              <h3 id="profile-edit-title">Редактировать профиль</h3>
+              <label>Имя</label>
+              <input value={profileFirstName} onChange={(e) => setProfileFirstName(e.target.value)} placeholder="Имя" />
+              <label>Фамилия</label>
+              <input value={profileLastName} onChange={(e) => setProfileLastName(e.target.value)} placeholder="Фамилия" />
+              <div className="row profile-row">
+                <div>
+                  <label>Дата рождения</label>
+                  <input type="date" value={profileBirthDate} onChange={(e) => setProfileBirthDate(e.target.value)} />
+                </div>
+                <div>
+                  <label>Рост (см)</label>
+                  <input
+                    type="number"
+                    value={profileHeightCm}
+                    onChange={(e) => setProfileHeightCm(e.target.value)}
+                    placeholder="например, 175"
+                    min="0"
+                    max="300"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label>Вес (кг)</label>
+                  <input
+                    type="number"
+                    value={profileWeightKg}
+                    onChange={(e) => setProfileWeightKg(e.target.value)}
+                    placeholder="например, 72.5"
+                    min="0"
+                    max="700"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+              <label>Телефон</label>
+              <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="+7..." />
+              <label>Город</label>
+              <input value={profileCity} onChange={(e) => setProfileCity(e.target.value)} placeholder="Алматы" />
+              <label>О себе</label>
+              <textarea
+                value={profileAbout}
+                onChange={(e) => setProfileAbout(e.target.value)}
+                placeholder="Любая полезная информация"
+                rows={4}
+              />
+              <div className="row">
+                <button onClick={saveMyProfile}>Сохранить</button>
+                <button className="ghost-btn" onClick={() => setIsProfileEditModalOpen(false)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "ai" && hasAiAccess && aiDialogModalKind === "new" && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { setAiDialogModalKind(null); setAiDialogTitleDraft(""); } }}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Новый диалог</h3>
+              <label>Название</label>
+              <input
+                value={aiDialogTitleDraft}
+                onChange={(e) => setAiDialogTitleDraft(e.target.value)}
+                placeholder="Новый диалог"
+              />
+              <div className="row">
+                <button onClick={submitAiNewDialog}>Создать</button>
+                <button className="ghost-btn" onClick={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {tab === "ai" && hasAiAccess && aiDialogModalKind === "rename" && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { setAiDialogModalKind(null); setAiDialogTitleDraft(""); } }}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Переименовать диалог</h3>
+              <label>Название</label>
+              <input
+                value={aiDialogTitleDraft}
+                onChange={(e) => setAiDialogTitleDraft(e.target.value)}
+                placeholder="Новый диалог"
+              />
+              <div className="row">
+                <button onClick={submitAiRenameDialog}>Сохранить</button>
+                <button className="ghost-btn" onClick={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {tab === "ai" && hasAiAccess && aiDialogModalKind === "delete" && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setAiDialogModalKind(null); }}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Удалить диалог</h3>
+              <p className="subtitle">Удалить текущий выбранный диалог без восстановления?</p>
+              <div className="row">
+                <button className="danger-btn" onClick={submitAiDeleteDialog}>Удалить</button>
+                <button className="ghost-btn" onClick={() => setAiDialogModalKind(null)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "workouts" && workoutsSubTab === "my-workouts" && isActiveWorkoutModalOpen && currentWorkout && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeActiveWorkoutModal(); }}>
+            <div className="modal-card modal-card--wide modal-card--scroll" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Текущая тренировка: {currentWorkout.day}</h3>
+              <label>Название тренировки</label>
+              <input
+                value={currentWorkout.day || ""}
+                onChange={(e) => updateCurrentWorkoutField("day", e.target.value)}
+                placeholder="Например: День ног"
+              />
+              <label>Заметки</label>
+              <textarea
+                value={currentWorkout.notes || ""}
+                onChange={(e) => updateCurrentWorkoutField("notes", e.target.value)}
+                rows={2}
+                placeholder="Опционально"
+              />
+              <div className="row">
+                <button className="ghost-btn" onClick={addExerciseToCurrentWorkout}>Добавить упражнение</button>
+              </div>
+              <div className="users-table-wrap">
+                <table className="users-table">
+                  <thead>
+                    <tr>
+                      <th>Упражнение</th>
+                      <th>Комментарий</th>
+                      <th>Подходы</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentWorkout.exercises.length === 0 && (
+                      <tr>
+                        <td colSpan="4">Нет упражнений. Добавь первое упражнение.</td>
+                      </tr>
+                    )}
+                    {currentWorkout.exercises.map((exercise) => (
+                      <tr key={exercise.id}>
+                        <td>
+                          <input
+                            value={exercise.name || ""}
+                            onChange={(e) => updateCurrentWorkoutExercise(exercise.id, "name", e.target.value)}
+                            placeholder="Название упражнения"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={exercise.meta || ""}
+                            onChange={(e) => updateCurrentWorkoutExercise(exercise.id, "meta", e.target.value)}
+                            placeholder="Комментарий к упражнению"
+                          />
+                        </td>
+                        <td>
+                          <div className="workout-sets">
+                            {exercise.sets.map((setItem, setIdx) => (
+                              <div key={`${exercise.id}-active-set-${setIdx}`} className="row workout-set-row">
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min="0"
+                                  step="0.5"
+                                  value={setItem.weight}
+                                  onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "weight", e.target.value)}
+                                  placeholder="Вес"
+                                />
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min="0"
+                                  step="1"
+                                  value={setItem.reps}
+                                  onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "reps", e.target.value)}
+                                  placeholder="Повт."
+                                />
+                                <select
+                                  value={setItem.rpe || "8"}
+                                  onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "rpe", e.target.value)}
+                                >
+                                  <option value="6">6</option>
+                                  <option value="7">7</option>
+                                  <option value="8">8</option>
+                                  <option value="9">9</option>
+                                  <option value="10">10</option>
+                                </select>
+                                <button
+                                  className="danger-btn"
+                                  onClick={() => removeCurrentWorkoutSet(exercise.id, setIdx)}
+                                  disabled={exercise.sets.length <= 1}
+                                >
+                                  Удалить
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="row">
+                            <button className="ghost-btn" onClick={() => addCurrentWorkoutSet(exercise.id)}>+ Подход</button>
+                            <button className="danger-btn" onClick={() => removeCurrentWorkoutExercise(exercise.id)}>Удалить</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="row">
+                <button onClick={saveCurrentWorkout}>Сохранить тренировку</button>
+                <button className="ghost-btn" onClick={closeActiveWorkoutModal}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "admin" && isAdmin && adminDialogModalKind === "create" && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); } }}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Новый диалог</h3>
+              <label>Название</label>
+              <input
+                value={adminDialogTitleDraft}
+                onChange={(e) => setAdminDialogTitleDraft(e.target.value)}
+                placeholder="Новый диалог"
+              />
+              <div className="row">
+                <button onClick={submitCreateAdminDialog}>Создать</button>
+                <button className="ghost-btn" onClick={() => { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); }}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {tab === "admin" && isAdmin && adminDialogModalKind === "rename" && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); } }}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Переименовать диалог</h3>
+              <label>Название</label>
+              <input
+                value={adminDialogTitleDraft}
+                onChange={(e) => setAdminDialogTitleDraft(e.target.value)}
+                placeholder="Новый диалог"
+              />
+              <div className="row">
+                <button onClick={submitRenameAdminDialog}>Сохранить</button>
+                <button className="ghost-btn" onClick={() => { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); }}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {tab === "admin" && isAdmin && adminDialogModalKind === "delete" && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setAdminDialogModalKind(null); }}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Удалить диалог</h3>
+              <p className="subtitle">Удалить выбранный диалог без восстановления?</p>
+              <div className="row">
+                <button className="danger-btn" onClick={submitDeleteAdminDialog}>Удалить</button>
+                <button className="ghost-btn" onClick={() => setAdminDialogModalKind(null)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "workouts" && workoutsSubTab === "exercises" && pendingDeleteCatalogExerciseId && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setPendingDeleteCatalogExerciseId(null); }}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Удалить упражнение</h3>
+              <p className="subtitle">
+                Удалить «{workoutExerciseCatalog.find((x) => String(x.id) === String(pendingDeleteCatalogExerciseId))?.name || "упражнение"}» из каталога?
+              </p>
+              <div className="row">
+                <button className="danger-btn" onClick={confirmDeleteCatalogExercise}>Удалить</button>
+                <button className="ghost-btn" onClick={() => setPendingDeleteCatalogExerciseId(null)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "workouts" && workoutsSubTab === "my-workouts" && pendingDeleteWorkoutSessionId && (
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setPendingDeleteWorkoutSessionId(null); }}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <h3>Удалить тренировку</h3>
+              <p className="subtitle">
+                Удалить «{workoutLogs.find((x) => x.id === pendingDeleteWorkoutSessionId)?.day || "тренировку"}» из истории?
+              </p>
+              <div className="row">
+                <button className="danger-btn" onClick={confirmDeleteWorkoutSession}>Удалить</button>
+                <button className="ghost-btn" onClick={() => setPendingDeleteWorkoutSessionId(null)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {tab === "workouts" && workoutsSubTab === "exercises" && isCreateExerciseModalOpen && (
           <div className="modal-backdrop">
             <div className="modal-card">

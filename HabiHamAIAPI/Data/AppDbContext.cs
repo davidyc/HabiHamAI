@@ -38,6 +38,9 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.Phone).HasMaxLength(30);
             entity.Property(x => x.City).HasMaxLength(120);
             entity.Property(x => x.About).HasMaxLength(500);
+            entity.Property(x => x.FirstName).HasMaxLength(100);
+            entity.Property(x => x.LastName).HasMaxLength(100);
+            entity.Property(x => x.AiSummary).HasMaxLength(8000);
             entity.HasIndex(x => x.Username).IsUnique();
             entity.HasMany(x => x.WorkoutSessions)
                 .WithOne(x => x.User)

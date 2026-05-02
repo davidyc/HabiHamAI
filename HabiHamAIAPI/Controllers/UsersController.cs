@@ -56,6 +56,8 @@ public sealed class UsersController : ControllerBase
         user.Phone = NormalizeOrNull(request.Phone, 30);
         user.City = NormalizeOrNull(request.City, 120);
         user.About = NormalizeOrNull(request.About, 500);
+        user.FirstName = NormalizeOrNull(request.FirstName, 100);
+        user.LastName = NormalizeOrNull(request.LastName, 100);
 
         await _dbContext.SaveChangesAsync();
         return Ok(MapToProfileResponse(user));
@@ -105,7 +107,10 @@ public sealed class UsersController : ControllerBase
             WeightKg = user.WeightKg,
             Phone = user.Phone,
             City = user.City,
-            About = user.About
+            About = user.About,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            AiSummary = user.AiSummary
         };
     }
 }

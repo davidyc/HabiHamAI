@@ -171,7 +171,10 @@ public sealed class AdminUsersController : ControllerBase
             WeightKg = user.WeightKg,
             Phone = user.Phone,
             City = user.City,
-            About = user.About
+            About = user.About,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            AiSummary = user.AiSummary
         };
     }
 
@@ -188,7 +191,10 @@ public sealed class AdminUsersController : ControllerBase
             WeightKg = user.WeightKg,
             Phone = user.Phone,
             City = user.City,
-            About = user.About
+            About = user.About,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            AiSummary = user.AiSummary
         };
     }
 }

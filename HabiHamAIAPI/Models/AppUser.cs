@@ -13,6 +13,9 @@ public sealed class AppUser
     public string? Phone { get; set; }
     public string? City { get; set; }
     public string? About { get; set; }
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
+    public string? AiSummary { get; set; }
     public List<ChatDialog> Dialogs { get; set; } = [];
     public List<WorkoutSession> WorkoutSessions { get; set; } = [];
 }
