@@ -10,6 +10,7 @@ public sealed class WorkoutSession
     public string Notes { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
+    public bool IsActive { get; set; }
     public AppUser? User { get; set; }
     public List<WorkoutExercise> Exercises { get; set; } = [];
 
@@ -19,7 +20,8 @@ public sealed class WorkoutSession
         DateOnly date,
         string day,
         string notes,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        bool isActive)
     {
         return new WorkoutSession
         {
@@ -30,7 +32,8 @@ public sealed class WorkoutSession
             Day = NormalizeRequired(day),
             Notes = NormalizeOptional(notes),
             CreatedAtUtc = nowUtc,
-            UpdatedAtUtc = nowUtc
+            UpdatedAtUtc = nowUtc,
+            IsActive = isActive
         };
     }
 

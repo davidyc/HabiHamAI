@@ -92,6 +92,7 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(2000).IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            entity.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(false).IsRequired();
             entity.HasIndex(x => new { x.UserId, x.Date });
             entity.HasIndex(x => new { x.UserId, x.SessionCode }).IsUnique();
             entity.HasMany(x => x.Exercises)

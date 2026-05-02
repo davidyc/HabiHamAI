@@ -82,24 +82,46 @@ public sealed class WorkoutsController : ControllerBase
         var normalizedDay = request.Day.Trim();
         var normalizedNotes = request.Notes ?? string.Empty;
         var now = DateTime.UtcNow;
+        var isWorkoutLog = normalizedCode.StartsWith("workout::", StringComparison.OrdinalIgnoreCase);
 
         var existing = await _dbContext.WorkoutSessions
             .FirstOrDefaultAsync(x => x.UserId == user.Id && x.SessionCode == normalizedCode, cancellationToken);
 
         if (existing is null)
         {
-            existing = WorkoutSession.Create(user.Id, normalizedCode, request.Date, normalizedDay, normalizedNotes, now);
+            var isActive = isWorkoutLog && (request.IsActive ?? true);
+            existing = WorkoutSession.Create(user.Id, normalizedCode, request.Date, normalizedDay, normalizedNotes, now, isActive);
 
             _dbContext.WorkoutSessions.Add(existing);
         }
         else
         {
             existing.UpdateDetails(request.Date, normalizedDay, normalizedNotes, now);
+            if (!isWorkoutLog)
+            {
+                existing.IsActive = false;
+            }
+            else
+            {
+                existing.IsActive = request.IsActive ?? existing.IsActive;
+            }
 
             // Use direct set-based delete to avoid tracked-collection delete races.
             await _dbContext.WorkoutExercises
                 .Where(x => x.SessionId == existing.Id)
                 .ExecuteDeleteAsync(cancellationToken);
+        }
+
+        if (isWorkoutLog && existing.IsActive)
+        {
+            // Без StringComparison: перегрузка с OrdinalIgnoreCase не транслируется в SQL для ExecuteUpdate.
+            var existingId = existing.Id;
+            await _dbContext.WorkoutSessions
+                .Where(x => x.UserId == user.Id
+                    && EF.Functions.ILike(x.SessionCode, "workout::%")
+                    && x.Id != existingId
+                    && x.IsActive)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsActive, false), cancellationToken);
         }
 
         for (var exerciseIndex = 0; exerciseIndex < request.Exercises.Count; exerciseIndex++)
@@ -372,6 +394,7 @@ public sealed class WorkoutsController : ControllerBase
             Notes = session.Notes,
             CreatedAtUtc = session.CreatedAtUtc,
             _date = session.Date,
+            IsActive = session.IsActive,
             Exercises = session.Exercises
                 .OrderBy(x => x.Order)
                 .Select(exercise => new WorkoutExerciseResponse

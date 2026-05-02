@@ -9,6 +9,7 @@ public sealed class WorkoutSessionResponse
     public string Notes { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }
     public DateOnly _date { get; set; }
+    public bool IsActive { get; set; }
     public List<WorkoutExerciseResponse> Exercises { get; set; } = [];
 }
 
@@ -37,6 +38,7 @@ public sealed class UpsertWorkoutSessionRequest
     public DateOnly Date { get; set; }
     public string Day { get; set; } = string.Empty;
     public string? Notes { get; set; }
+    public bool? IsActive { get; set; }
     public List<UpsertWorkoutExerciseRequest> Exercises { get; set; } = [];
 }
 

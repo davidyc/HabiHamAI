@@ -308,6 +308,58 @@ button:active {
   color: var(--muted);
 }
 
+.active-workout-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(30, 64, 175, 0.18);
+}
+
+.active-workout-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #bfdbfe;
+  background: rgba(37, 99, 235, 0.35);
+}
+
+.active-workout-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.active-workout-date {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+@media (min-width: 520px) {
+  .active-workout-banner > div:first-child .active-workout-date {
+    display: inline;
+    margin-top: 0;
+    margin-left: 10px;
+  }
+}
+
+.active-workout-banner button {
+  width: auto;
+  margin-top: 0;
+  padding: 8px 14px;
+}
+
 .workout-exercises {
   margin-top: 10px;
   display: grid;

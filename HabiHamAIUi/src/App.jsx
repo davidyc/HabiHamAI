@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import TopNav from "./TopNav";
 
@@ -412,6 +412,7 @@ function AppContent() {
         date: new Date().toISOString().slice(0, 10),
         day: normalizedDay,
         notes: programNotes.trim(),
+        isActive: false,
         exercises: programExercisesDraft.map((x) => ({
           name: (x.name || "").trim(),
           meta: JSON.stringify({
@@ -482,11 +483,50 @@ function AppContent() {
     await loadWorkoutSessions(accessToken);
   }
 
+  function formatWorkoutDateLabel(iso) {
+    if (!iso) return "";
+    const raw = String(iso).slice(0, 10);
+    try {
+      const d = new Date(`${raw}T12:00:00`);
+      if (Number.isNaN(d.getTime())) return raw;
+      return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+    } catch {
+      return raw;
+    }
+  }
+
+  function mapServerSessionToCurrentWorkout(session) {
+    const dateStr = session.date || session._date;
+    return {
+      sessionId: session.id,
+      sessionCode: session.sessionCode,
+      day: session.day || "",
+      date: dateStr ? String(dateStr).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      notes: session.notes || "",
+      isActive: session.isActive !== false,
+      exercises: (session.exercises || []).map((x) => {
+        const setsSource = x.sets && x.sets.length > 0 ? x.sets : [{ weight: "", reps: "", rpe: "8" }];
+        return {
+          id: String(x.id),
+          name: x.name || "",
+          meta: x.meta || "",
+          sets: setsSource.map((s) => ({
+            weight: s.weight ?? "",
+            reps: s.reps ?? "",
+            rpe: s.rpe || "8"
+          }))
+        };
+      })
+    };
+  }
+
   function startWorkoutFromProgram(program) {
     setCurrentWorkout({
       sessionCode: `workout::${Date.now()}`,
       day: program.day || "Тренировка",
+      date: new Date().toISOString().slice(0, 10),
       notes: "",
+      isActive: true,
       exercises: (program.exercises || []).map((x, idx) => {
         const parsedMeta = parseProgramExerciseMeta(x.meta);
         return {
@@ -504,15 +544,28 @@ function AppContent() {
     setCurrentWorkout({
       sessionCode: `workout::${Date.now()}`,
       day: "Новая тренировка",
+      date: new Date().toISOString().slice(0, 10),
       notes: "",
+      isActive: true,
       exercises: []
     });
     setIsActiveWorkoutModalOpen(true);
   }
 
-  function closeActiveWorkoutModal() {
-    setCurrentWorkout(null);
+  function hideActiveWorkoutModal() {
     setIsActiveWorkoutModalOpen(false);
+  }
+
+  function openOrResumeWorkoutModal() {
+    if (!currentWorkout) {
+      const fromList = workoutSessions.find(
+        (s) => String(s.sessionCode || "").startsWith("workout::") && s.isActive === true
+      );
+      if (fromList) {
+        setCurrentWorkout(mapServerSessionToCurrentWorkout(fromList));
+      }
+    }
+    setIsActiveWorkoutModalOpen(true);
   }
 
   function updateCurrentWorkoutField(field, value) {
@@ -602,7 +655,7 @@ function AppContent() {
     });
   }
 
-  async function saveCurrentWorkout() {
+  async function persistCurrentWorkout(finish) {
     if (!accessToken || !currentWorkout) return;
     if (!(currentWorkout.day || "").trim()) return setErrorView("Укажи название тренировки.");
     const result = await request(
@@ -610,9 +663,10 @@ function AppContent() {
       "/users/me/workouts",
       {
         sessionCode: currentWorkout.sessionCode,
-        date: new Date().toISOString().slice(0, 10),
+        date: (currentWorkout.date || new Date().toISOString().slice(0, 10)).slice(0, 10),
         day: currentWorkout.day.trim(),
         notes: currentWorkout.notes || "",
+        isActive: !finish,
         exercises: currentWorkout.exercises.map((x) => ({
           name: (x.name || "").trim(),
           meta: x.meta,
@@ -623,7 +677,12 @@ function AppContent() {
     );
     handleResult(result);
     if (!result.ok) return;
-    setCurrentWorkout(null);
+    if (result.data) {
+      setCurrentWorkout(mapServerSessionToCurrentWorkout(result.data));
+    }
+    if (finish) {
+      setCurrentWorkout(null);
+    }
     setIsActiveWorkoutModalOpen(false);
     await loadWorkoutSessions(accessToken);
   }
@@ -841,10 +900,26 @@ function AppContent() {
     () => workoutSessions.filter((x) => String(x.sessionCode || "").startsWith("program::")),
     [workoutSessions]
   );
-  const workoutLogs = useMemo(
-    () => workoutSessions.filter((x) => String(x.sessionCode || "").startsWith("workout::")),
+  const activeWorkoutSession = useMemo(
+    () => workoutSessions.find((x) => String(x.sessionCode || "").startsWith("workout::") && x.isActive === true),
     [workoutSessions]
   );
+  const workoutLogs = useMemo(
+    () => workoutSessions.filter(
+      (x) => String(x.sessionCode || "").startsWith("workout::") && x.isActive !== true
+    ),
+    [workoutSessions]
+  );
+
+  useEffect(() => {
+    if (tab !== "workouts" || workoutsSubTab !== "my-workouts") return;
+    const active = workoutSessions.find(
+      (s) => String(s.sessionCode || "").startsWith("workout::") && s.isActive === true
+    );
+    if (active && !currentWorkout) {
+      setCurrentWorkout(mapServerSessionToCurrentWorkout(active));
+    }
+  }, [tab, workoutsSubTab, workoutSessions, currentWorkout]);
   const selectedProgram = useMemo(
     () => workoutPrograms.find((x) => x.sessionCode === selectedProgramCode) || null,
     [workoutPrograms, selectedProgramCode]
@@ -1084,6 +1159,20 @@ function AppContent() {
                   <button className="ghost-btn" onClick={createWorkoutFromScratch}>Создать с нуля</button>
                 </div>
                 <p className="subtitle">Заполнение и сохранение тренировки открывается в окне поверх страницы.</p>
+                {(activeWorkoutSession || currentWorkout) && (
+                  <div className="active-workout-banner">
+                    <div>
+                      <span className="active-workout-badge">Активная</span>
+                      <span className="active-workout-title">{currentWorkout?.day || activeWorkoutSession?.day || "Тренировка"}</span>
+                      {(currentWorkout?.date || activeWorkoutSession?.date || activeWorkoutSession?._date) && (
+                        <span className="active-workout-date">
+                          {formatWorkoutDateLabel(currentWorkout?.date || activeWorkoutSession?.date || activeWorkoutSession?._date)}
+                        </span>
+                      )}
+                    </div>
+                    <button type="button" onClick={openOrResumeWorkoutModal}>Открыть тренировку</button>
+                  </div>
+                )}
 
                 <h4>История моих тренировок</h4>
                 <div className="workout-list">
@@ -1568,14 +1657,23 @@ function AppContent() {
         )}
 
         {tab === "workouts" && workoutsSubTab === "my-workouts" && isActiveWorkoutModalOpen && currentWorkout && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeActiveWorkoutModal(); }}>
+          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) hideActiveWorkoutModal(); }}>
             <div className="modal-card modal-card--wide modal-card--scroll" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-              <h3>Текущая тренировка: {currentWorkout.day}</h3>
+              <h3>Активная тренировка: {currentWorkout.day}</h3>
+              <p className="subtitle">
+                Дата: {formatWorkoutDateLabel(currentWorkout.date) || "—"} · можно сохранять черновик и править упражнения до завершения.
+              </p>
               <label>Название тренировки</label>
               <input
                 value={currentWorkout.day || ""}
                 onChange={(e) => updateCurrentWorkoutField("day", e.target.value)}
                 placeholder="Например: День ног"
+              />
+              <label>Дата тренировки</label>
+              <input
+                type="date"
+                value={currentWorkout.date || ""}
+                onChange={(e) => updateCurrentWorkoutField("date", e.target.value)}
               />
               <label>Заметки</label>
               <textarea
@@ -1674,8 +1772,9 @@ function AppContent() {
                 </table>
               </div>
               <div className="row">
-                <button onClick={saveCurrentWorkout}>Сохранить тренировку</button>
-                <button className="ghost-btn" onClick={closeActiveWorkoutModal}>Отмена</button>
+                <button type="button" onClick={() => persistCurrentWorkout(false)}>Сохранить черновик</button>
+                <button type="button" className="ghost-btn" onClick={() => persistCurrentWorkout(true)}>Завершить тренировку</button>
+                <button type="button" className="ghost-btn" onClick={hideActiveWorkoutModal}>Закрыть</button>
               </div>
             </div>
           </div>
