@@ -1,7 +1,9 @@
 function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLogout }) {
-  const tabs = [
+  const sidebarTabs = [
     ...(hasAiAccess ? ["ai"] : []),
-    "workouts",
+    "workouts"
+  ];
+  const topbarTabs = [
     "profile",
     ...(isAdmin ? ["admin"] : [])
   ];
@@ -10,25 +12,35 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
     <>
       <header className="dashboard-topbar">
         <div className="dashboard-topbar-brand">HabiHamAI</div>
+        <nav className="dashboard-topbar-links" aria-label="Навигация в верхней панели">
+          {topbarTabs.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={`topbar-nav-item ${tab === id ? "active" : ""}`}
+              onClick={() => onTabChange(id)}
+            >
+              {id === "profile" ? "Профиль" : "Админ"}
+            </button>
+          ))}
+        </nav>
+        <div className="topbar-right">
+          <div className="topbar-user">
+            <div className="sidebar-avatar topbar-avatar">{(currentUserName || "U").charAt(0).toUpperCase()}</div>
+            <div className="topbar-user-meta">
+              <strong>{currentUserName}</strong>
+              <span>Активный профиль</span>
+            </div>
+          </div>
+          <button type="button" className="logout-btn topbar-logout-btn" onClick={onLogout}>
+            Выход
+          </button>
+        </div>
       </header>
 
-      <aside className="left-sidebar" aria-label="Sidebar navigation">
-        <div className="sidebar-user">
-          <div className="sidebar-avatar">{(currentUserName || "U").charAt(0).toUpperCase()}</div>
-          <div className="sidebar-user-meta">
-            <strong>{currentUserName}</strong>
-            <button
-              type="button"
-              className="sidebar-profile-link"
-              onClick={() => onTabChange("profile")}
-            >
-              Активный профиль
-            </button>
-          </div>
-        </div>
-
+      <aside className="left-sidebar" aria-label="Боковая навигация">
         <nav className="sidebar-nav">
-          {tabs.map((id) => (
+          {sidebarTabs.map((id) => (
             <button
               key={id}
               className={`sidebar-nav-item ${tab === id ? "active" : ""}`}
@@ -39,11 +51,6 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
           ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <button className="logout-btn" onClick={onLogout}>
-            Выход
-          </button>
-        </div>
       </aside>
     </>
   );

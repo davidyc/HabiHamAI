@@ -12,7 +12,7 @@ function AppContent() {
   const [aiToken, setAiToken] = useState("");
   const [currentUserName, setCurrentUserName] = useState("");
   const [currentUserRole, setCurrentUserRole] = useState("");
-  const [errorView, setErrorView] = useState("No errors.");
+  const [errorView, setErrorView] = useState("Ошибок нет.");
 
   const [registerUsername, setRegisterUsername] = useState("user1");
   const [registerPassword, setRegisterPassword] = useState("user1234");
@@ -23,7 +23,7 @@ function AppContent() {
   const [currentDialogId, setCurrentDialogId] = useState("");
   const [chatPrompt, setChatPrompt] = useState("");
   const [chatMessages, setChatMessages] = useState([
-    { role: "assistant", content: "Привет! Войди через Login и отправь сообщение." }
+    { role: "assistant", content: "Привет! Войди через форму входа и отправь сообщение." }
   ]);
   const [workoutSessions, setWorkoutSessions] = useState([]);
   const [workoutsSubTab, setWorkoutsSubTab] = useState("programs");
@@ -91,14 +91,14 @@ function AppContent() {
       const data = await response.json().catch(() => ({}));
       return { status: response.status, ok: response.ok, data };
     } catch (error) {
-      return { status: 0, ok: false, data: { message: "Network error", detail: String(error) } };
+      return { status: 0, ok: false, data: { message: "Ошибка сети", detail: String(error) } };
     }
   }
 
   function handleResult(result) {
-    setErrorView(result.ok ? "No errors." : JSON.stringify({
+    setErrorView(result.ok ? "Ошибок нет." : JSON.stringify({
       status: result.status,
-      message: result.data?.message ?? "Request failed",
+      message: result.data?.message ?? "Запрос завершился с ошибкой",
       detail: result.data
     }, null, 2));
   }
@@ -177,8 +177,8 @@ function AppContent() {
 
   async function sendChat() {
     const prompt = chatPrompt.trim();
-    if (!prompt) return setErrorView("Enter a message for AI chat.");
-    if (!aiToken) return setErrorView("Login first or paste JWT token in AI Token field.");
+    if (!prompt) return setErrorView("Введите сообщение для AI-чата.");
+    if (!aiToken) return setErrorView("Сначала войдите в систему или вставьте JWT-токен в поле AI-токена.");
 
     setChatMessages((prev) => [...prev, { role: "user", content: prompt }]);
     setChatPrompt("");
@@ -192,7 +192,7 @@ function AppContent() {
 
     const dialogId = result.data?.dialogId || currentDialogId;
     setCurrentDialogId(dialogId);
-    setChatMessages((prev) => [...prev, { role: "assistant", content: result.data?.response || "No response text." }]);
+    setChatMessages((prev) => [...prev, { role: "assistant", content: result.data?.response || "Нет текста ответа." }]);
     await loadDialogs(aiToken, dialogId);
     await loadMyProfile(aiToken);
   }
@@ -882,7 +882,7 @@ function AppContent() {
   }
 
   const dialogOptions = useMemo(
-    () => dialogs.map((d) => <option key={d.id} value={d.id}>{d.title || "Dialog"}</option>),
+    () => dialogs.map((d) => <option key={d.id} value={d.id}>{d.title || "Диалог"}</option>),
     [dialogs]
   );
   const adminUserOptions = useMemo(
@@ -890,7 +890,7 @@ function AppContent() {
     [users]
   );
   const adminDialogOptions = useMemo(
-    () => adminDialogs.map((d) => <option key={d.id} value={d.id}>{d.title || "Dialog"} ({d.username || "unknown"})</option>),
+    () => adminDialogs.map((d) => <option key={d.id} value={d.id}>{d.title || "Диалог"} ({d.username || "неизвестно"})</option>),
     [adminDialogs]
   );
   const adminManageSelectedUser = useMemo(
@@ -944,9 +944,9 @@ function AppContent() {
             <section className="auth-card">
               <h1>Вход</h1>
               <p className="subtitle">Авторизуйся для доступа к приложению</p>
-              <label>Username</label>
+              <label>Логин</label>
               <input value={username} onChange={(e) => setUsername(e.target.value)} />
-              <label>Password</label>
+              <label>Пароль</label>
               <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
               <button onClick={() => loginAndStore(navigate)}>Войти</button>
               <p className="auth-link">Нет аккаунта? <Link to="/register">Регистрация</Link></p>
@@ -961,9 +961,9 @@ function AppContent() {
             <section className="auth-card">
               <h1>Регистрация</h1>
               <p className="subtitle">Создай новый аккаунт пользователя</p>
-              <label>Username</label>
+              <label>Логин</label>
               <input value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} />
-              <label>Password</label>
+              <label>Пароль</label>
               <input value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} type="password" />
               <button
                 onClick={async () => {
@@ -986,7 +986,7 @@ function AppContent() {
             <main className="app">
               <TopNav
                 tab={tab}
-                currentUserName={currentUserName || username || "unknown"}
+                currentUserName={currentUserName || username || "неизвестно"}
                 isAdmin={isAdmin}
                 hasAiAccess={hasAiAccess}
                 onTabChange={(id) => {
@@ -1026,10 +1026,10 @@ function AppContent() {
 
         {tab === "ai" && hasAiAccess && <section className="card-grid">
           <section className="card">
-            <h3>AI Chat</h3>
+            <h3>AI чат</h3>
             <div className="row">
               <select value={currentDialogId} onChange={(e) => { setCurrentDialogId(e.target.value); loadDialogMessages(e.target.value); }}>
-                <option value="">No dialogs</option>
+                <option value="">Нет диалогов</option>
                 {dialogOptions}
               </select>
               <button
@@ -1047,8 +1047,9 @@ function AppContent() {
                   setAiDialogTitleDraft(current?.title || "Новый диалог");
                   setAiDialogModalKind("rename");
                 }}
+                title="Переименовать"
               >
-                Переименовать
+                ✏️
               </button>
               <button
                 className="danger-btn"
@@ -1056,15 +1057,16 @@ function AppContent() {
                   if (!currentDialogId) return;
                   setAiDialogModalKind("delete");
                 }}
+                title="Удалить"
               >
-                Удалить
+                🗑️
               </button>
             </div>
             <div className="chat-messages">
               {chatMessages.map((m, i) => <div key={i} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>{m.content}</div>)}
             </div>
             <div className="row">
-              <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Type your message..." />
+              <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Введите сообщение..." />
               <button onClick={sendChat}>Отправить</button>
             </div>
           </section>
@@ -1097,9 +1099,9 @@ function AppContent() {
                         <span>Упражнений: {session.exercises.length}</span>
                       </div>
                       <div className="row">
-                        <button onClick={() => openProgramEditModal(session)}>Редактировать</button>
+                        <button onClick={() => openProgramEditModal(session)} title="Редактировать">✏️</button>
                         <button className="ghost-btn" onClick={() => { setSelectedProgramCode(session.sessionCode); setWorkoutsSubTab("my-workouts"); }}>Начать тренировку</button>
-                        <button className="danger-btn" onClick={() => openProgramDeleteModal(session)}>Удалить</button>
+                        <button className="danger-btn" onClick={() => openProgramDeleteModal(session)} title="Удалить">🗑️</button>
                       </div>
                     </article>
                   ))}
@@ -1135,7 +1137,7 @@ function AppContent() {
                             <td>{exercise.name}</td>
                             <td>{!parsedMeta.isStructured ? parsedMeta.legacy || "-" : "-"}</td>
                             <td>
-                              <button className="danger-btn" onClick={() => openDeleteCatalogExerciseModal(exercise.id)}>Удалить</button>
+                              <button className="danger-btn" onClick={() => openDeleteCatalogExerciseModal(exercise.id)} title="Удалить">🗑️</button>
                             </td>
                           </tr>
                         );
@@ -1186,7 +1188,7 @@ function AppContent() {
                         <span>Упражнений: {session.exercises.length}</span>
                       </div>
                       <div className="row">
-                        <button className="danger-btn" onClick={() => openDeleteWorkoutLogModal(session.id)}>Удалить</button>
+                        <button className="danger-btn" onClick={() => openDeleteWorkoutLogModal(session.id)} title="Удалить">🗑️</button>
                       </div>
                     </article>
                   ))}
@@ -1241,7 +1243,7 @@ function AppContent() {
               </div>
             </div>
             <div className="row">
-              <button onClick={() => setIsProfileEditModalOpen(true)}>Редактировать профиль</button>
+              <button onClick={() => setIsProfileEditModalOpen(true)} title="Редактировать профиль">✏️</button>
               <button className="ghost-btn" onClick={() => loadMyProfile()}>Обновить с сервера</button>
             </div>
           </section>
@@ -1252,28 +1254,26 @@ function AppContent() {
             <h3>Управление пользователем</h3>
             <div className="row">
               <button onClick={() => setIsCreateUserModalOpen(true)}>Новый пользователь</button>
-              <button onClick={loadUsers}>Обновить пользователей</button>
             </div>
             <div className="users-table-wrap">
               <table className="users-table">
                 <thead>
                   <tr>
-                    <th>Username</th>
-                    <th>Role</th>
-                    <th>Actions</th>
+                    <th>Логин</th>
+                    <th>Роль</th>
+                    <th>Действия</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.length === 0 && <tr><td colSpan="3">No users loaded</td></tr>}
+                  {users.length === 0 && <tr><td colSpan="3">Пользователи не загружены</td></tr>}
                   {users.map((u) => (
                     <tr key={`manage-${u.id}`}>
                       <td>{u.username}</td>
                       <td>{u.role}</td>
                       <td className="admin-actions">
-                        <button className="ghost-btn" onClick={() => setAdminManageUserId(u.id)}>Выбрать</button>
-                        <button onClick={() => openEditModal(u)}>Изменить роль/имя</button>
+                        <button onClick={() => openEditModal(u)} title="Редактировать">✏️</button>
                         <button onClick={() => openPasswordModal(u)}>Пароль</button>
-                        <button className="danger-btn" onClick={() => openDeleteModal(u)}>Удалить</button>
+                        <button className="danger-btn" onClick={() => openDeleteModal(u)} title="Удалить">🗑️</button>
                       </td>
                     </tr>
                   ))}
@@ -1288,23 +1288,23 @@ function AppContent() {
               <table className="users-table">
                 <thead>
                   <tr>
-                    <th>Username</th>
-                    <th>Role</th>
+                    <th>Логин</th>
+                    <th>Роль</th>
                     <th>Имя</th>
                     <th>Фамилия</th>
-                    <th>Birth Date</th>
-                    <th>Height (cm)</th>
-                    <th>Weight (kg)</th>
-                    <th>Phone</th>
-                    <th>City</th>
-                    <th>About</th>
-                    <th>AI summary</th>
-                    <th>Created</th>
-                    <th>User ID</th>
+                    <th>Дата рождения</th>
+                    <th>Рост (см)</th>
+                    <th>Вес (кг)</th>
+                    <th>Телефон</th>
+                    <th>Город</th>
+                    <th>О себе</th>
+                    <th>AI-саммари</th>
+                    <th>Создан</th>
+                    <th>ID пользователя</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.length === 0 && <tr><td colSpan="13">No users loaded</td></tr>}
+                  {users.length === 0 && <tr><td colSpan="13">Пользователи не загружены</td></tr>}
                   {users.map((u) => (
                     <tr key={u.id}>
                       <td>{u.username}</td>
@@ -1342,7 +1342,7 @@ function AppContent() {
                   loadAdminDialogs(nextUserId);
                 }}
               >
-                <option value="">All users</option>
+                <option value="">Все пользователи</option>
                 {adminUserOptions}
               </select>
             </div>
@@ -1350,7 +1350,7 @@ function AppContent() {
             <label>Диалог</label>
             <div className="row">
               <select value={adminCurrentDialogId} onChange={(e) => { setAdminCurrentDialogId(e.target.value); loadAdminDialogMessages(e.target.value); }}>
-                <option value="">No dialogs</option>
+                <option value="">Нет диалогов</option>
                 {adminDialogOptions}
               </select>
               <button
@@ -1368,8 +1368,9 @@ function AppContent() {
                   setAdminDialogTitleDraft(current?.title || "Новый диалог");
                   setAdminDialogModalKind("rename");
                 }}
+                title="Переименовать"
               >
-                Переименовать
+                ✏️
               </button>
               <button
                 className="danger-btn"
@@ -1377,8 +1378,9 @@ function AppContent() {
                   if (!adminCurrentDialogId) return;
                   setAdminDialogModalKind("delete");
                 }}
+                title="Удалить"
               >
-                Удалить
+                🗑️
               </button>
             </div>
 
@@ -1396,22 +1398,22 @@ function AppContent() {
         {tab === "admin" && isAdmin && isCreateUserModalOpen && (
           <ModalShell open={isCreateUserModalOpen} onClose={() => setIsCreateUserModalOpen(false)}>
               <h3>Создать пользователя</h3>
-              <label>Username</label>
+              <label>Логин</label>
               <input
                 value={adminCreateUsername}
                 onChange={(e) => setAdminCreateUsername(e.target.value)}
-                placeholder="username"
+                placeholder="логин"
               />
-              <label>Password</label>
+              <label>Пароль</label>
               <input
                 value={adminCreatePassword}
                 onChange={(e) => setAdminCreatePassword(e.target.value)}
-                placeholder="password"
+                placeholder="пароль"
                 type="password"
               />
-              <label>Role</label>
+              <label>Роль</label>
               <select value={adminCreateRole} onChange={(e) => setAdminCreateRole(e.target.value)}>
-                <option>User</option><option>AiUser</option><option>Admin</option>
+                <option value="User">Пользователь</option><option value="AiUser">AI-пользователь</option><option value="Admin">Администратор</option>
               </select>
               <div className="row">
                 <button onClick={createAdminUser}>Создать</button>
@@ -1422,11 +1424,11 @@ function AppContent() {
         {tab === "admin" && isAdmin && isEditUserModalOpen && selectedAdminUser && (
           <ModalShell open={isEditUserModalOpen} onClose={() => setIsEditUserModalOpen(false)}>
               <h3>Редактировать пользователя</h3>
-              <label>Username</label>
+              <label>Логин</label>
               <input value={editUserName} onChange={(e) => setEditUserName(e.target.value)} />
-              <label>Role</label>
+              <label>Роль</label>
               <select value={editUserRole} onChange={(e) => setEditUserRole(e.target.value)}>
-                <option>User</option><option>AiUser</option><option>Admin</option>
+                <option value="User">Пользователь</option><option value="AiUser">AI-пользователь</option><option value="Admin">Администратор</option>
               </select>
               <div className="row">
                 <button onClick={saveAdminUserFromModal}>Сохранить</button>
@@ -1438,12 +1440,12 @@ function AppContent() {
           <ModalShell open={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)}>
               <h3>Сменить пароль</h3>
               <p className="subtitle">{selectedAdminUser.username}</p>
-              <label>New Password</label>
+              <label>Новый пароль</label>
               <input
                 value={newPasswordValue}
                 onChange={(e) => setNewPasswordValue(e.target.value)}
                 type="password"
-                placeholder="new password"
+                placeholder="новый пароль"
               />
               <div className="row">
                 <button onClick={saveAdminPasswordFromModal}>Сохранить пароль</button>
@@ -1456,7 +1458,7 @@ function AppContent() {
               <h3>Удалить пользователя</h3>
               <p className="subtitle">Ты точно хочешь удалить: <b>{selectedAdminUser.username}</b>?</p>
               <div className="row">
-                <button className="danger-btn" onClick={deleteAdminUserFromModal}>Удалить</button>
+                <button className="danger-btn" onClick={deleteAdminUserFromModal} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setIsDeleteModalOpen(false)}>Отмена</button>
               </div>
           </ModalShell>
@@ -1467,7 +1469,7 @@ function AppContent() {
             <div className="modal-card modal-card--wide modal-card--scroll">
               <h3>{editingProgramId ? "Редактирование программы" : "Новая программа"}</h3>
               <label>Код программы (латиницей, опционально)</label>
-              <input value={programCode} onChange={(e) => setProgramCode(e.target.value)} placeholder="upper-body-a" />
+              <input value={programCode} onChange={(e) => setProgramCode(e.target.value)} placeholder="например, upper-body-a" />
               <label>Название программы</label>
               <input value={programDay} onChange={(e) => setProgramDay(e.target.value)} placeholder="Верх тела A" />
               <label>Заметки</label>
@@ -1510,7 +1512,7 @@ function AppContent() {
                           />
                         </td>
                         <td>
-                          <button type="button" className="danger-btn" onClick={() => removeProgramExercise(exercise.id)}>Удалить</button>
+                          <button type="button" className="danger-btn" onClick={() => removeProgramExercise(exercise.id)} title="Удалить">🗑️</button>
                         </td>
                       </tr>
                     ))}
@@ -1531,7 +1533,7 @@ function AppContent() {
               <h3>Удалить программу</h3>
               <p className="subtitle">Ты точно хочешь удалить программу: <b>{pendingDeleteProgram.day || pendingDeleteProgram.sessionCode}</b>?</p>
               <div className="row">
-                <button className="danger-btn" onClick={deleteProgramFromModal}>Удалить</button>
+                <button className="danger-btn" onClick={deleteProgramFromModal} title="Удалить">🗑️</button>
                 <button
                   className="ghost-btn"
                   onClick={() => {
@@ -1641,7 +1643,7 @@ function AppContent() {
               <h3>Удалить диалог</h3>
               <p className="subtitle">Удалить текущий выбранный диалог без восстановления?</p>
               <div className="row">
-                <button className="danger-btn" onClick={submitAiDeleteDialog}>Удалить</button>
+                <button className="danger-btn" onClick={submitAiDeleteDialog} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setAiDialogModalKind(null)}>Отмена</button>
               </div>
           </ModalShell>
@@ -1753,7 +1755,7 @@ function AppContent() {
                         <td>
                           <div className="row">
                             <button className="ghost-btn" onClick={() => addCurrentWorkoutSet(exercise.id)}>+ Подход</button>
-                            <button className="danger-btn" onClick={() => removeCurrentWorkoutExercise(exercise.id)}>Удалить</button>
+                            <button className="danger-btn" onClick={() => removeCurrentWorkoutExercise(exercise.id)} title="Удалить">🗑️</button>
                           </div>
                         </td>
                       </tr>
@@ -1810,7 +1812,7 @@ function AppContent() {
               <h3>Удалить диалог</h3>
               <p className="subtitle">Удалить выбранный диалог без восстановления?</p>
               <div className="row">
-                <button className="danger-btn" onClick={submitDeleteAdminDialog}>Удалить</button>
+                <button className="danger-btn" onClick={submitDeleteAdminDialog} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setAdminDialogModalKind(null)}>Отмена</button>
               </div>
           </ModalShell>
@@ -1823,7 +1825,7 @@ function AppContent() {
                 Удалить «{workoutExerciseCatalog.find((x) => String(x.id) === String(pendingDeleteCatalogExerciseId))?.name || "упражнение"}» из каталога?
               </p>
               <div className="row">
-                <button className="danger-btn" onClick={confirmDeleteCatalogExercise}>Удалить</button>
+                <button className="danger-btn" onClick={confirmDeleteCatalogExercise} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setPendingDeleteCatalogExerciseId(null)}>Отмена</button>
               </div>
           </ModalShell>
@@ -1836,7 +1838,7 @@ function AppContent() {
                 Удалить «{workoutLogs.find((x) => x.id === pendingDeleteWorkoutSessionId)?.day || "тренировку"}» из истории?
               </p>
               <div className="row">
-                <button className="danger-btn" onClick={confirmDeleteWorkoutSession}>Удалить</button>
+                <button className="danger-btn" onClick={confirmDeleteWorkoutSession} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setPendingDeleteWorkoutSessionId(null)}>Отмена</button>
               </div>
           </ModalShell>

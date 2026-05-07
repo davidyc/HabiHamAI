@@ -662,6 +662,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
+  gap: 12px;
 }
 
 .dashboard-topbar-brand {
@@ -674,6 +675,67 @@ body {
 .dashboard-topbar-links {
   display: flex;
   gap: 8px;
+}
+
+.topbar-nav-item {
+  width: auto;
+  margin: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid #3d6a4f;
+  background: #1b2b20;
+  color: #c6f5d6;
+  box-shadow: none;
+}
+
+.topbar-nav-item.active {
+  background: linear-gradient(180deg, #2ea463, #268954);
+  color: #f3fff8;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid #3d6a4f;
+  background: #1a2a20;
+  border-radius: 999px;
+}
+
+.topbar-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.topbar-user-meta {
+  display: grid;
+  gap: 0;
+}
+
+.topbar-user-meta strong {
+  font-size: 12px;
+  line-height: 1.1;
+  color: #e6f5ea;
+}
+
+.topbar-user-meta span {
+  font-size: 11px;
+  line-height: 1.1;
+  color: #a8ceb4;
+}
+
+.topbar-logout-btn {
+  width: auto;
+  margin: 0;
+  padding: 7px 12px;
 }
 
 .top-link-btn {
@@ -923,13 +985,46 @@ button {
     top: 8px;
     left: 8px;
     right: 8px;
-    height: 46px;
+    height: auto;
+    min-height: 46px;
     border-radius: 10px;
-    padding: 0 12px;
+    padding: 6px 10px;
+    flex-wrap: wrap;
   }
 
   .dashboard-topbar-brand {
     font-size: 24px;
+  }
+
+  .dashboard-topbar-links {
+    gap: 6px;
+  }
+
+  .topbar-nav-item {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .topbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .topbar-user {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .topbar-user-meta strong,
+  .topbar-user-meta span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-logout-btn {
+    padding: 6px 10px;
+    font-size: 12px;
   }
 
   .left-sidebar {
@@ -939,12 +1034,8 @@ button {
     bottom: auto;
     width: 100%;
     border-radius: 10px;
-    margin: 56px 0 10px;
+    margin: 90px 0 10px;
     min-height: auto;
-  }
-
-  .sidebar-user {
-    padding: 12px;
   }
 
   .sidebar-nav {
