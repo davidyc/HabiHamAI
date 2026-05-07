@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: habihamai-api
+    runtime: docker
+    rootDir: HabiHamAIAPI
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: DB_CONNECTION_STRING
+        sync: false
+      - key: JWT_KEY
+        sync: false
+      - key: JWT_ISSUER
+        sync: false
+      - key: JWT_AUDIENCE
+        sync: false
+      - key: ADMIN_BOOTSTRAP_USERNAME
+        sync: false
+      - key: ADMIN_BOOTSTRAP_PASSWORD
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://api.openai.com
+      - key: OPENAI_MODEL
+        value: gpt-4
+
+  - type: web
+    name: habihamai-ui
+    runtime: node
+    rootDir: HabiHamAIUi
+    buildCommand: npm ci && npm run build
+    startCommand: npm run preview -- --host 0.0.0.0 --port $PORT
+    autoDeploy: true
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false

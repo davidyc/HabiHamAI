@@ -6,7 +6,7 @@ import ModalShell from "./shared/ui/ModalShell";
 function AppContent() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("ai");
-  const [baseUrl, setBaseUrl] = useState("http://localhost:5193");
+  const [baseUrl, setBaseUrl] = useState(import.meta.env.VITE_API_BASE_URL || "http://localhost:5193");
   const [accessToken, setAccessToken] = useState("");
   const [adminToken, setAdminToken] = useState("");
   const [aiToken, setAiToken] = useState("");
