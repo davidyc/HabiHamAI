@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace HabiHamAIAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260502130116_AddUserFirstLastNameAndAiSummary")]
-    partial class AddUserFirstLastNameAndAiSummary
+    [Migration("20260507174221_InitialSchema")]
+    partial class InitialSchema
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -212,6 +212,12 @@ namespace HabiHamAIAPI.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)")
                         .HasColumnName("day");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_active");
 
                     b.Property<string>("Notes")
                         .IsRequired()

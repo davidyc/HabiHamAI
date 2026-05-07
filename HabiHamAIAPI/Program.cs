@@ -149,7 +149,7 @@ app.Run();
 
 static async Task BaselineExistingDatabaseForMigrationsAsync(AppDbContext dbContext)
 {
-    const string initialMigrationId = "20260430091114_AddChatDialogsAndMessages";
+    const string initialMigrationId = "20260507174221_InitialSchema";
     const string efProductVersion = "9.0.9";
 
     // Legacy databases created with EnsureCreated have tables but no migrations history.
