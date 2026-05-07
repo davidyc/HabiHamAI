@@ -18,9 +18,9 @@ public sealed class TokenService
     public string GenerateToken(string username, AppUserRole role)
     {
         var jwtSection = _configuration.GetSection("Jwt");
-        var key = jwtSection["Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
-        var issuer = jwtSection["Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer is not configured.");
-        var audience = jwtSection["Audience"] ?? throw new InvalidOperationException("Jwt:Audience is not configured.");
+        var key = GetRequiredSetting("JWT_KEY", jwtSection["Key"], "Jwt:Key");
+        var issuer = GetRequiredSetting("JWT_ISSUER", jwtSection["Issuer"], "Jwt:Issuer");
+        var audience = GetRequiredSetting("JWT_AUDIENCE", jwtSection["Audience"], "Jwt:Audience");
         var expiresMinutes = int.TryParse(jwtSection["ExpiresMinutes"], out var value) ? value : 60;
 
         var claims = new[]
@@ -43,5 +43,21 @@ public sealed class TokenService
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static string GetRequiredSetting(string envName, string? fallbackValue, string settingName)
+    {
+        var value = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            value = fallbackValue;
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException($"{settingName} is not configured.");
+        }
+
+        return value;
     }
 }
