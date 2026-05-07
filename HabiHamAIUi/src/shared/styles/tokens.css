@@ -1,0 +1,17 @@
+:root {
+  --color-bg-page-start: var(--bg-start);
+  --color-bg-page-end: var(--bg-end);
+  --color-surface-main: var(--surface);
+  --color-surface-soft: var(--surface-soft);
+  --color-panel: var(--panel);
+  --color-panel-border: var(--panel-border);
+  --color-text-primary: var(--text);
+  --color-text-muted: var(--muted);
+  --color-action-primary: var(--primary);
+  --color-action-primary-hover: var(--primary-hover);
+  --color-danger: var(--danger);
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+}

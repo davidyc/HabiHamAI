@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import TopNav from "./TopNav";
+import ModalShell from "./shared/ui/ModalShell";
 
 function AppContent() {
   const navigate = useNavigate();
@@ -1037,7 +1038,7 @@ function AppContent() {
                   setAiDialogModalKind("new");
                 }}
               >
-                New
+                + Новый
               </button>
               <button
                 onClick={() => {
@@ -1047,7 +1048,7 @@ function AppContent() {
                   setAiDialogModalKind("rename");
                 }}
               >
-                Rename
+                Переименовать
               </button>
               <button
                 className="danger-btn"
@@ -1056,7 +1057,7 @@ function AppContent() {
                   setAiDialogModalKind("delete");
                 }}
               >
-                Delete
+                Удалить
               </button>
             </div>
             <div className="chat-messages">
@@ -1064,7 +1065,7 @@ function AppContent() {
             </div>
             <div className="row">
               <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Type your message..." />
-              <button onClick={sendChat}>Send</button>
+              <button onClick={sendChat}>Отправить</button>
             </div>
           </section>
         </section>}
@@ -1250,8 +1251,8 @@ function AppContent() {
           <section className="card full-span">
             <h3>Управление пользователем</h3>
             <div className="row">
-              <button onClick={() => setIsCreateUserModalOpen(true)}>New User</button>
-              <button onClick={loadUsers}>Reload Users</button>
+              <button onClick={() => setIsCreateUserModalOpen(true)}>Новый пользователь</button>
+              <button onClick={loadUsers}>Обновить пользователей</button>
             </div>
             <div className="users-table-wrap">
               <table className="users-table">
@@ -1269,10 +1270,10 @@ function AppContent() {
                       <td>{u.username}</td>
                       <td>{u.role}</td>
                       <td className="admin-actions">
-                        <button className="ghost-btn" onClick={() => setAdminManageUserId(u.id)}>Select</button>
-                        <button onClick={() => openEditModal(u)}>Edit Role/Username</button>
-                        <button onClick={() => openPasswordModal(u)}>Password</button>
-                        <button className="danger-btn" onClick={() => openDeleteModal(u)}>Delete</button>
+                        <button className="ghost-btn" onClick={() => setAdminManageUserId(u.id)}>Выбрать</button>
+                        <button onClick={() => openEditModal(u)}>Изменить роль/имя</button>
+                        <button onClick={() => openPasswordModal(u)}>Пароль</button>
+                        <button className="danger-btn" onClick={() => openDeleteModal(u)}>Удалить</button>
                       </td>
                     </tr>
                   ))}
@@ -1328,7 +1329,7 @@ function AppContent() {
           </section>
 
           <section className="card full-span">
-            <h3>Диалоги (Admin)</h3>
+            <h3>Диалоги (Админ)</h3>
             <label>Пользователь</label>
             <div className="row">
               <select
@@ -1358,7 +1359,7 @@ function AppContent() {
                   setAdminDialogModalKind("create");
                 }}
               >
-                New dialog
+                Новый диалог
               </button>
               <button
                 onClick={() => {
@@ -1368,7 +1369,7 @@ function AppContent() {
                   setAdminDialogModalKind("rename");
                 }}
               >
-                Rename
+                Переименовать
               </button>
               <button
                 className="danger-btn"
@@ -1377,7 +1378,7 @@ function AppContent() {
                   setAdminDialogModalKind("delete");
                 }}
               >
-                Delete
+                Удалить
               </button>
             </div>
 
@@ -1393,8 +1394,7 @@ function AppContent() {
         </section>}
 
         {tab === "admin" && isAdmin && isCreateUserModalOpen && (
-          <div className="modal-backdrop">
-            <div className="modal-card">
+          <ModalShell open={isCreateUserModalOpen} onClose={() => setIsCreateUserModalOpen(false)}>
               <h3>Создать пользователя</h3>
               <label>Username</label>
               <input
@@ -1414,15 +1414,13 @@ function AppContent() {
                 <option>User</option><option>AiUser</option><option>Admin</option>
               </select>
               <div className="row">
-                <button onClick={createAdminUser}>Create</button>
-                <button className="ghost-btn" onClick={() => setIsCreateUserModalOpen(false)}>Cancel</button>
+                <button onClick={createAdminUser}>Создать</button>
+                <button className="ghost-btn" onClick={() => setIsCreateUserModalOpen(false)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
         {tab === "admin" && isAdmin && isEditUserModalOpen && selectedAdminUser && (
-          <div className="modal-backdrop">
-            <div className="modal-card">
+          <ModalShell open={isEditUserModalOpen} onClose={() => setIsEditUserModalOpen(false)}>
               <h3>Редактировать пользователя</h3>
               <label>Username</label>
               <input value={editUserName} onChange={(e) => setEditUserName(e.target.value)} />
@@ -1431,15 +1429,13 @@ function AppContent() {
                 <option>User</option><option>AiUser</option><option>Admin</option>
               </select>
               <div className="row">
-                <button onClick={saveAdminUserFromModal}>Save</button>
-                <button className="ghost-btn" onClick={() => setIsEditUserModalOpen(false)}>Cancel</button>
+                <button onClick={saveAdminUserFromModal}>Сохранить</button>
+                <button className="ghost-btn" onClick={() => setIsEditUserModalOpen(false)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
         {tab === "admin" && isAdmin && isPasswordModalOpen && selectedAdminUser && (
-          <div className="modal-backdrop">
-            <div className="modal-card">
+          <ModalShell open={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)}>
               <h3>Сменить пароль</h3>
               <p className="subtitle">{selectedAdminUser.username}</p>
               <label>New Password</label>
@@ -1450,23 +1446,20 @@ function AppContent() {
                 placeholder="new password"
               />
               <div className="row">
-                <button onClick={saveAdminPasswordFromModal}>Save Password</button>
-                <button className="ghost-btn" onClick={() => setIsPasswordModalOpen(false)}>Cancel</button>
+                <button onClick={saveAdminPasswordFromModal}>Сохранить пароль</button>
+                <button className="ghost-btn" onClick={() => setIsPasswordModalOpen(false)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
         {tab === "admin" && isAdmin && isDeleteModalOpen && selectedAdminUser && (
-          <div className="modal-backdrop">
-            <div className="modal-card">
+          <ModalShell open={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)}>
               <h3>Удалить пользователя</h3>
               <p className="subtitle">Ты точно хочешь удалить: <b>{selectedAdminUser.username}</b>?</p>
               <div className="row">
-                <button className="danger-btn" onClick={deleteAdminUserFromModal}>Delete</button>
-                <button className="ghost-btn" onClick={() => setIsDeleteModalOpen(false)}>Cancel</button>
+                <button className="danger-btn" onClick={deleteAdminUserFromModal}>Удалить</button>
+                <button className="ghost-btn" onClick={() => setIsDeleteModalOpen(false)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
         {tab === "workouts" && workoutsSubTab === "programs" && isProgramModalOpen && (
@@ -1553,8 +1546,7 @@ function AppContent() {
           </div>
         )}
         {tab === "profile" && isProfileEditModalOpen && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setIsProfileEditModalOpen(false); }}>
-            <div className="modal-card modal-card--scroll" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title" onClick={(e) => e.stopPropagation()}>
+          <ModalShell open={isProfileEditModalOpen} onClose={() => setIsProfileEditModalOpen(false)} scroll titleId="profile-edit-title">
               <h3 id="profile-edit-title">Редактировать профиль</h3>
               <label>Имя</label>
               <input value={profileFirstName} onChange={(e) => setProfileFirstName(e.target.value)} placeholder="Имя" />
@@ -1605,13 +1597,14 @@ function AppContent() {
                 <button onClick={saveMyProfile}>Сохранить</button>
                 <button className="ghost-btn" onClick={() => setIsProfileEditModalOpen(false)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
         {tab === "ai" && hasAiAccess && aiDialogModalKind === "new" && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { setAiDialogModalKind(null); setAiDialogTitleDraft(""); } }}>
-            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell
+            open={aiDialogModalKind === "new"}
+            onClose={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}
+          >
               <h3>Новый диалог</h3>
               <label>Название</label>
               <input
@@ -1623,12 +1616,13 @@ function AppContent() {
                 <button onClick={submitAiNewDialog}>Создать</button>
                 <button className="ghost-btn" onClick={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
         {tab === "ai" && hasAiAccess && aiDialogModalKind === "rename" && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { setAiDialogModalKind(null); setAiDialogTitleDraft(""); } }}>
-            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell
+            open={aiDialogModalKind === "rename"}
+            onClose={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}
+          >
               <h3>Переименовать диалог</h3>
               <label>Название</label>
               <input
@@ -1640,25 +1634,21 @@ function AppContent() {
                 <button onClick={submitAiRenameDialog}>Сохранить</button>
                 <button className="ghost-btn" onClick={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
         {tab === "ai" && hasAiAccess && aiDialogModalKind === "delete" && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setAiDialogModalKind(null); }}>
-            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell open={aiDialogModalKind === "delete"} onClose={() => setAiDialogModalKind(null)}>
               <h3>Удалить диалог</h3>
               <p className="subtitle">Удалить текущий выбранный диалог без восстановления?</p>
               <div className="row">
                 <button className="danger-btn" onClick={submitAiDeleteDialog}>Удалить</button>
                 <button className="ghost-btn" onClick={() => setAiDialogModalKind(null)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
         {tab === "workouts" && workoutsSubTab === "my-workouts" && isActiveWorkoutModalOpen && currentWorkout && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) hideActiveWorkoutModal(); }}>
-            <div className="modal-card modal-card--wide modal-card--scroll" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell open={isActiveWorkoutModalOpen} onClose={hideActiveWorkoutModal} wide scroll>
               <h3>Активная тренировка: {currentWorkout.day}</h3>
               <p className="subtitle">
                 Дата: {formatWorkoutDateLabel(currentWorkout.date) || "—"} · можно сохранять черновик и править упражнения до завершения.
@@ -1776,13 +1766,14 @@ function AppContent() {
                 <button type="button" className="ghost-btn" onClick={() => persistCurrentWorkout(true)}>Завершить тренировку</button>
                 <button type="button" className="ghost-btn" onClick={hideActiveWorkoutModal}>Закрыть</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
         {tab === "admin" && isAdmin && adminDialogModalKind === "create" && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); } }}>
-            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell
+            open={adminDialogModalKind === "create"}
+            onClose={() => { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); }}
+          >
               <h3>Новый диалог</h3>
               <label>Название</label>
               <input
@@ -1794,12 +1785,13 @@ function AppContent() {
                 <button onClick={submitCreateAdminDialog}>Создать</button>
                 <button className="ghost-btn" onClick={() => { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); }}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
         {tab === "admin" && isAdmin && adminDialogModalKind === "rename" && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); } }}>
-            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell
+            open={adminDialogModalKind === "rename"}
+            onClose={() => { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); }}
+          >
               <h3>Переименовать диалог</h3>
               <label>Название</label>
               <input
@@ -1811,25 +1803,21 @@ function AppContent() {
                 <button onClick={submitRenameAdminDialog}>Сохранить</button>
                 <button className="ghost-btn" onClick={() => { setAdminDialogModalKind(null); setAdminDialogTitleDraft(""); }}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
         {tab === "admin" && isAdmin && adminDialogModalKind === "delete" && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setAdminDialogModalKind(null); }}>
-            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell open={adminDialogModalKind === "delete"} onClose={() => setAdminDialogModalKind(null)}>
               <h3>Удалить диалог</h3>
               <p className="subtitle">Удалить выбранный диалог без восстановления?</p>
               <div className="row">
                 <button className="danger-btn" onClick={submitDeleteAdminDialog}>Удалить</button>
                 <button className="ghost-btn" onClick={() => setAdminDialogModalKind(null)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
         {tab === "workouts" && workoutsSubTab === "exercises" && pendingDeleteCatalogExerciseId && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setPendingDeleteCatalogExerciseId(null); }}>
-            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell open={Boolean(pendingDeleteCatalogExerciseId)} onClose={() => setPendingDeleteCatalogExerciseId(null)}>
               <h3>Удалить упражнение</h3>
               <p className="subtitle">
                 Удалить «{workoutExerciseCatalog.find((x) => String(x.id) === String(pendingDeleteCatalogExerciseId))?.name || "упражнение"}» из каталога?
@@ -1838,13 +1826,11 @@ function AppContent() {
                 <button className="danger-btn" onClick={confirmDeleteCatalogExercise}>Удалить</button>
                 <button className="ghost-btn" onClick={() => setPendingDeleteCatalogExerciseId(null)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
         {tab === "workouts" && workoutsSubTab === "my-workouts" && pendingDeleteWorkoutSessionId && (
-          <div className="modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setPendingDeleteWorkoutSessionId(null); }}>
-            <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <ModalShell open={Boolean(pendingDeleteWorkoutSessionId)} onClose={() => setPendingDeleteWorkoutSessionId(null)}>
               <h3>Удалить тренировку</h3>
               <p className="subtitle">
                 Удалить «{workoutLogs.find((x) => x.id === pendingDeleteWorkoutSessionId)?.day || "тренировку"}» из истории?
@@ -1853,13 +1839,11 @@ function AppContent() {
                 <button className="danger-btn" onClick={confirmDeleteWorkoutSession}>Удалить</button>
                 <button className="ghost-btn" onClick={() => setPendingDeleteWorkoutSessionId(null)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
         {tab === "workouts" && workoutsSubTab === "exercises" && isCreateExerciseModalOpen && (
-          <div className="modal-backdrop">
-            <div className="modal-card">
+          <ModalShell open={isCreateExerciseModalOpen} onClose={() => setIsCreateExerciseModalOpen(false)}>
               <h3>Создать упражнение</h3>
               <label>Название упражнения</label>
               <input
@@ -1877,8 +1861,7 @@ function AppContent() {
                 <button onClick={createCatalogExercise}>Создать</button>
                 <button className="ghost-btn" onClick={() => setIsCreateExerciseModalOpen(false)}>Отмена</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
             </main>

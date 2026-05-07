@@ -7,29 +7,45 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
   ];
 
   return (
-    <div className="top-nav">
-      <div className="top-nav-left">
-        <h1>HabiHamAI</h1>
-        <span className="top-nav-subtitle">Рабочая зона</span>
-      </div>
-      <nav className="top-nav-center">
-        {tabs.map((id) => (
-          <button
-            key={id}
-            className={`top-nav-tab ${tab === id ? "active" : ""}`}
-            onClick={() => onTabChange(id)}
-          >
-            {id === "ai" ? "AI Chat" : id === "workouts" ? "Workouts" : id === "profile" ? "Profile" : "Admin"}
+    <>
+      <header className="dashboard-topbar">
+        <div className="dashboard-topbar-brand">HabiHamAI</div>
+      </header>
+
+      <aside className="left-sidebar" aria-label="Sidebar navigation">
+        <div className="sidebar-user">
+          <div className="sidebar-avatar">{(currentUserName || "U").charAt(0).toUpperCase()}</div>
+          <div className="sidebar-user-meta">
+            <strong>{currentUserName}</strong>
+            <button
+              type="button"
+              className="sidebar-profile-link"
+              onClick={() => onTabChange("profile")}
+            >
+              Активный профиль
+            </button>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav">
+          {tabs.map((id) => (
+            <button
+              key={id}
+              className={`sidebar-nav-item ${tab === id ? "active" : ""}`}
+              onClick={() => onTabChange(id)}
+            >
+              {id === "ai" ? "AI чат" : id === "workouts" ? "Тренировки" : id === "profile" ? "Профиль" : "Админ"}
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <button className="logout-btn" onClick={onLogout}>
+            Выход
           </button>
-        ))}
-      </nav>
-      <div className="top-nav-right">
-        <span className="user-chip">Пользователь: {currentUserName}</span>
-        <button className="logout-btn" onClick={onLogout}>
-          Logout
-        </button>
-      </div>
-    </div>
+        </div>
+      </aside>
+    </>
   );
 }
 
