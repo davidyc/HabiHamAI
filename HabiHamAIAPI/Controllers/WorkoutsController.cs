@@ -4,6 +4,7 @@ using HabiHamAIAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 
 namespace HabiHamAIAPI.Controllers;
 
@@ -38,6 +39,90 @@ public sealed class WorkoutsController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(sessions.Select(MapToResponse));
+    }
+
+    [HttpGet("import-template")]
+    public IActionResult GetWorkoutImportTemplate()
+    {
+        return Ok(WorkoutImportTemplateFactory.BuildSessionTemplate());
+    }
+
+    [HttpGet("planning/import-template")]
+    public IActionResult GetWorkoutPlanningImportTemplate()
+    {
+        return Ok(WorkoutImportTemplateFactory.BuildTemplate<ImportWorkoutPlanningRequest>());
+    }
+
+    [HttpPost("planning/import")]
+    public async Task<IActionResult> ImportWorkoutPlanning([FromBody] ImportWorkoutPlanningRequest request, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUser(cancellationToken);
+        if (user is null)
+        {
+            return Unauthorized(new { message = "User is not authorized." });
+        }
+
+        var created = 0;
+        var updated = 0;
+        var skipped = 0;
+        var now = DateTime.UtcNow;
+
+        foreach (var program in request.Programs)
+        {
+            var day = (program.Day ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(day))
+            {
+                skipped++;
+                continue;
+            }
+
+            var codeSource = string.IsNullOrWhiteSpace(program.ProgramCode) ? day : program.ProgramCode;
+            var normalizedCode = $"program::{Slugify(codeSource)}";
+
+            var existing = await _dbContext.WorkoutSessions
+                .FirstOrDefaultAsync(x => x.UserId == user.Id && x.SessionCode == normalizedCode, cancellationToken);
+
+            if (existing is null)
+            {
+                existing = WorkoutSession.Create(user.Id, normalizedCode, DateOnly.FromDateTime(DateTime.UtcNow), day, program.Notes ?? string.Empty, now, false);
+                _dbContext.WorkoutSessions.Add(existing);
+                created++;
+            }
+            else
+            {
+                existing.UpdateDetails(DateOnly.FromDateTime(DateTime.UtcNow), day, program.Notes ?? string.Empty, now);
+                existing.IsActive = false;
+                await _dbContext.WorkoutExercises
+                    .Where(x => x.SessionId == existing.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
+                updated++;
+            }
+
+            for (var index = 0; index < program.Exercises.Count; index++)
+            {
+                var importExercise = program.Exercises[index];
+                var exerciseName = (importExercise.Name ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(exerciseName))
+                {
+                    continue;
+                }
+
+                var exercise = WorkoutExercise.Create(
+                    existing.Id,
+                    exerciseName,
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        sourceExerciseId = string.IsNullOrWhiteSpace(importExercise.SourceExerciseId) ? null : importExercise.SourceExerciseId.Trim(),
+                        comment = (importExercise.Comment ?? string.Empty).Trim()
+                    }),
+                    index + 1);
+
+                _dbContext.WorkoutExercises.Add(exercise);
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(new { created, updated, skipped });
     }
 
     [HttpGet("{sessionId:guid}")]
@@ -205,6 +290,106 @@ public sealed class WorkoutsController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(exercises);
+    }
+
+    [HttpGet("exercises/import-template")]
+    public IActionResult GetWorkoutExercisesImportTemplate()
+    {
+        return Ok(WorkoutImportTemplateFactory.BuildTemplate<ImportWorkoutExercisesRequest>());
+    }
+
+    [HttpGet("exercises/export")]
+    public async Task<IActionResult> ExportWorkoutExercises(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUser(cancellationToken);
+        if (user is null)
+        {
+            return Unauthorized(new { message = "User is not authorized." });
+        }
+
+        var exercises = await _dbContext.WorkoutExercises
+            .AsNoTracking()
+            .Where(x => x.Session != null && x.Session.UserId == user.Id)
+            .Select(x => new { x.Id, x.Name })
+            .OrderBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
+        var unique = exercises
+            .GroupBy(x => x.Name.Trim().ToLower())
+            .Select(g => g.First())
+            .Select(x => new
+            {
+                id = x.Id,
+                name = x.Name
+            })
+            .ToList();
+
+        return Ok(new { exercises = unique });
+    }
+
+    [HttpPost("exercises/import")]
+    public async Task<IActionResult> ImportWorkoutExercises([FromBody] ImportWorkoutExercisesRequest request, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUser(cancellationToken);
+        if (user is null)
+        {
+            return Unauthorized(new { message = "User is not authorized." });
+        }
+
+        var incoming = request.Exercises
+            .Select(x => new
+            {
+                Name = (x.Name ?? string.Empty).Trim(),
+                Meta = (x.Meta ?? string.Empty).Trim()
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+            .ToList();
+
+        if (incoming.Count == 0)
+        {
+            return BadRequest(new { message = "Exercises list is empty." });
+        }
+
+        var existingNames = await _dbContext.WorkoutExercises
+            .AsNoTracking()
+            .Where(x => x.Session != null && x.Session.UserId == user.Id)
+            .Select(x => x.Name.ToLower())
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var existingSet = existingNames.ToHashSet();
+
+        var created = 0;
+        var skipped = 0;
+        var now = DateTime.UtcNow;
+
+        for (var index = 0; index < incoming.Count; index++)
+        {
+            var item = incoming[index];
+            var normalized = item.Name.ToLowerInvariant();
+            if (existingSet.Contains(normalized))
+            {
+                skipped++;
+                continue;
+            }
+
+            var session = WorkoutSession.Create(
+                user.Id,
+                $"catalog::{Slugify(item.Name)}-{Guid.NewGuid():N}",
+                DateOnly.FromDateTime(DateTime.UtcNow),
+                $"Каталог: {item.Name}",
+                "Импортировано из JSON",
+                now,
+                false);
+
+            var exercise = WorkoutExercise.Create(session.Id, item.Name, item.Meta, 1);
+            session.Exercises.Add(exercise);
+            _dbContext.WorkoutSessions.Add(session);
+            existingSet.Add(normalized);
+            created++;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(new { created, skipped });
     }
 
     [HttpGet("exercises/{exerciseId:guid}")]
@@ -441,5 +626,13 @@ public sealed class WorkoutsController : ControllerBase
                 })
                 .ToList()
         };
+    }
+
+    private static string Slugify(string value)
+    {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        normalized = Regex.Replace(normalized, @"\s+", "-");
+        normalized = Regex.Replace(normalized, @"[^a-z0-9а-яё_-]", string.Empty, RegexOptions.IgnoreCase);
+        return string.IsNullOrWhiteSpace(normalized) ? $"item-{Guid.NewGuid():N}" : normalized;
     }
 }

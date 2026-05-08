@@ -71,3 +71,34 @@ public sealed class UpdateWorkoutExerciseRequest
     public int? Order { get; set; }
     public List<UpsertWorkoutSetRequest> Sets { get; set; } = [];
 }
+
+public sealed class ImportWorkoutPlanningRequest
+{
+    public List<ImportWorkoutProgramRequest> Programs { get; set; } = [];
+}
+
+public sealed class ImportWorkoutProgramRequest
+{
+    public string ProgramCode { get; set; } = string.Empty;
+    public string Day { get; set; } = string.Empty;
+    public string? Notes { get; set; }
+    public List<ImportWorkoutProgramExerciseRequest> Exercises { get; set; } = [];
+}
+
+public sealed class ImportWorkoutProgramExerciseRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Comment { get; set; }
+    public string? SourceExerciseId { get; set; }
+}
+
+public sealed class ImportWorkoutExercisesRequest
+{
+    public List<ImportWorkoutExerciseRequest> Exercises { get; set; } = [];
+}
+
+public sealed class ImportWorkoutExerciseRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Meta { get; set; }
+}

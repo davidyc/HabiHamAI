@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import TopNav from "./TopNav";
 import ModalShell from "./shared/ui/ModalShell";
@@ -16,8 +16,11 @@ function AppContent() {
 
   const [registerUsername, setRegisterUsername] = useState("user1");
   const [registerPassword, setRegisterPassword] = useState("user1234");
+  const [registerError, setRegisterError] = useState("");
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin123");
+  const [loginError, setLoginError] = useState("");
+  const [isLoginLoading, setIsLoginLoading] = useState(false);
 
   const [dialogs, setDialogs] = useState([]);
   const [currentDialogId, setCurrentDialogId] = useState("");
@@ -26,7 +29,8 @@ function AppContent() {
     { role: "assistant", content: "Привет! Войди через форму входа и отправь сообщение." }
   ]);
   const [workoutSessions, setWorkoutSessions] = useState([]);
-  const [workoutsSubTab, setWorkoutsSubTab] = useState("programs");
+  const [workoutsSubTab, setWorkoutsSubTab] = useState("my-workout");
+  const [workoutsManageSubTab, setWorkoutsManageSubTab] = useState("add");
   const [workoutExerciseCatalog, setWorkoutExerciseCatalog] = useState([]);
   const [selectedCatalogExerciseId, setSelectedCatalogExerciseId] = useState("");
   const [newCatalogExerciseName, setNewCatalogExerciseName] = useState("");
@@ -77,6 +81,9 @@ function AppContent() {
   const [adminDialogTitleDraft, setAdminDialogTitleDraft] = useState("");
   const [pendingDeleteCatalogExerciseId, setPendingDeleteCatalogExerciseId] = useState(null);
   const [pendingDeleteWorkoutSessionId, setPendingDeleteWorkoutSessionId] = useState(null);
+  const [selectedWorkoutHistorySession, setSelectedWorkoutHistorySession] = useState(null);
+  const planningImportInputRef = useRef(null);
+  const exercisesImportInputRef = useRef(null);
 
   async function request(method, path, body, token) {
     try {
@@ -157,22 +164,36 @@ function AppContent() {
   }
 
   async function loginAndStore(navigate) {
-    const result = await request("POST", "/auth/login", { username: username.trim(), password });
-    handleResult(result);
-    if (!result.ok) return;
-    const token = result.data?.accessToken || "";
-    setAccessToken(token);
-    setAdminToken(token);
-    setAiToken(token);
-    const nextRole = tryGetRoleFromToken(token);
-    setCurrentUserName(tryGetUserNameFromToken(token) || username.trim());
-    setCurrentUserRole(nextRole);
-    setTab(nextRole === "Admin" || nextRole === "AiUser" ? "ai" : "profile");
-    if (nextRole === "Admin" || nextRole === "AiUser") {
-      await loadDialogs(token);
+    if (isLoginLoading) return;
+    setIsLoginLoading(true);
+    setLoginError("");
+    try {
+      const result = await request("POST", "/auth/login", { username: username.trim(), password });
+      handleResult(result);
+      if (!result.ok) {
+        const message = result.data?.message
+          || (result.status === 401 ? "Неверный логин или пароль." : "")
+          || (result.status === 0 ? "Сервер недоступен. Проверь подключение и адрес API." : "")
+          || "Не удалось выполнить вход. Попробуй еще раз.";
+        setLoginError(message);
+        return;
+      }
+      const token = result.data?.accessToken || "";
+      setAccessToken(token);
+      setAdminToken(token);
+      setAiToken(token);
+      const nextRole = tryGetRoleFromToken(token);
+      setCurrentUserName(tryGetUserNameFromToken(token) || username.trim());
+      setCurrentUserRole(nextRole);
+      setTab(nextRole === "Admin" || nextRole === "AiUser" ? "ai" : "profile");
+      if (nextRole === "Admin" || nextRole === "AiUser") {
+        await loadDialogs(token);
+      }
+      await loadMyProfile(token);
+      navigate("/app");
+    } finally {
+      setIsLoginLoading(false);
     }
-    await loadMyProfile(token);
-    navigate("/app");
   }
 
   async function sendChat() {
@@ -553,6 +574,142 @@ function AppContent() {
     setIsActiveWorkoutModalOpen(true);
   }
 
+  async function downloadPlanningJsonTemplate() {
+    if (!accessToken) return;
+    const result = await request("GET", "/users/me/workouts/planning/import-template", null, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+
+    const templateJson = JSON.stringify(result.data || {}, null, 2);
+    const blob = new Blob([templateJson], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "workout-planning-template.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadExercisesJsonTemplate() {
+    if (!accessToken) return;
+    const result = await request("GET", "/users/me/workouts/exercises/import-template", null, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+
+    const templateJson = JSON.stringify(result.data || {}, null, 2);
+    const blob = new Blob([templateJson], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "workout-exercises-template.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportExercisesIdNameJson() {
+    if (!accessToken) return;
+    const result = await request("GET", "/users/me/workouts/exercises/export", null, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+
+    const payload = {
+      exercises: Array.isArray(result.data?.exercises) ? result.data.exercises : []
+    };
+
+    const content = JSON.stringify(payload, null, 2);
+    const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "workout-exercises-id-name.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function openPlanningImportDialog() {
+    planningImportInputRef.current?.click();
+  }
+
+  function openExercisesImportDialog() {
+    exercisesImportInputRef.current?.click();
+  }
+
+  async function importWorkoutPlanningFromJson(rawText) {
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      setErrorView("Некорректный JSON. Проверь файл и попробуй снова.");
+      return;
+    }
+
+    const payload = Array.isArray(parsed)
+      ? { programs: parsed }
+      : (Array.isArray(parsed?.programs) ? parsed : null);
+    if (!payload) {
+      setErrorView("Ожидается JSON с массивом программ: { \"programs\": [...] }.");
+      return;
+    }
+
+    const result = await request("POST", "/users/me/workouts/planning/import", payload, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+
+    await loadWorkoutSessions(accessToken);
+    setWorkoutsSubTab("manage");
+    setWorkoutsManageSubTab("add");
+  }
+
+  async function importWorkoutExercisesFromJson(rawText) {
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      setErrorView("Некорректный JSON. Проверь файл и попробуй снова.");
+      return;
+    }
+
+    const payload = Array.isArray(parsed)
+      ? { exercises: parsed }
+      : (Array.isArray(parsed?.exercises) ? parsed : null);
+    if (!payload) {
+      setErrorView("Ожидается JSON с массивом упражнений: { \"exercises\": [...] }.");
+      return;
+    }
+
+    const result = await request("POST", "/users/me/workouts/exercises/import", payload, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+
+    await loadWorkoutExerciseCatalog(accessToken);
+    setWorkoutsSubTab("manage");
+    setWorkoutsManageSubTab("exercises");
+  }
+
+  async function handlePlanningJsonImportChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const text = await file.text();
+    await importWorkoutPlanningFromJson(text);
+  }
+
+  async function handleExercisesJsonImportChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const text = await file.text();
+    await importWorkoutExercisesFromJson(text);
+  }
+
   function hideActiveWorkoutModal() {
     setIsActiveWorkoutModalOpen(false);
   }
@@ -693,6 +850,15 @@ function AppContent() {
     setPendingDeleteWorkoutSessionId(sessionId);
   }
 
+  function openWorkoutHistoryModal(session) {
+    if (!session) return;
+    setSelectedWorkoutHistorySession(session);
+  }
+
+  function closeWorkoutHistoryModal() {
+    setSelectedWorkoutHistorySession(null);
+  }
+
   async function confirmDeleteWorkoutSession() {
     const sessionId = pendingDeleteWorkoutSessionId;
     if (!accessToken) return;
@@ -703,6 +869,9 @@ function AppContent() {
     if (!result.ok) return;
 
     setPendingDeleteWorkoutSessionId(null);
+    if (selectedWorkoutHistorySession?.id === sessionId) {
+      setSelectedWorkoutHistorySession(null);
+    }
     if (selectedProgramCode && workoutPrograms.some((x) => x.id === sessionId && x.sessionCode === selectedProgramCode)) {
       setSelectedProgramCode("");
     }
@@ -913,7 +1082,7 @@ function AppContent() {
   );
 
   useEffect(() => {
-    if (tab !== "workouts" || workoutsSubTab !== "my-workouts") return;
+    if (tab !== "workouts" || workoutsSubTab !== "my-workout") return;
     const active = workoutSessions.find(
       (s) => String(s.sessionCode || "").startsWith("workout::") && s.isActive === true
     );
@@ -945,10 +1114,37 @@ function AppContent() {
               <h1>Вход</h1>
               <p className="subtitle">Авторизуйся для доступа к приложению</p>
               <label>Логин</label>
-              <input value={username} onChange={(e) => setUsername(e.target.value)} />
+              <input
+                value={username}
+                disabled={isLoginLoading}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  if (loginError) setLoginError("");
+                }}
+              />
               <label>Пароль</label>
-              <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
-              <button onClick={() => loginAndStore(navigate)}>Войти</button>
+              <input
+                value={password}
+                disabled={isLoginLoading}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (loginError) setLoginError("");
+                }}
+                type="password"
+              />
+              <button
+                onClick={() => loginAndStore(navigate)}
+                disabled={isLoginLoading}
+                aria-busy={isLoginLoading}
+              >
+                {isLoginLoading ? (
+                  <span className="btn-loading">
+                    <span className="spinner" aria-hidden="true" />
+                    Входим...
+                  </span>
+                ) : "Войти"}
+              </button>
+              {loginError && <p className="auth-error">{loginError}</p>}
               <p className="auth-link">Нет аккаунта? <Link to="/register">Регистрация</Link></p>
             </section>
           </main>
@@ -962,18 +1158,43 @@ function AppContent() {
               <h1>Регистрация</h1>
               <p className="subtitle">Создай новый аккаунт пользователя</p>
               <label>Логин</label>
-              <input value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} />
+              <input
+                value={registerUsername}
+                onChange={(e) => {
+                  setRegisterUsername(e.target.value);
+                  if (registerError) setRegisterError("");
+                }}
+              />
               <label>Пароль</label>
-              <input value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} type="password" />
+              <input
+                value={registerPassword}
+                onChange={(e) => {
+                  setRegisterPassword(e.target.value);
+                  if (registerError) setRegisterError("");
+                }}
+                type="password"
+              />
               <button
                 onClick={async () => {
+                  setRegisterError("");
                   const result = await request("POST", "/auth/register", { username: registerUsername.trim(), password: registerPassword });
                   handleResult(result);
-                  if (result.ok) navigate("/login");
+                  if (result.ok) {
+                    navigate("/login");
+                    return;
+                  }
+
+                  const message = result.data?.message
+                    || (result.status === 409 ? "Пользователь с таким логином уже существует." : "")
+                    || (result.status === 400 ? "Проверь логин и пароль: данные не прошли валидацию." : "")
+                    || (result.status === 0 ? "Сервер недоступен. Проверь подключение и адрес API." : "")
+                    || "Не удалось зарегистрироваться. Попробуй еще раз.";
+                  setRegisterError(message);
                 }}
               >
                 Зарегистрироваться
               </button>
+              {registerError && <p className="auth-error">{registerError}</p>}
               <p className="auth-link">Уже есть аккаунт? <Link to="/login">Вход</Link></p>
             </section>
           </main>
@@ -1077,16 +1298,44 @@ function AppContent() {
             <h3>Тренировки</h3>
             <p className="subtitle">Управляй программами, своими упражнениями и фактическими тренировками.</p>
             <div className="workouts-subtabs">
-              <button className={workoutsSubTab === "programs" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("programs")}>Программы</button>
-              <button className={workoutsSubTab === "exercises" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("exercises")}>Мои упражнения</button>
-              <button className={workoutsSubTab === "my-workouts" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("my-workouts")}>Мои тренировки</button>
+              <button className={workoutsSubTab === "my-workout" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("my-workout")}>Моя тренировка</button>
+              <button className={workoutsSubTab === "history" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("history")}>История</button>
+              <button className={workoutsSubTab === "manage" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("manage")}>Управление тренировкой</button>
             </div>
 
-            {workoutsSubTab === "programs" && (
+            {workoutsSubTab === "manage" && (
+              <>
+                <div className="workouts-subtabs">
+                  <button
+                    className={workoutsManageSubTab === "add" ? "top-nav-tab active" : "top-nav-tab"}
+                    onClick={() => setWorkoutsManageSubTab("add")}
+                  >
+                    Добавление
+                  </button>
+                  <button
+                    className={workoutsManageSubTab === "exercises" ? "top-nav-tab active" : "top-nav-tab"}
+                    onClick={() => setWorkoutsManageSubTab("exercises")}
+                  >
+                    Упражнения
+                  </button>
+                </div>
+              </>
+            )}
+
+            {workoutsSubTab === "manage" && workoutsManageSubTab === "add" && (
               <>
                 <div className="row">
                   <button onClick={openProgramCreateModal}>Новая программа</button>
+                  <button className="ghost-btn" onClick={openPlanningImportDialog}>Импорт планирования JSON</button>
+                  <button className="ghost-btn" onClick={downloadPlanningJsonTemplate}>Скачать шаблон планирования</button>
                 </div>
+                <input
+                  ref={planningImportInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handlePlanningJsonImportChange}
+                  style={{ display: "none" }}
+                />
 
                 <h4>Сохраненные программы</h4>
                 <div className="workout-list">
@@ -1100,7 +1349,7 @@ function AppContent() {
                       </div>
                       <div className="row">
                         <button onClick={() => openProgramEditModal(session)} title="Редактировать">✏️</button>
-                        <button className="ghost-btn" onClick={() => { setSelectedProgramCode(session.sessionCode); setWorkoutsSubTab("my-workouts"); }}>Начать тренировку</button>
+                        <button className="ghost-btn" onClick={() => { setSelectedProgramCode(session.sessionCode); setWorkoutsSubTab("my-workout"); }}>Начать тренировку</button>
                         <button className="danger-btn" onClick={() => openProgramDeleteModal(session)} title="Удалить">🗑️</button>
                       </div>
                     </article>
@@ -1109,12 +1358,22 @@ function AppContent() {
               </>
             )}
 
-            {workoutsSubTab === "exercises" && (
+            {workoutsSubTab === "manage" && workoutsManageSubTab === "exercises" && (
               <>
                 <p className="subtitle">Создай новое упражнение и используй его в программах и тренировках.</p>
                 <div className="row">
                   <button onClick={() => setIsCreateExerciseModalOpen(true)}>Создать упражнение</button>
+                  <button className="ghost-btn" onClick={openExercisesImportDialog}>Загрузить упражнения JSON</button>
+                  <button className="ghost-btn" onClick={downloadExercisesJsonTemplate}>Скачать шаблон упражнений</button>
+                  <button className="ghost-btn" onClick={exportExercisesIdNameJson}>Выгрузить ID + название</button>
                 </div>
+                <input
+                  ref={exercisesImportInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleExercisesJsonImportChange}
+                  style={{ display: "none" }}
+                />
                 <div className="users-table-wrap">
                   <table className="users-table">
                     <thead>
@@ -1148,7 +1407,7 @@ function AppContent() {
               </>
             )}
 
-            {workoutsSubTab === "my-workouts" && (
+            {workoutsSubTab === "my-workout" && (
               <>
                 <label>Выбери программу</label>
                 <select value={selectedProgramCode} onChange={(e) => setSelectedProgramCode(e.target.value)}>
@@ -1161,7 +1420,7 @@ function AppContent() {
                   <button disabled={!selectedProgram} onClick={() => selectedProgram && startWorkoutFromProgram(selectedProgram)}>Начать тренировку</button>
                   <button className="ghost-btn" onClick={createWorkoutFromScratch}>Создать с нуля</button>
                 </div>
-                <p className="subtitle">Заполнение и сохранение тренировки открывается в окне поверх страницы.</p>
+                <p className="subtitle">Заполнение и сохранение тренировки открывается в окне поверх страницы. Завершенные тренировки смотри во вкладке «История тренировок».</p>
                 {(activeWorkoutSession || currentWorkout) && (
                   <div className="active-workout-banner">
                     <div>
@@ -1176,7 +1435,10 @@ function AppContent() {
                     <button type="button" onClick={openOrResumeWorkoutModal}>Открыть тренировку</button>
                   </div>
                 )}
-
+              </>
+            )}
+            {workoutsSubTab === "history" && (
+              <>
                 <h4>История моих тренировок</h4>
                 <div className="workout-list">
                   {workoutLogs.length === 0 && <div className="workout-empty">Пока нет сохраненных тренировок.</div>}
@@ -1184,10 +1446,11 @@ function AppContent() {
                     <article key={session.id} className="workout-item">
                       <h4>{session.day}</h4>
                       <div className="workout-meta">
-                        <span>Дата: {session.date || session._date || "-"}</span>
+                        <span>Дата: {formatWorkoutDateLabel(session.date || session._date) || "-"}</span>
                         <span>Упражнений: {session.exercises.length}</span>
                       </div>
                       <div className="row">
+                        <button className="ghost-btn" onClick={() => openWorkoutHistoryModal(session)}>Подробнее</button>
                         <button className="danger-btn" onClick={() => openDeleteWorkoutLogModal(session.id)} title="Удалить">🗑️</button>
                       </div>
                     </article>
@@ -1464,7 +1727,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "programs" && isProgramModalOpen && (
+        {tab === "workouts" && workoutsSubTab === "manage" && workoutsManageSubTab === "add" && isProgramModalOpen && (
           <div className="modal-backdrop">
             <div className="modal-card modal-card--wide modal-card--scroll">
               <h3>{editingProgramId ? "Редактирование программы" : "Новая программа"}</h3>
@@ -1527,7 +1790,7 @@ function AppContent() {
           </div>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "programs" && isProgramDeleteModalOpen && pendingDeleteProgram && (
+        {tab === "workouts" && workoutsSubTab === "manage" && workoutsManageSubTab === "add" && isProgramDeleteModalOpen && pendingDeleteProgram && (
           <div className="modal-backdrop">
             <div className="modal-card">
               <h3>Удалить программу</h3>
@@ -1649,7 +1912,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "my-workouts" && isActiveWorkoutModalOpen && currentWorkout && (
+        {tab === "workouts" && workoutsSubTab === "my-workout" && isActiveWorkoutModalOpen && currentWorkout && (
           <ModalShell open={isActiveWorkoutModalOpen} onClose={hideActiveWorkoutModal} wide scroll>
               <h3>Активная тренировка: {currentWorkout.day}</h3>
               <p className="subtitle">
@@ -1770,6 +2033,51 @@ function AppContent() {
               </div>
           </ModalShell>
         )}
+        {tab === "workouts" && workoutsSubTab === "history" && selectedWorkoutHistorySession && (
+          <ModalShell open={Boolean(selectedWorkoutHistorySession)} onClose={closeWorkoutHistoryModal} wide scroll>
+              <h3>{selectedWorkoutHistorySession.day || "Тренировка"}</h3>
+              <p className="subtitle">
+                Дата: {formatWorkoutDateLabel(selectedWorkoutHistorySession.date || selectedWorkoutHistorySession._date) || "—"}
+              </p>
+              <p className="subtitle">
+                Заметки: {selectedWorkoutHistorySession.notes || "—"}
+              </p>
+              <div className="users-table-wrap">
+                <table className="users-table">
+                  <thead>
+                    <tr>
+                      <th>Упражнение</th>
+                      <th>Комментарий</th>
+                      <th>Подходы</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selectedWorkoutHistorySession.exercises || []).length === 0 && (
+                      <tr>
+                        <td colSpan="3">В этой тренировке нет упражнений.</td>
+                      </tr>
+                    )}
+                    {(selectedWorkoutHistorySession.exercises || []).map((exercise) => (
+                      <tr key={exercise.id}>
+                        <td>{exercise.name || "-"}</td>
+                        <td>{exercise.meta || "-"}</td>
+                        <td>
+                          {(exercise.sets || []).length === 0
+                            ? "—"
+                            : (exercise.sets || [])
+                              .map((setItem, idx) => `#${idx + 1}: ${setItem.weight || "-"} кг × ${setItem.reps || "-"} (RPE ${setItem.rpe || "-"})`)
+                              .join("; ")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="row">
+                <button className="ghost-btn" onClick={closeWorkoutHistoryModal}>Закрыть</button>
+              </div>
+          </ModalShell>
+        )}
 
         {tab === "admin" && isAdmin && adminDialogModalKind === "create" && (
           <ModalShell
@@ -1818,7 +2126,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "exercises" && pendingDeleteCatalogExerciseId && (
+        {tab === "workouts" && workoutsSubTab === "manage" && workoutsManageSubTab === "exercises" && pendingDeleteCatalogExerciseId && (
           <ModalShell open={Boolean(pendingDeleteCatalogExerciseId)} onClose={() => setPendingDeleteCatalogExerciseId(null)}>
               <h3>Удалить упражнение</h3>
               <p className="subtitle">
@@ -1831,7 +2139,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "my-workouts" && pendingDeleteWorkoutSessionId && (
+        {tab === "workouts" && workoutsSubTab === "history" && pendingDeleteWorkoutSessionId && (
           <ModalShell open={Boolean(pendingDeleteWorkoutSessionId)} onClose={() => setPendingDeleteWorkoutSessionId(null)}>
               <h3>Удалить тренировку</h3>
               <p className="subtitle">
@@ -1844,7 +2152,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "exercises" && isCreateExerciseModalOpen && (
+        {tab === "workouts" && workoutsSubTab === "manage" && workoutsManageSubTab === "exercises" && isCreateExerciseModalOpen && (
           <ModalShell open={isCreateExerciseModalOpen} onClose={() => setIsCreateExerciseModalOpen(false)}>
               <h3>Создать упражнение</h3>
               <label>Название упражнения</label>
