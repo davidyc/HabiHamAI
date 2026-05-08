@@ -21,7 +21,7 @@ public sealed class WorkoutsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetMyWorkouts(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetMyWorkouts([FromQuery] bool includeHistory = true, CancellationToken cancellationToken = default)
     {
         var user = await GetCurrentUser(cancellationToken);
         if (user is null)
@@ -29,9 +29,16 @@ public sealed class WorkoutsController : ControllerBase
             return Unauthorized(new { message = "User is not authorized." });
         }
 
-        var sessions = await _dbContext.WorkoutSessions
+        var query = _dbContext.WorkoutSessions
             .AsNoTracking()
-            .Where(x => x.UserId == user.Id)
+            .Where(x => x.UserId == user.Id);
+
+        if (!includeHistory)
+        {
+            query = query.Where(x => !EF.Functions.ILike(x.SessionCode, "workout::%") || x.IsActive == true);
+        }
+
+        var sessions = await query
             .Include(x => x.Exercises.OrderBy(e => e.Order))
             .ThenInclude(x => x.Sets.OrderBy(s => s.Order))
             .OrderByDescending(x => x.Date)
@@ -39,6 +46,83 @@ public sealed class WorkoutsController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(sessions.Select(MapToResponse));
+    }
+
+    [HttpGet("history")]
+    public async Task<IActionResult> GetMyWorkoutHistory(
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromQuery] string? program,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUser(cancellationToken);
+        if (user is null)
+        {
+            return Unauthorized(new { message = "User is not authorized." });
+        }
+
+        var query = _dbContext.WorkoutSessions
+            .AsNoTracking()
+            .Where(x =>
+                x.UserId == user.Id
+                && EF.Functions.ILike(x.SessionCode, "workout::%")
+                && x.IsActive != true);
+
+        if (from.HasValue)
+        {
+            query = query.Where(x => x.Date >= from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            query = query.Where(x => x.Date <= to.Value);
+        }
+
+        var normalizedProgram = (program ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(normalizedProgram))
+        {
+            query = query.Where(x => x.Day == normalizedProgram);
+        }
+
+        var sessions = await query
+            .Include(x => x.Exercises.OrderBy(e => e.Order))
+            .ThenInclude(x => x.Sets.OrderBy(s => s.Order))
+            .OrderByDescending(x => x.Date)
+            .ThenByDescending(x => x.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        return Ok(sessions.Select(MapToResponse));
+    }
+
+    [HttpGet("history/options")]
+    public async Task<IActionResult> GetMyWorkoutHistoryOptions(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUser(cancellationToken);
+        if (user is null)
+        {
+            return Unauthorized(new { message = "User is not authorized." });
+        }
+
+        var options = await _dbContext.WorkoutSessions
+            .AsNoTracking()
+            .Where(x =>
+                x.UserId == user.Id
+                && EF.Functions.ILike(x.SessionCode, "workout::%")
+                && x.IsActive != true)
+            .GroupBy(x => x.Day)
+            .Select(g => g.Key)
+            .Where(x => x != null && x != string.Empty)
+            .OrderBy(x => x)
+            .ToListAsync(cancellationToken);
+
+        var mapped = options
+            .Select(x => new
+            {
+                program = x
+            })
+            .ToList();
+
+        return Ok(mapped);
     }
 
     [HttpGet("import-template")]

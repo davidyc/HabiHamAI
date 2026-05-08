@@ -1,7 +1,7 @@
 function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLogout }) {
   const sidebarTabs = [
-    ...(hasAiAccess ? ["ai"] : []),
-    "workouts"
+    "workouts",
+    ...(hasAiAccess ? ["ai"] : [])
   ];
   const topbarTabs = [
     "profile",

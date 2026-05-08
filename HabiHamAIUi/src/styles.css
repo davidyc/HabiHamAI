@@ -302,6 +302,18 @@ button:active {
   flex-wrap: wrap;
 }
 
+.history-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.history-presets button {
+  width: auto;
+  margin-top: 0;
+}
+
 .workout-builder {
   border: 1px solid #324155;
   border-radius: 12px;
@@ -429,6 +441,55 @@ button:active {
 
 .workout-set-row input {
   min-width: 90px;
+}
+
+.workout-set-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.workout-set-row input,
+.workout-set-row select {
+  width: 100%;
+  margin-top: 0;
+  padding: 6px 8px;
+}
+
+.workout-set-row input {
+  min-width: 90px;
+}
+
+.workout-set-row select {
+  min-width: 90px;
+}
+
+.workout-set-row button {
+  width: auto;
+  margin-top: 0;
+  padding: 6px 10px;
+}
+
+.workout-set-weight-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 180px;
+  min-width: 180px;
+}
+
+.workout-set-weight-steps {
+  display: flex;
+  gap: 4px;
+}
+
+.workout-set-weight-steps button {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 12px;
 }
 
 .chat-messages {
@@ -1148,5 +1209,22 @@ button {
 
   .sidebar-user-meta strong {
     font-size: 13px;
+  }
+}
+
+@media (max-width: 865px) {
+  .workout-set-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .workout-set-weight-control {
+    flex: 1 1 140px;
+    min-width: 140px;
+  }
+
+  .workout-set-row > .danger-btn {
+    width: auto;
   }
 }

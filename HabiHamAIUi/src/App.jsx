@@ -4,8 +4,15 @@ import TopNav from "./TopNav";
 import ModalShell from "./shared/ui/ModalShell";
 
 function AppContent() {
+  const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
+  const getIsoDateDaysAgo = (daysAgo) => {
+    const date = new Date();
+    date.setDate(date.getDate() - daysAgo);
+    return date.toISOString().slice(0, 10);
+  };
+
   const navigate = useNavigate();
-  const [tab, setTab] = useState("ai");
+  const [tab, setTab] = useState("workouts");
   const [baseUrl, setBaseUrl] = useState(import.meta.env.VITE_API_BASE_URL || "http://localhost:5193");
   const [accessToken, setAccessToken] = useState("");
   const [adminToken, setAdminToken] = useState("");
@@ -29,7 +36,7 @@ function AppContent() {
     { role: "assistant", content: "Привет! Войди через форму входа и отправь сообщение." }
   ]);
   const [workoutSessions, setWorkoutSessions] = useState([]);
-  const [workoutsSubTab, setWorkoutsSubTab] = useState("my-workout");
+  const [workoutsSubTab, setWorkoutsSubTab] = useState("manage");
   const [workoutsManageSubTab, setWorkoutsManageSubTab] = useState("add");
   const [workoutExerciseCatalog, setWorkoutExerciseCatalog] = useState([]);
   const [selectedCatalogExerciseId, setSelectedCatalogExerciseId] = useState("");
@@ -81,7 +88,11 @@ function AppContent() {
   const [adminDialogTitleDraft, setAdminDialogTitleDraft] = useState("");
   const [pendingDeleteCatalogExerciseId, setPendingDeleteCatalogExerciseId] = useState(null);
   const [pendingDeleteWorkoutSessionId, setPendingDeleteWorkoutSessionId] = useState(null);
+  const [pendingDeleteCurrentWorkoutExerciseId, setPendingDeleteCurrentWorkoutExerciseId] = useState(null);
   const [selectedWorkoutHistorySession, setSelectedWorkoutHistorySession] = useState(null);
+  const [historyDateFrom, setHistoryDateFrom] = useState(() => getIsoDateDaysAgo(6));
+  const [historyDateTo, setHistoryDateTo] = useState(() => getTodayIsoDate());
+  const [historyWorkoutLogs, setHistoryWorkoutLogs] = useState([]);
   const planningImportInputRef = useRef(null);
   const exercisesImportInputRef = useRef(null);
 
@@ -185,7 +196,7 @@ function AppContent() {
       const nextRole = tryGetRoleFromToken(token);
       setCurrentUserName(tryGetUserNameFromToken(token) || username.trim());
       setCurrentUserRole(nextRole);
-      setTab(nextRole === "Admin" || nextRole === "AiUser" ? "ai" : "profile");
+      setTab("workouts");
       if (nextRole === "Admin" || nextRole === "AiUser") {
         await loadDialogs(token);
       }
@@ -286,10 +297,28 @@ function AppContent() {
 
   async function loadWorkoutSessions(token = accessToken) {
     if (!token) return;
-    const result = await request("GET", "/users/me/workouts", null, token);
+    const result = await request("GET", "/users/me/workouts?includeHistory=false", null, token);
     handleResult(result);
     if (!result.ok) return;
     setWorkoutSessions(Array.isArray(result.data) ? result.data : []);
+  }
+
+  async function loadWorkoutHistory(token = accessToken) {
+    if (!token) return;
+    const query = new URLSearchParams();
+    if (historyDateFrom) query.set("from", historyDateFrom);
+    if (historyDateTo) query.set("to", historyDateTo);
+    const suffix = query.toString() ? `?${query}` : "";
+    const result = await request("GET", `/users/me/workouts/history${suffix}`, null, token);
+    handleResult(result);
+    if (!result.ok) return;
+    const logs = Array.isArray(result.data) ? result.data : [];
+    const sortedLogs = [...logs].sort((a, b) => {
+      const timeA = Date.parse(a?.date || a?._date || "") || 0;
+      const timeB = Date.parse(b?.date || b?._date || "") || 0;
+      return timeB - timeA;
+    });
+    setHistoryWorkoutLogs(sortedLogs);
   }
 
   async function loadWorkoutExerciseCatalog(token = accessToken) {
@@ -515,6 +544,19 @@ function AppContent() {
     } catch {
       return raw;
     }
+  }
+
+  function downloadJsonFile(fileName, payload) {
+    const content = JSON.stringify(payload, null, 2);
+    const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   function mapServerSessionToCurrentWorkout(session) {
@@ -771,6 +813,17 @@ function AppContent() {
     });
   }
 
+  function openDeleteCurrentWorkoutExerciseModal(exerciseId) {
+    if (!exerciseId) return;
+    setPendingDeleteCurrentWorkoutExerciseId(exerciseId);
+  }
+
+  function confirmDeleteCurrentWorkoutExercise() {
+    if (!pendingDeleteCurrentWorkoutExerciseId) return;
+    removeCurrentWorkoutExercise(pendingDeleteCurrentWorkoutExerciseId);
+    setPendingDeleteCurrentWorkoutExerciseId(null);
+  }
+
   function updateCurrentWorkoutSet(exerciseId, setIndex, field, value) {
     setCurrentWorkout((prev) => {
       if (!prev) return prev;
@@ -785,6 +838,74 @@ function AppContent() {
     });
   }
 
+  function adjustCurrentWorkoutSetWeight(exerciseId, setIndex, delta) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.map((x) => {
+          if (x.id !== exerciseId) return x;
+          return {
+            ...x,
+            sets: x.sets.map((s, idx) => {
+              if (idx !== setIndex) return s;
+              const currentWeightRaw = String(s.weight ?? "").replace(",", ".").trim();
+              const currentWeight = Number(currentWeightRaw);
+              const base = Number.isNaN(currentWeight) ? 0 : currentWeight;
+              const nextValue = Math.max(0, Math.round((base + delta) * 100) / 100);
+              return { ...s, weight: String(nextValue) };
+            })
+          };
+        })
+      };
+    });
+  }
+
+  function adjustCurrentWorkoutSetReps(exerciseId, setIndex, delta) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.map((x) => {
+          if (x.id !== exerciseId) return x;
+          return {
+            ...x,
+            sets: x.sets.map((s, idx) => {
+              if (idx !== setIndex) return s;
+              const currentRepsRaw = String(s.reps ?? "").trim();
+              const currentReps = Number(currentRepsRaw);
+              const base = Number.isNaN(currentReps) ? 0 : currentReps;
+              const nextValue = Math.max(0, Math.round(base + delta));
+              return { ...s, reps: String(nextValue) };
+            })
+          };
+        })
+      };
+    });
+  }
+
+  function adjustCurrentWorkoutSetRpe(exerciseId, setIndex, delta) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.map((x) => {
+          if (x.id !== exerciseId) return x;
+          return {
+            ...x,
+            sets: x.sets.map((s, idx) => {
+              if (idx !== setIndex) return s;
+              const currentRpe = Number(String(s.rpe ?? "8").trim());
+              const base = Number.isNaN(currentRpe) ? 8 : currentRpe;
+              const nextValue = Math.min(10, Math.max(6, base + delta));
+              return { ...s, rpe: String(nextValue) };
+            })
+          };
+        })
+      };
+    });
+  }
+
   function addCurrentWorkoutSet(exerciseId) {
     setCurrentWorkout((prev) => {
       if (!prev) return prev;
@@ -792,7 +913,17 @@ function AppContent() {
         ...prev,
         exercises: prev.exercises.map((x) =>
           x.id === exerciseId
-            ? { ...x, sets: [...x.sets, { weight: "", reps: "", rpe: "" }] }
+            ? {
+              ...x,
+              sets: [
+                ...x.sets,
+                {
+                  weight: x.sets[x.sets.length - 1]?.weight ?? "",
+                  reps: x.sets[x.sets.length - 1]?.reps ?? "",
+                  rpe: ""
+                }
+              ]
+            }
             : x
         )
       };
@@ -859,6 +990,37 @@ function AppContent() {
     setSelectedWorkoutHistorySession(null);
   }
 
+  function applyHistoryDatePreset(days) {
+    if (!days || days < 1) return;
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    const start = new Date(end);
+    start.setDate(start.getDate() - (days - 1));
+    setHistoryDateFrom(start.toISOString().slice(0, 10));
+    setHistoryDateTo(end.toISOString().slice(0, 10));
+  }
+
+  function exportHistorySessionJson(session) {
+    if (!session) return;
+    const datePart = String(session.date || session._date || "").slice(0, 10) || "unknown-date";
+    const idPart = String(session.id || "workout");
+    downloadJsonFile(`workout-history-${datePart}-${idPart}.json`, session);
+  }
+
+  function exportHistorySelectionJson() {
+    const fromPart = historyDateFrom || "all";
+    const toPart = historyDateTo || "all";
+    downloadJsonFile(`workout-history-${fromPart}-to-${toPart}.json`, {
+      exportedAt: new Date().toISOString(),
+      filters: {
+        from: historyDateFrom || null,
+        to: historyDateTo || null
+      },
+      total: historyWorkoutLogs.length,
+      workouts: historyWorkoutLogs
+    });
+  }
+
   async function confirmDeleteWorkoutSession() {
     const sessionId = pendingDeleteWorkoutSessionId;
     if (!accessToken) return;
@@ -876,6 +1038,7 @@ function AppContent() {
       setSelectedProgramCode("");
     }
     await loadWorkoutSessions(accessToken);
+    await loadWorkoutHistory(accessToken);
   }
 
   async function saveMyProfile() {
@@ -1074,13 +1237,6 @@ function AppContent() {
     () => workoutSessions.find((x) => String(x.sessionCode || "").startsWith("workout::") && x.isActive === true),
     [workoutSessions]
   );
-  const workoutLogs = useMemo(
-    () => workoutSessions.filter(
-      (x) => String(x.sessionCode || "").startsWith("workout::") && x.isActive !== true
-    ),
-    [workoutSessions]
-  );
-
   useEffect(() => {
     if (tab !== "workouts" || workoutsSubTab !== "my-workout") return;
     const active = workoutSessions.find(
@@ -1090,6 +1246,19 @@ function AppContent() {
       setCurrentWorkout(mapServerSessionToCurrentWorkout(active));
     }
   }, [tab, workoutsSubTab, workoutSessions, currentWorkout]);
+  useEffect(() => {
+    if (tab !== "workouts" || !accessToken) return;
+    loadWorkoutSessions();
+    loadWorkoutExerciseCatalog();
+  }, [tab, accessToken]);
+  useEffect(() => {
+    if (tab !== "workouts" || workoutsSubTab !== "history") return;
+    loadWorkoutHistory();
+  }, [tab, workoutsSubTab]);
+  useEffect(() => {
+    if (tab !== "workouts" || workoutsSubTab !== "history") return;
+    loadWorkoutHistory();
+  }, [tab, workoutsSubTab, historyDateFrom, historyDateTo]);
   const selectedProgram = useMemo(
     () => workoutPrograms.find((x) => x.sessionCode === selectedProgramCode) || null,
     [workoutPrograms, selectedProgramCode]
@@ -1097,6 +1266,13 @@ function AppContent() {
   const selectedCatalogExercise = useMemo(
     () => workoutExerciseCatalog.find((x) => String(x.id) === String(selectedCatalogExerciseId)) || null,
     [workoutExerciseCatalog, selectedCatalogExerciseId]
+  );
+  const historyMaxSetCount = useMemo(
+    () => Math.max(
+      0,
+      ...(selectedWorkoutHistorySession?.exercises || []).map((exercise) => (exercise.sets || []).length)
+    ),
+    [selectedWorkoutHistorySession]
   );
 
   const isLoggedIn = Boolean(accessToken);
@@ -1310,7 +1486,7 @@ function AppContent() {
                     className={workoutsManageSubTab === "add" ? "top-nav-tab active" : "top-nav-tab"}
                     onClick={() => setWorkoutsManageSubTab("add")}
                   >
-                    Добавление
+                    Программы
                   </button>
                   <button
                     className={workoutsManageSubTab === "exercises" ? "top-nav-tab active" : "top-nav-tab"}
@@ -1440,9 +1616,38 @@ function AppContent() {
             {workoutsSubTab === "history" && (
               <>
                 <h4>История моих тренировок</h4>
+                <div className="row">
+                  <input
+                    type="date"
+                    value={historyDateFrom}
+                    onChange={(e) => setHistoryDateFrom(e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    value={historyDateTo}
+                    onChange={(e) => setHistoryDateTo(e.target.value)}
+                  />
+                </div>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={exportHistorySelectionJson}
+                    disabled={historyWorkoutLogs.length === 0}
+                  >
+                    Выгрузить JSON (вся выборка)
+                  </button>
+                </div>
+                <div className="history-presets">
+                  <button type="button" className="ghost-btn" onClick={() => applyHistoryDatePreset(1)}>День</button>
+                  <button type="button" className="ghost-btn" onClick={() => applyHistoryDatePreset(7)}>Неделя</button>
+                  <button type="button" className="ghost-btn" onClick={() => applyHistoryDatePreset(10)}>10 дней</button>
+                  <button type="button" className="ghost-btn" onClick={() => applyHistoryDatePreset(15)}>15 дней</button>
+                  <button type="button" className="ghost-btn" onClick={() => applyHistoryDatePreset(30)}>Месяц</button>
+                </div>
                 <div className="workout-list">
-                  {workoutLogs.length === 0 && <div className="workout-empty">Пока нет сохраненных тренировок.</div>}
-                  {workoutLogs.map((session) => (
+                  {historyWorkoutLogs.length === 0 && <div className="workout-empty">Нет тренировок по выбранному фильтру.</div>}
+                  {historyWorkoutLogs.map((session) => (
                     <article key={session.id} className="workout-item">
                       <h4>{session.day}</h4>
                       <div className="workout-meta">
@@ -1451,6 +1656,7 @@ function AppContent() {
                       </div>
                       <div className="row">
                         <button className="ghost-btn" onClick={() => openWorkoutHistoryModal(session)}>Подробнее</button>
+                        <button className="ghost-btn" onClick={() => exportHistorySessionJson(session)}>JSON</button>
                         <button className="danger-btn" onClick={() => openDeleteWorkoutLogModal(session.id)} title="Удалить">🗑️</button>
                       </div>
                     </article>
@@ -1946,83 +2152,94 @@ function AppContent() {
                     <tr>
                       <th>Упражнение</th>
                       <th>Комментарий</th>
-                      <th>Подходы</th>
-                      <th>Действия</th>
                     </tr>
                   </thead>
                   <tbody>
                     {currentWorkout.exercises.length === 0 && (
                       <tr>
-                        <td colSpan="4">Нет упражнений. Добавь первое упражнение.</td>
+                        <td colSpan="2">Нет упражнений. Добавь первое упражнение.</td>
                       </tr>
                     )}
-                    {currentWorkout.exercises.map((exercise) => (
-                      <tr key={exercise.id}>
-                        <td>
-                          <input
-                            value={exercise.name || ""}
-                            onChange={(e) => updateCurrentWorkoutExercise(exercise.id, "name", e.target.value)}
-                            placeholder="Название упражнения"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={exercise.meta || ""}
-                            onChange={(e) => updateCurrentWorkoutExercise(exercise.id, "meta", e.target.value)}
-                            placeholder="Комментарий к упражнению"
-                          />
-                        </td>
-                        <td>
-                          <div className="workout-sets">
-                            {exercise.sets.map((setItem, setIdx) => (
-                              <div key={`${exercise.id}-active-set-${setIdx}`} className="row workout-set-row">
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  min="0"
-                                  step="0.5"
-                                  value={setItem.weight}
-                                  onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "weight", e.target.value)}
-                                  placeholder="Вес"
-                                />
-                                <input
-                                  type="number"
-                                  inputMode="numeric"
-                                  min="0"
-                                  step="1"
-                                  value={setItem.reps}
-                                  onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "reps", e.target.value)}
-                                  placeholder="Повт."
-                                />
-                                <select
-                                  value={setItem.rpe || "8"}
-                                  onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "rpe", e.target.value)}
-                                >
-                                  <option value="6">6</option>
-                                  <option value="7">7</option>
-                                  <option value="8">8</option>
-                                  <option value="9">9</option>
-                                  <option value="10">10</option>
-                                </select>
-                                <button
-                                  className="danger-btn"
-                                  onClick={() => removeCurrentWorkoutSet(exercise.id, setIdx)}
-                                  disabled={exercise.sets.length <= 1}
-                                >
-                                  Удалить
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="row">
-                            <button className="ghost-btn" onClick={() => addCurrentWorkoutSet(exercise.id)}>+ Подход</button>
-                            <button className="danger-btn" onClick={() => removeCurrentWorkoutExercise(exercise.id)} title="Удалить">🗑️</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {currentWorkout.exercises.map((exercise) => ([
+                        <tr key={`${exercise.id}-head`}>
+                          <td colSpan="2">
+                            <b>{exercise.name || "—"}</b>
+                            {" · "}
+                            <span>{exercise.meta || "—"}</span>
+                          </td>
+                        </tr>,
+                        <tr key={`${exercise.id}-sets`}>
+                          <td colSpan="2">
+                            <div className="workout-sets">
+                              {exercise.sets.map((setItem, setIdx) => (
+                                <div key={`${exercise.id}-active-set-${setIdx}`} className="row workout-set-row">
+                                  <div className="workout-set-weight-control">
+                                    <input
+                                      type="number"
+                                      inputMode="decimal"
+                                      min="0"
+                                      step="0.5"
+                                      value={setItem.weight}
+                                      onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "weight", e.target.value)}
+                                      placeholder="Вес"
+                                    />
+                                    <div className="workout-set-weight-steps">
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetWeight(exercise.id, setIdx, -5)}>-5</button>
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetWeight(exercise.id, setIdx, -2.5)}>-2,5</button>
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetWeight(exercise.id, setIdx, 2.5)}>+2,5</button>
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetWeight(exercise.id, setIdx, 5)}>+5</button>
+                                    </div>
+                                  </div>
+                                  <div className="workout-set-weight-control">
+                                    <input
+                                      type="number"
+                                      inputMode="numeric"
+                                      min="0"
+                                      step="1"
+                                      value={setItem.reps}
+                                      onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "reps", e.target.value)}
+                                      placeholder="Повт."
+                                    />
+                                    <div className="workout-set-weight-steps">
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetReps(exercise.id, setIdx, -2)}>-2</button>
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetReps(exercise.id, setIdx, -1)}>-1</button>
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetReps(exercise.id, setIdx, 1)}>+1</button>
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetReps(exercise.id, setIdx, 2)}>+2</button>
+                                    </div>
+                                  </div>
+                                  <div className="workout-set-weight-control">
+                                    <select
+                                      value={setItem.rpe || "8"}
+                                      onChange={(e) => updateCurrentWorkoutSet(exercise.id, setIdx, "rpe", e.target.value)}
+                                    >
+                                      <option value="6">6</option>
+                                      <option value="7">7</option>
+                                      <option value="8">8</option>
+                                      <option value="9">9</option>
+                                      <option value="10">10</option>
+                                    </select>
+                                    <div className="workout-set-weight-steps">
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetRpe(exercise.id, setIdx, -1)}>-</button>
+                                      <button type="button" className="ghost-btn" onClick={() => adjustCurrentWorkoutSetRpe(exercise.id, setIdx, 1)}>+</button>
+                                    </div>
+                                  </div>
+                                  <button
+                                    className="danger-btn"
+                                    onClick={() => removeCurrentWorkoutSet(exercise.id, setIdx)}
+                                    disabled={exercise.sets.length <= 1}
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="row">
+                              <button className="ghost-btn" onClick={() => addCurrentWorkoutSet(exercise.id)}>+</button>
+                              <button className="danger-btn" onClick={() => openDeleteCurrentWorkoutExerciseModal(exercise.id)} title="Удалить">✕</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ]))}
                   </tbody>
                 </table>
               </div>
@@ -2047,27 +2264,30 @@ function AppContent() {
                   <thead>
                     <tr>
                       <th>Упражнение</th>
-                      <th>Комментарий</th>
-                      <th>Подходы</th>
+                      {Array.from({ length: historyMaxSetCount }, (_, idx) => (
+                        <th key={`history-set-col-${idx}`}>{`Подход ${idx + 1}`}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {(selectedWorkoutHistorySession.exercises || []).length === 0 && (
                       <tr>
-                        <td colSpan="3">В этой тренировке нет упражнений.</td>
+                        <td colSpan={historyMaxSetCount + 1}>В этой тренировке нет упражнений.</td>
                       </tr>
                     )}
                     {(selectedWorkoutHistorySession.exercises || []).map((exercise) => (
                       <tr key={exercise.id}>
                         <td>{exercise.name || "-"}</td>
-                        <td>{exercise.meta || "-"}</td>
-                        <td>
-                          {(exercise.sets || []).length === 0
-                            ? "—"
-                            : (exercise.sets || [])
-                              .map((setItem, idx) => `#${idx + 1}: ${setItem.weight || "-"} кг × ${setItem.reps || "-"} (RPE ${setItem.rpe || "-"})`)
-                              .join("; ")}
-                        </td>
+                        {Array.from({ length: historyMaxSetCount }, (_, idx) => {
+                          const setItem = (exercise.sets || [])[idx];
+                          return (
+                            <td key={`${exercise.id}-set-${idx}`}>
+                              {setItem
+                                ? `${setItem.weight || "-"} кг × ${setItem.reps || "-"} (RPE ${setItem.rpe || "-"})`
+                                : "—"}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -2143,11 +2363,24 @@ function AppContent() {
           <ModalShell open={Boolean(pendingDeleteWorkoutSessionId)} onClose={() => setPendingDeleteWorkoutSessionId(null)}>
               <h3>Удалить тренировку</h3>
               <p className="subtitle">
-                Удалить «{workoutLogs.find((x) => x.id === pendingDeleteWorkoutSessionId)?.day || "тренировку"}» из истории?
+                Удалить «{historyWorkoutLogs.find((x) => x.id === pendingDeleteWorkoutSessionId)?.day || "тренировку"}» из истории?
               </p>
               <div className="row">
                 <button className="danger-btn" onClick={confirmDeleteWorkoutSession} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setPendingDeleteWorkoutSessionId(null)}>Отмена</button>
+              </div>
+          </ModalShell>
+        )}
+
+        {tab === "workouts" && workoutsSubTab === "my-workout" && pendingDeleteCurrentWorkoutExerciseId && currentWorkout && (
+          <ModalShell open={Boolean(pendingDeleteCurrentWorkoutExerciseId)} onClose={() => setPendingDeleteCurrentWorkoutExerciseId(null)}>
+              <h3>Удалить упражнение</h3>
+              <p className="subtitle">
+                Удалить «{currentWorkout.exercises.find((x) => x.id === pendingDeleteCurrentWorkoutExerciseId)?.name || "упражнение"}» из текущей тренировки?
+              </p>
+              <div className="row">
+                <button className="danger-btn" onClick={confirmDeleteCurrentWorkoutExercise} title="Удалить">🗑️ Удалить</button>
+                <button className="ghost-btn" onClick={() => setPendingDeleteCurrentWorkoutExerciseId(null)}>Отмена</button>
               </div>
           </ModalShell>
         )}
