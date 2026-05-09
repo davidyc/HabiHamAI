@@ -209,7 +209,7 @@ function AppContent() {
 
   async function sendChat() {
     const prompt = chatPrompt.trim();
-    if (!prompt) return setErrorView("Введите сообщение для AI-чата.");
+    if (!prompt) return setErrorView("Введите сообщение для AI помощника.");
     if (!aiToken) return setErrorView("Сначала войдите в систему или вставьте JWT-токен в поле AI-токена.");
 
     setChatMessages((prev) => [...prev, { role: "user", content: prompt }]);
@@ -1423,7 +1423,7 @@ function AppContent() {
 
         {tab === "ai" && hasAiAccess && <section className="card-grid">
           <section className="card">
-            <h3>AI чат</h3>
+            <h3>AI помощник</h3>
             <div className="row">
               <select value={currentDialogId} onChange={(e) => { setCurrentDialogId(e.target.value); loadDialogMessages(e.target.value); }}>
                 <option value="">Нет диалогов</option>
