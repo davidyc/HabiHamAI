@@ -10,6 +10,9 @@ public sealed class AppDbContext : DbContext
     }
 
     public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<AiAssistant> AiAssistants => Set<AiAssistant>();
+    public DbSet<AiAssistantFieldDefinition> AiAssistantFieldDefinitions => Set<AiAssistantFieldDefinition>();
+    public DbSet<UserAiAssistantExtras> UserAiAssistantExtras => Set<UserAiAssistantExtras>();
     public DbSet<ChatDialog> ChatDialogs => Set<ChatDialog>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
@@ -41,10 +44,69 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.FirstName).HasMaxLength(100);
             entity.Property(x => x.LastName).HasMaxLength(100);
             entity.Property(x => x.AiSummary).HasMaxLength(8000);
+            entity.Property(x => x.SelectedAiAssistantId).HasColumnName("selected_ai_assistant_id");
             entity.HasIndex(x => x.Username).IsUnique();
+            entity.HasOne(x => x.SelectedAiAssistant)
+                .WithMany()
+                .HasForeignKey(x => x.SelectedAiAssistantId)
+                .OnDelete(DeleteBehavior.SetNull);
             entity.HasMany(x => x.WorkoutSessions)
                 .WithOne(x => x.User)
                 .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiAssistant>(entity =>
+        {
+            entity.ToTable("ai_assistants");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(500);
+            entity.Property(x => x.SystemPrompt).HasColumnName("system_prompt").IsRequired();
+            entity.Property(x => x.SettingsJson).HasColumnName("settings_json");
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
+            entity.Property(x => x.IsActive).HasColumnName("is_active").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => x.SortOrder);
+        });
+
+        modelBuilder.Entity<AiAssistantFieldDefinition>(entity =>
+        {
+            entity.ToTable("ai_assistant_field_definitions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.AiAssistantId).HasColumnName("ai_assistant_id");
+            entity.Property(x => x.FieldKey).HasColumnName("field_key").HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Label).HasColumnName("label").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.FieldType).HasColumnName("field_type").HasMaxLength(30).IsRequired();
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
+            entity.Property(x => x.IsRequired).HasColumnName("is_required").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.AiAssistantId, x.FieldKey }).IsUnique();
+            entity.HasIndex(x => new { x.AiAssistantId, x.SortOrder });
+            entity.HasOne(x => x.AiAssistant)
+                .WithMany()
+                .HasForeignKey(x => x.AiAssistantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserAiAssistantExtras>(entity =>
+        {
+            entity.ToTable("user_ai_assistant_extras");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("user_id");
+            entity.Property(x => x.AiAssistantId).HasColumnName("ai_assistant_id");
+            entity.Property(x => x.ValuesJson).HasColumnName("values_json").IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.AiAssistantId }).IsUnique();
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.AiAssistant)
+                .WithMany()
+                .HasForeignKey(x => x.AiAssistantId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

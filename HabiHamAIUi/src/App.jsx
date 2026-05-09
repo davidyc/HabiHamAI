@@ -86,6 +86,37 @@ function AppContent() {
   const [aiDialogTitleDraft, setAiDialogTitleDraft] = useState("");
   const [adminDialogModalKind, setAdminDialogModalKind] = useState(null);
   const [adminDialogTitleDraft, setAdminDialogTitleDraft] = useState("");
+  const [aiAssistants, setAiAssistants] = useState([]);
+  /** Пробный чат с помощником без смены «Включить» (передаётся assistantId в POST /ai/chat); задаётся из админки. */
+  const [chatAssistantPreviewId, setChatAssistantPreviewId] = useState(null);
+  const adminAssistantTestChatPanelRef = useRef(null);
+  const [adminAiAssistants, setAdminAiAssistants] = useState([]);
+  const [assistantModalKind, setAssistantModalKind] = useState(null);
+  const [assistantDraft, setAssistantDraft] = useState({
+    id: "",
+    name: "",
+    description: "",
+    systemPrompt: "",
+    settingsJson: "",
+    sortOrder: 0,
+    isActive: true
+  });
+  const [pendingDeleteAssistantId, setPendingDeleteAssistantId] = useState(null);
+  const [isAiExtraInfoModalOpen, setIsAiExtraInfoModalOpen] = useState(false);
+  const [aiExtraInfoAssistantId, setAiExtraInfoAssistantId] = useState("");
+  const [aiExtraInfoDefinitions, setAiExtraInfoDefinitions] = useState([]);
+  const [aiExtraInfoValues, setAiExtraInfoValues] = useState({});
+  const [adminExtraFieldsList, setAdminExtraFieldsList] = useState([]);
+  const [adminExtraFieldModalKind, setAdminExtraFieldModalKind] = useState(null);
+  const [adminExtraFieldDraft, setAdminExtraFieldDraft] = useState({
+    id: "",
+    fieldKey: "",
+    label: "",
+    fieldType: "text",
+    sortOrder: 0,
+    isRequired: false
+  });
+  const [pendingDeleteExtraField, setPendingDeleteExtraField] = useState(null);
   const [pendingDeleteCatalogExerciseId, setPendingDeleteCatalogExerciseId] = useState(null);
   const [pendingDeleteWorkoutSessionId, setPendingDeleteWorkoutSessionId] = useState(null);
   const [pendingDeleteCurrentWorkoutExerciseId, setPendingDeleteCurrentWorkoutExerciseId] = useState(null);
@@ -199,6 +230,7 @@ function AppContent() {
       setTab("workouts");
       if (nextRole === "Admin" || nextRole === "AiUser") {
         await loadDialogs(token);
+        await loadAiAssistants(token);
       }
       await loadMyProfile(token);
       navigate("/app");
@@ -215,7 +247,22 @@ function AppContent() {
     setChatMessages((prev) => [...prev, { role: "user", content: prompt }]);
     setChatPrompt("");
 
-    const result = await request("POST", "/ai/chat", { prompt, dialogId: currentDialogId || null }, aiToken);
+    const previewMatch = chatAssistantPreviewId
+      ? aiAssistants.find((x) => String(x.id) === String(chatAssistantPreviewId))
+        ?? adminAiAssistants.find((x) => String(x.id) === String(chatAssistantPreviewId))
+      : null;
+    const selectedAssistant = aiAssistants.find((x) => x.selected);
+    const assistantIdForChat = previewMatch?.id ?? selectedAssistant?.id ?? null;
+    const result = await request(
+      "POST",
+      "/ai/chat",
+      {
+        prompt,
+        dialogId: currentDialogId || null,
+        assistantId: assistantIdForChat ?? null
+      },
+      aiToken
+    );
     handleResult(result);
     if (!result.ok) {
       setChatMessages((prev) => [...prev, { role: "assistant", content: "AI request failed." }]);
@@ -260,6 +307,228 @@ function AppContent() {
     if (r.ok) {
       setAiDialogModalKind(null);
       await loadDialogs(aiToken);
+    }
+  }
+
+  async function loadAiAssistants(token = aiToken) {
+    if (!token) return;
+    const result = await request("GET", "/ai/assistants", null, token);
+    handleResult(result);
+    if (!result.ok) return;
+    const list = Array.isArray(result.data?.assistants) ? result.data.assistants : [];
+    setAiAssistants(list);
+  }
+
+  async function selectAiAssistant(assistantId) {
+    const r = await request("PUT", "/ai/assistants/selection", { assistantId }, aiToken);
+    handleResult(r);
+    if (r.ok) await loadAiAssistants(aiToken);
+  }
+
+  async function toggleAiAssistantRow(id, selected) {
+    if (selected) {
+      await selectAiAssistant(null);
+    } else {
+      await selectAiAssistant(id);
+    }
+  }
+
+  async function loadAdminAiAssistants() {
+    const result = await request("GET", "/admin/ai-assistants", null, adminToken);
+    handleResult(result);
+    if (!result.ok) return;
+    setAdminAiAssistants(Array.isArray(result.data) ? result.data : []);
+  }
+
+  function openAssistantCreateModal() {
+    setAdminExtraFieldsList([]);
+    setAssistantDraft({
+      id: "",
+      name: "",
+      description: "",
+      systemPrompt: "",
+      settingsJson: "",
+      sortOrder: adminAiAssistants.length ? Math.max(...adminAiAssistants.map((x) => x.sortOrder || 0)) + 1 : 0,
+      isActive: true
+    });
+    setAssistantModalKind("create");
+  }
+
+  function openAssistantEditModal(row) {
+    setAssistantDraft({
+      id: row.id,
+      name: row.name || "",
+      description: row.description || "",
+      systemPrompt: row.systemPrompt || "",
+      settingsJson: row.settingsJson || "",
+      sortOrder: row.sortOrder ?? 0,
+      isActive: Boolean(row.isActive)
+    });
+    setAssistantModalKind("edit");
+    void loadAdminExtraFields(row.id);
+  }
+
+  async function submitAssistantModal() {
+    const name = (assistantDraft.name || "").trim();
+    const systemPrompt = (assistantDraft.systemPrompt || "").trim();
+    if (!name) return setErrorView("Укажи название помощника.");
+    if (!systemPrompt) return setErrorView("Укажи системный промпт.");
+
+    const body = {
+      name,
+      description: (assistantDraft.description || "").trim() || null,
+      systemPrompt,
+      settingsJson: (assistantDraft.settingsJson || "").trim() || null,
+      sortOrder: Number(assistantDraft.sortOrder) || 0,
+      isActive: Boolean(assistantDraft.isActive)
+    };
+
+    const modeBeforeSave = assistantModalKind;
+    let r;
+    if (assistantModalKind === "create") {
+      r = await request("POST", "/admin/ai-assistants", body, adminToken);
+    } else if (assistantModalKind === "edit" && assistantDraft.id) {
+      r = await request("PUT", `/admin/ai-assistants/${assistantDraft.id}`, body, adminToken);
+    } else {
+      return;
+    }
+    handleResult(r);
+    if (!r.ok) return;
+
+    await loadAdminAiAssistants();
+    if (hasAiAccess) await loadAiAssistants(aiToken);
+
+    if (modeBeforeSave === "create" && r.data?.id) {
+      setAssistantDraft((d) => ({ ...d, id: r.data.id }));
+      setAssistantModalKind("edit");
+      await loadAdminExtraFields(r.data.id);
+    } else if (assistantDraft.id) {
+      await loadAdminExtraFields(assistantDraft.id);
+    }
+  }
+
+  async function confirmDeleteAssistant() {
+    if (!pendingDeleteAssistantId) return;
+    const r = await request("DELETE", `/admin/ai-assistants/${pendingDeleteAssistantId}`, null, adminToken);
+    handleResult(r);
+    if (r.ok) {
+      setPendingDeleteAssistantId(null);
+      await loadAdminAiAssistants();
+      if (hasAiAccess) await loadAiAssistants(aiToken);
+    }
+  }
+
+  async function openAiExtraInfoModal(assistantId) {
+    if (!assistantId) return;
+    setAiExtraInfoAssistantId(assistantId);
+    setIsAiExtraInfoModalOpen(true);
+    const r = await request(
+      "GET",
+      `/ai/assistant-extra-fields?assistantId=${encodeURIComponent(assistantId)}`,
+      null,
+      aiToken
+    );
+    handleResult(r);
+    if (!r.ok) return;
+    const defs = Array.isArray(r.data?.definitions) ? r.data.definitions : [];
+    const vals = r.data?.values && typeof r.data.values === "object" ? r.data.values : {};
+    setAiExtraInfoDefinitions(defs);
+    const merged = {};
+    for (const d of defs) {
+      merged[d.fieldKey] = vals[d.fieldKey] ?? "";
+    }
+    setAiExtraInfoValues(merged);
+  }
+
+  async function submitAiExtraInfoModal() {
+    if (!aiExtraInfoAssistantId) return;
+    const r = await request(
+      "PUT",
+      "/ai/assistant-extra-fields",
+      { assistantId: aiExtraInfoAssistantId, values: aiExtraInfoValues },
+      aiToken
+    );
+    handleResult(r);
+    if (r.ok) setIsAiExtraInfoModalOpen(false);
+  }
+
+  async function loadAdminExtraFields(assistantId) {
+    const r = await request("GET", `/admin/ai-assistants/${assistantId}/extra-fields`, null, adminToken);
+    handleResult(r);
+    if (!r.ok) return;
+    setAdminExtraFieldsList(Array.isArray(r.data) ? r.data : []);
+  }
+
+  function openAdminExtraFieldCreate() {
+    setAdminExtraFieldDraft({
+      id: "",
+      fieldKey: "",
+      label: "",
+      fieldType: "text",
+      sortOrder: adminExtraFieldsList.length ? Math.max(...adminExtraFieldsList.map((x) => x.sortOrder || 0)) + 1 : 0,
+      isRequired: false
+    });
+    setAdminExtraFieldModalKind("create");
+  }
+
+  function openAdminExtraFieldEdit(row) {
+    setAdminExtraFieldDraft({
+      id: row.id,
+      fieldKey: row.fieldKey || "",
+      label: row.label || "",
+      fieldType: row.fieldType || "text",
+      sortOrder: row.sortOrder ?? 0,
+      isRequired: Boolean(row.isRequired)
+    });
+    setAdminExtraFieldModalKind("edit");
+  }
+
+  async function submitAdminExtraFieldModal() {
+    const aid = assistantDraft.id;
+    if (!aid) return setErrorView("Сначала сохрани помощника.");
+    const label = (adminExtraFieldDraft.label || "").trim();
+    const rawKey = (adminExtraFieldDraft.fieldKey || "").trim().toLowerCase().replace(/\s+/g, "_");
+    if (!rawKey || !label) return setErrorView("Укажи ключ поля (латиница, цифры, _) и подпись.");
+    const body = {
+      fieldKey: rawKey,
+      label,
+      fieldType: adminExtraFieldDraft.fieldType || "text",
+      sortOrder: Number(adminExtraFieldDraft.sortOrder) || 0,
+      isRequired: Boolean(adminExtraFieldDraft.isRequired)
+    };
+    let r;
+    if (adminExtraFieldModalKind === "create") {
+      r = await request("POST", `/admin/ai-assistants/${aid}/extra-fields`, body, adminToken);
+    } else if (adminExtraFieldModalKind === "edit" && adminExtraFieldDraft.id) {
+      r = await request(
+        "PUT",
+        `/admin/ai-assistants/${aid}/extra-fields/${adminExtraFieldDraft.id}`,
+        body,
+        adminToken
+      );
+    } else {
+      return;
+    }
+    handleResult(r);
+    if (r.ok) {
+      setAdminExtraFieldModalKind(null);
+      await loadAdminExtraFields(aid);
+    }
+  }
+
+  async function confirmDeleteExtraField() {
+    if (!pendingDeleteExtraField) return;
+    const { assistantId, fieldId } = pendingDeleteExtraField;
+    const r = await request(
+      "DELETE",
+      `/admin/ai-assistants/${assistantId}/extra-fields/${fieldId}`,
+      null,
+      adminToken
+    );
+    handleResult(r);
+    if (r.ok) {
+      setPendingDeleteExtraField(null);
+      await loadAdminExtraFields(assistantId);
     }
   }
 
@@ -1275,6 +1544,15 @@ function AppContent() {
     [selectedWorkoutHistorySession]
   );
 
+  const previewAssistantRow = useMemo(() => {
+    if (!chatAssistantPreviewId) return null;
+    return (
+      aiAssistants.find((x) => String(x.id) === String(chatAssistantPreviewId))
+      ?? adminAiAssistants.find((x) => String(x.id) === String(chatAssistantPreviewId))
+      ?? null
+    );
+  }, [chatAssistantPreviewId, aiAssistants, adminAiAssistants]);
+
   const isLoggedIn = Boolean(accessToken);
   const isAdmin = currentUserRole === "Admin";
   const hasAiAccess = currentUserRole === "Admin" || currentUserRole === "AiUser";
@@ -1397,9 +1675,14 @@ function AppContent() {
                     loadWorkoutSessions();
                     loadWorkoutExerciseCatalog();
                   }
+                  if (id === "ai") {
+                    loadAiAssistants(aiToken);
+                  }
                   if (id === "admin") {
                     loadUsers();
                     loadAdminDialogs();
+                    loadAdminAiAssistants();
+                    if (hasAiAccess) loadAiAssistants(aiToken);
                   }
                 }}
                 onLogout={() => {
@@ -1422,49 +1705,115 @@ function AppContent() {
               />
 
         {tab === "ai" && hasAiAccess && <section className="card-grid">
-          <section className="card">
-            <h3>AI помощник</h3>
-            <div className="row">
-              <select value={currentDialogId} onChange={(e) => { setCurrentDialogId(e.target.value); loadDialogMessages(e.target.value); }}>
-                <option value="">Нет диалогов</option>
-                {dialogOptions}
-              </select>
-              <button
-                onClick={() => {
-                  setAiDialogTitleDraft("");
-                  setAiDialogModalKind("new");
-                }}
-              >
-                + Новый
-              </button>
-              <button
-                onClick={() => {
-                  if (!currentDialogId) return;
-                  const current = dialogs.find((d) => d.id === currentDialogId);
-                  setAiDialogTitleDraft(current?.title || "Новый диалог");
-                  setAiDialogModalKind("rename");
-                }}
-                title="Переименовать"
-              >
-                ✏️
-              </button>
-              <button
-                className="danger-btn"
-                onClick={() => {
-                  if (!currentDialogId) return;
-                  setAiDialogModalKind("delete");
-                }}
-                title="Удалить"
-              >
-                🗑️
-              </button>
-            </div>
-            <div className="chat-messages">
-              {chatMessages.map((m, i) => <div key={i} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>{m.content}</div>)}
-            </div>
-            <div className="row">
-              <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Введите сообщение..." />
-              <button onClick={sendChat}>Отправить</button>
+          <section className="card full-span">
+            <h3>ИИ помощники</h3>
+            {aiAssistants.length === 0 && (
+              <p className="subtitle">Пока нет активных помощников. Администратор может добавить их во вкладке «Админ».</p>
+            )}
+            {aiAssistants.length > 0 && (
+              <ul className="ai-assistant-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {aiAssistants.map((a) => (
+                  <li
+                    key={a.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      padding: "10px 0",
+                      borderBottom: "1px solid var(--border-subtle, rgba(255,255,255,0.08))"
+                    }}
+                  >
+                    <div>
+                      <strong>{a.name}</strong>
+                      {a.description ? <div className="subtitle" style={{ marginTop: 4 }}>{a.description}</div> : null}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch", flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        className={a.selected ? "" : "ghost-btn"}
+                        onClick={() => toggleAiAssistantRow(a.id, a.selected)}
+                      >
+                        {a.selected ? "Выключить" : "Включить"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => openAiExtraInfoModal(a.id)}
+                        title="Заполнить дополнительные поля для этого помощника"
+                      >
+                        Доп. поля
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div
+              className="ai-assistant-chat-panel"
+              style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.12))" }}
+            >
+              <h4 style={{ marginTop: 0 }}>Чат с помощником</h4>
+              <p className="subtitle">
+                {aiAssistants.some((x) => x.selected) ? (
+                  <>
+                    Сейчас ответы строятся с помощником «
+                    <strong>{aiAssistants.find((x) => x.selected)?.name}</strong>
+                    »: его системный промпт и заполненные для него доп. поля передаются в модель вместе с историей диалога.
+                  </>
+                ) : (
+                  <>
+                    Помощник не включён — модель видит только историю этого диалога без дополнительного системного промпта. Включи помощника кнопкой «Включить» выше.
+                  </>
+                )}
+              </p>
+              <p className="subtitle">Можно создать отдельный диалог или писать без выбранного диалога — тогда создастся новый.</p>
+              <div className="row">
+                <select value={currentDialogId} onChange={(e) => { setCurrentDialogId(e.target.value); loadDialogMessages(e.target.value); }}>
+                  <option value="">Нет диалогов</option>
+                  {dialogOptions}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiDialogTitleDraft("");
+                    setAiDialogModalKind("new");
+                  }}
+                >
+                  + Новый
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!currentDialogId) return;
+                    const current = dialogs.find((d) => d.id === currentDialogId);
+                    setAiDialogTitleDraft(current?.title || "Новый диалог");
+                    setAiDialogModalKind("rename");
+                  }}
+                  title="Переименовать"
+                >
+                  ✏️
+                </button>
+                <button
+                  type="button"
+                  className="danger-btn"
+                  onClick={() => {
+                    if (!currentDialogId) return;
+                    setAiDialogModalKind("delete");
+                  }}
+                  title="Удалить"
+                >
+                  🗑️
+                </button>
+              </div>
+              <div className="chat-messages">
+                {chatMessages.map((m, i) => <div key={i} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>{m.content}</div>)}
+              </div>
+              <div className="row">
+                <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Введите сообщение..." />
+                <button type="button" onClick={sendChat}>Отправить</button>
+              </div>
             </div>
           </section>
         </section>}
@@ -1798,6 +2147,137 @@ function AppContent() {
           </section>
 
           <section className="card full-span">
+            <h3>ИИ помощники</h3>
+            <div className="row">
+              <button type="button" onClick={openAssistantCreateModal}>Новый помощник</button>
+              <button type="button" className="ghost-btn" onClick={() => loadAdminAiAssistants()}>Обновить</button>
+            </div>
+            <div className="users-table-wrap">
+              <table className="users-table">
+                <thead>
+                  <tr>
+                    <th>Название</th>
+                    <th>Порядок</th>
+                    <th>Активен</th>
+                    <th>Промпт</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminAiAssistants.length === 0 && (
+                    <tr><td colSpan="5">Нет записей</td></tr>
+                  )}
+                  {adminAiAssistants.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.name}</td>
+                      <td>{row.sortOrder}</td>
+                      <td>{row.isActive ? "Да" : "Нет"}</td>
+                      <td className="admin-ai-summary-cell">{row.systemPrompt ? `${String(row.systemPrompt).slice(0, 80)}${String(row.systemPrompt).length > 80 ? "…" : ""}` : "—"}</td>
+                      <td className="admin-actions">
+                        <button type="button" onClick={() => openAssistantEditModal(row)} title="Редактировать">✏️</button>
+                        <button
+                          type="button"
+                          className={String(chatAssistantPreviewId) === String(row.id) ? "" : "ghost-btn"}
+                          disabled={!row.isActive}
+                          title={
+                            row.isActive
+                              ? "Открыть пробный чат с этим помощником (без смены выбора на вкладке ИИ)"
+                              : "Сначала отметьте помощника как активный"
+                          }
+                          onClick={() => {
+                            if (!row.isActive) return;
+                            setChatAssistantPreviewId(row.id);
+                            requestAnimationFrame(() =>
+                              adminAssistantTestChatPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+                            );
+                          }}
+                        >
+                          Тест чата
+                        </button>
+                        <button type="button" className="danger-btn" onClick={() => setPendingDeleteAssistantId(row.id)} title="Удалить">🗑️</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="card full-span" ref={adminAssistantTestChatPanelRef}>
+            <h3>Пробный чат с помощником</h3>
+            <p className="subtitle">
+              Проверка ответов под промптом помощника для твоего аккаунта. Не меняет пользовательский выбор «Включить» на вкладке ИИ. Для запроса API нужен{" "}
+              <strong>активный</strong> помощник — кнопка «Тест чата» в таблице выше неактивна, пока в карточке помощника не стоит «Активен».
+            </p>
+            <p className="subtitle">
+              {chatAssistantPreviewId && !previewAssistantRow ? (
+                <>
+                  Ссылка на помощника устарела.
+                  <button type="button" className="ghost-btn" style={{ marginLeft: 8 }} onClick={() => setChatAssistantPreviewId(null)}>
+                    Сбросить
+                  </button>
+                </>
+              ) : previewAssistantRow ? (
+                <>
+                  <strong>Пробный режим:</strong> сообщения уходят с помощником «<strong>{previewAssistantRow.name}</strong>
+                  ». Доп. поля подставляются как на вкладке ИИ для этого помощника.
+                  <button type="button" className="ghost-btn" style={{ marginLeft: 8 }} onClick={() => setChatAssistantPreviewId(null)}>
+                    Выйти из пробного режима
+                  </button>
+                </>
+              ) : (
+                <>Выбери помощника кнопкой «Тест чата» в таблице или пиши на вкладке «ИИ» с включённым помощником — там же заполняются доп. поля.</>
+              )}
+            </p>
+            <p className="subtitle">Тот же список диалогов, что и на вкладке ИИ; можно создать отдельный диалог только для проверок.</p>
+            <div className="row">
+              <select value={currentDialogId} onChange={(e) => { setCurrentDialogId(e.target.value); loadDialogMessages(e.target.value); }}>
+                <option value="">Нет диалогов</option>
+                {dialogOptions}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setAiDialogTitleDraft("");
+                  setAiDialogModalKind("new");
+                }}
+              >
+                + Новый
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!currentDialogId) return;
+                  const current = dialogs.find((d) => d.id === currentDialogId);
+                  setAiDialogTitleDraft(current?.title || "Новый диалог");
+                  setAiDialogModalKind("rename");
+                }}
+                title="Переименовать"
+              >
+                ✏️
+              </button>
+              <button
+                type="button"
+                className="danger-btn"
+                onClick={() => {
+                  if (!currentDialogId) return;
+                  setAiDialogModalKind("delete");
+                }}
+                title="Удалить"
+              >
+                🗑️
+              </button>
+            </div>
+            <div className="chat-messages">
+              {chatMessages.map((m, i) => <div key={i} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>{m.content}</div>)}
+            </div>
+            <div className="row">
+              <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Сообщение для проверки…" />
+              <button type="button" onClick={sendChat}>Отправить</button>
+            </div>
+          </section>
+
+          <section className="card full-span">
             <h3>Диалоги (Админ)</h3>
             <label>Пользователь</label>
             <div className="row">
@@ -1930,6 +2410,217 @@ function AppContent() {
                 <button className="danger-btn" onClick={deleteAdminUserFromModal} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setIsDeleteModalOpen(false)}>Отмена</button>
               </div>
+          </ModalShell>
+        )}
+        {tab === "admin" && isAdmin && (assistantModalKind === "create" || assistantModalKind === "edit") && (
+          <ModalShell
+            open={Boolean(assistantModalKind)}
+            onClose={() => {
+              setAssistantModalKind(null);
+              setAdminExtraFieldsList([]);
+            }}
+            wide
+            scroll
+          >
+            <h3>{assistantModalKind === "create" ? "Новый ИИ помощник" : "ИИ помощник"}</h3>
+            <p className="subtitle">Системный промпт, настройки и дополнительные поля для пользователей — в одном окне.</p>
+            <label>Название</label>
+            <input
+              value={assistantDraft.name}
+              onChange={(e) => setAssistantDraft((d) => ({ ...d, name: e.target.value }))}
+              placeholder="Краткое имя"
+            />
+            <label>Описание (для панели пользователя)</label>
+            <input
+              value={assistantDraft.description}
+              onChange={(e) => setAssistantDraft((d) => ({ ...d, description: e.target.value }))}
+              placeholder="Необязательно"
+            />
+            <label>Системный промпт</label>
+            <textarea
+              value={assistantDraft.systemPrompt}
+              onChange={(e) => setAssistantDraft((d) => ({ ...d, systemPrompt: e.target.value }))}
+              rows={8}
+              placeholder="Инструкции для модели"
+            />
+            <label>Настройки (JSON, необязательно)</label>
+            <textarea
+              value={assistantDraft.settingsJson}
+              onChange={(e) => setAssistantDraft((d) => ({ ...d, settingsJson: e.target.value }))}
+              rows={3}
+              placeholder='Например: {"temperature": 0.7}'
+            />
+            <label>Порядок сортировки</label>
+            <input
+              type="number"
+              value={assistantDraft.sortOrder}
+              onChange={(e) => setAssistantDraft((d) => ({ ...d, sortOrder: Number(e.target.value) }))}
+            />
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={assistantDraft.isActive}
+                onChange={(e) => setAssistantDraft((d) => ({ ...d, isActive: e.target.checked }))}
+              />
+              Активен (доступен пользователям)
+            </label>
+
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.12))" }}>
+              <h4 style={{ marginTop: 0 }}>Дополнительные поля</h4>
+              <p className="subtitle">
+                Ключ — латиница, цифры и подчёркивание. Тип: текст, многострочный текст или число. Поля заполняют пользователи во вкладке ИИ.
+              </p>
+              {!assistantDraft.id ? (
+                <p className="subtitle">Нажми «Сохранить помощника» ниже — после создания записи здесь можно добавить поля.</p>
+              ) : (
+                <>
+                  <div className="row">
+                    <button
+                      type="button"
+                      onClick={openAdminExtraFieldCreate}
+                    >
+                      Новое поле
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => loadAdminExtraFields(assistantDraft.id)}
+                    >
+                      Обновить список полей
+                    </button>
+                  </div>
+                  <div className="users-table-wrap">
+                    <table className="users-table">
+                      <thead>
+                        <tr>
+                          <th>Ключ</th>
+                          <th>Подпись</th>
+                          <th>Тип</th>
+                          <th>Порядок</th>
+                          <th>Обяз.</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminExtraFieldsList.length === 0 && (
+                          <tr><td colSpan="6">Нет полей</td></tr>
+                        )}
+                        {adminExtraFieldsList.map((f) => (
+                          <tr key={f.id}>
+                            <td>{f.fieldKey}</td>
+                            <td>{f.label}</td>
+                            <td>{f.fieldType}</td>
+                            <td>{f.sortOrder}</td>
+                            <td>{f.isRequired ? "Да" : "Нет"}</td>
+                            <td className="admin-actions">
+                              <button type="button" onClick={() => openAdminExtraFieldEdit(f)} title="Редактировать">✏️</button>
+                              <button
+                                type="button"
+                                className="danger-btn"
+                                onClick={() =>
+                                  setPendingDeleteExtraField({ assistantId: assistantDraft.id, fieldId: f.id })
+                                }
+                                title="Удалить"
+                              >
+                                🗑️
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="row">
+              <button type="button" onClick={submitAssistantModal}>Сохранить помощника</button>
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => {
+                  setAssistantModalKind(null);
+                  setAdminExtraFieldsList([]);
+                }}
+              >
+                Закрыть
+              </button>
+            </div>
+          </ModalShell>
+        )}
+        {tab === "admin" && isAdmin && pendingDeleteAssistantId && (
+          <ModalShell open={Boolean(pendingDeleteAssistantId)} onClose={() => setPendingDeleteAssistantId(null)}>
+            <h3>Удалить помощника</h3>
+            <p className="subtitle">Удалить эту запись? У пользователей с выбранным помощником выбор будет сброшен.</p>
+            <div className="row">
+              <button type="button" className="danger-btn" onClick={confirmDeleteAssistant} title="Удалить">🗑️</button>
+              <button type="button" className="ghost-btn" onClick={() => setPendingDeleteAssistantId(null)}>Отмена</button>
+            </div>
+          </ModalShell>
+        )}
+        {tab === "admin" && isAdmin && (adminExtraFieldModalKind === "create" || adminExtraFieldModalKind === "edit") && (
+          <ModalShell open={Boolean(adminExtraFieldModalKind)} onClose={() => setAdminExtraFieldModalKind(null)}>
+            <h3>{adminExtraFieldModalKind === "create" ? "Новое поле" : "Редактировать поле"}</h3>
+            <label>Ключ поля</label>
+            <input
+              value={adminExtraFieldDraft.fieldKey}
+              onChange={(e) => setAdminExtraFieldDraft((d) => ({ ...d, fieldKey: e.target.value }))}
+              placeholder="например training_goal"
+              disabled={adminExtraFieldModalKind === "edit"}
+            />
+            {adminExtraFieldModalKind === "edit" && (
+              <p className="subtitle">Ключ после создания не меняется.</p>
+            )}
+            <label>Подпись для пользователя</label>
+            <input
+              value={adminExtraFieldDraft.label}
+              onChange={(e) => setAdminExtraFieldDraft((d) => ({ ...d, label: e.target.value }))}
+              placeholder="Отображаемое название"
+            />
+            <label>Тип</label>
+            <select
+              value={adminExtraFieldDraft.fieldType}
+              onChange={(e) => setAdminExtraFieldDraft((d) => ({ ...d, fieldType: e.target.value }))}
+            >
+              <option value="text">Текст</option>
+              <option value="textarea">Многострочный текст</option>
+              <option value="number">Число</option>
+            </select>
+            <label>Порядок</label>
+            <input
+              type="number"
+              value={adminExtraFieldDraft.sortOrder}
+              onChange={(e) => setAdminExtraFieldDraft((d) => ({ ...d, sortOrder: Number(e.target.value) }))}
+            />
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={adminExtraFieldDraft.isRequired}
+                onChange={(e) => setAdminExtraFieldDraft((d) => ({ ...d, isRequired: e.target.checked }))}
+              />
+              Обязательное поле
+            </label>
+            <div className="row">
+              <button type="button" onClick={submitAdminExtraFieldModal}>Сохранить</button>
+              <button type="button" className="ghost-btn" onClick={() => setAdminExtraFieldModalKind(null)}>
+                Отмена
+              </button>
+            </div>
+          </ModalShell>
+        )}
+        {tab === "admin" && isAdmin && pendingDeleteExtraField && (
+          <ModalShell open={Boolean(pendingDeleteExtraField)} onClose={() => setPendingDeleteExtraField(null)}>
+            <h3>Удалить поле</h3>
+            <p className="subtitle">Значения пользователей для этого ключа перестанут использоваться.</p>
+            <div className="row">
+              <button type="button" className="danger-btn" onClick={confirmDeleteExtraField} title="Удалить">
+                🗑️
+              </button>
+              <button type="button" className="ghost-btn" onClick={() => setPendingDeleteExtraField(null)}>
+                Отмена
+              </button>
+            </div>
           </ModalShell>
         )}
 
@@ -2071,7 +2762,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "ai" && hasAiAccess && aiDialogModalKind === "new" && (
+        {(tab === "ai" || tab === "admin") && hasAiAccess && aiDialogModalKind === "new" && (
           <ModalShell
             open={aiDialogModalKind === "new"}
             onClose={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}
@@ -2089,7 +2780,7 @@ function AppContent() {
               </div>
           </ModalShell>
         )}
-        {tab === "ai" && hasAiAccess && aiDialogModalKind === "rename" && (
+        {(tab === "ai" || tab === "admin") && hasAiAccess && aiDialogModalKind === "rename" && (
           <ModalShell
             open={aiDialogModalKind === "rename"}
             onClose={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}
@@ -2107,7 +2798,7 @@ function AppContent() {
               </div>
           </ModalShell>
         )}
-        {tab === "ai" && hasAiAccess && aiDialogModalKind === "delete" && (
+        {(tab === "ai" || tab === "admin") && hasAiAccess && aiDialogModalKind === "delete" && (
           <ModalShell open={aiDialogModalKind === "delete"} onClose={() => setAiDialogModalKind(null)}>
               <h3>Удалить диалог</h3>
               <p className="subtitle">Удалить текущий выбранный диалог без восстановления?</p>
@@ -2115,6 +2806,62 @@ function AppContent() {
                 <button className="danger-btn" onClick={submitAiDeleteDialog} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setAiDialogModalKind(null)}>Отмена</button>
               </div>
+          </ModalShell>
+        )}
+        {hasAiAccess && isAiExtraInfoModalOpen && (
+          <ModalShell open={isAiExtraInfoModalOpen} onClose={() => setIsAiExtraInfoModalOpen(false)} wide scroll>
+            <h3>Дополнительная информация</h3>
+            <p className="subtitle">
+              Помощник:{" "}
+              <strong>{aiAssistants.find((x) => String(x.id) === String(aiExtraInfoAssistantId))?.name || "—"}</strong>
+              . Поля задаёт администратор для каждого помощника отдельно; при чате с выбранным помощником они попадают в контекст модели.
+            </p>
+            {aiExtraInfoDefinitions.length === 0 ? (
+              <p className="subtitle">Для этого помощника пока нет дополнительных полей.</p>
+            ) : (
+              aiExtraInfoDefinitions.map((def) => (
+                <div key={def.id || def.fieldKey}>
+                  <label>
+                    {def.label}
+                    {def.isRequired ? " *" : ""}
+                    <span className="subtitle" style={{ marginLeft: 6 }}>({def.fieldKey})</span>
+                  </label>
+                  {def.fieldType === "textarea" ? (
+                    <textarea
+                      rows={4}
+                      value={aiExtraInfoValues[def.fieldKey] ?? ""}
+                      onChange={(e) =>
+                        setAiExtraInfoValues((prev) => ({ ...prev, [def.fieldKey]: e.target.value }))
+                      }
+                    />
+                  ) : def.fieldType === "number" ? (
+                    <input
+                      type="number"
+                      value={aiExtraInfoValues[def.fieldKey] ?? ""}
+                      onChange={(e) =>
+                        setAiExtraInfoValues((prev) => ({ ...prev, [def.fieldKey]: e.target.value }))
+                      }
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={aiExtraInfoValues[def.fieldKey] ?? ""}
+                      onChange={(e) =>
+                        setAiExtraInfoValues((prev) => ({ ...prev, [def.fieldKey]: e.target.value }))
+                      }
+                    />
+                  )}
+                </div>
+              ))
+            )}
+            <div className="row">
+              <button type="button" onClick={submitAiExtraInfoModal} disabled={aiExtraInfoDefinitions.length === 0}>
+                Сохранить
+              </button>
+              <button type="button" className="ghost-btn" onClick={() => setIsAiExtraInfoModalOpen(false)}>
+                Отмена
+              </button>
+            </div>
           </ModalShell>
         )}
 

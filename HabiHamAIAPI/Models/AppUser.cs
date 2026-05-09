@@ -16,6 +16,8 @@ public sealed class AppUser
     public string? FirstName { get; set; }
     public string? LastName { get; set; }
     public string? AiSummary { get; set; }
+    public Guid? SelectedAiAssistantId { get; set; }
+    public AiAssistant? SelectedAiAssistant { get; set; }
     public List<ChatDialog> Dialogs { get; set; } = [];
     public List<WorkoutSession> WorkoutSessions { get; set; } = [];
 }

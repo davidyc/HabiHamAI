@@ -1,3 +1,4 @@
+using System.Text.Json;
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -53,15 +54,41 @@ public sealed class AiController : ControllerBase
         dialog.UpdatedAtUtc = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        await ClearStaleAssistantSelectionIfNeeded(currentUser, cancellationToken);
+
+        Guid? assistantForChat = null;
+        if (request.AssistantId is { } reqAssistantId && reqAssistantId != Guid.Empty)
+        {
+            var assistantOk = await _dbContext.AiAssistants.AnyAsync(
+                x => x.Id == reqAssistantId && x.IsActive,
+                cancellationToken);
+            if (!assistantOk)
+            {
+                return BadRequest(new { message = "Assistant not found or inactive." });
+            }
+
+            assistantForChat = reqAssistantId;
+        }
+        else
+        {
+            assistantForChat = currentUser.SelectedAiAssistantId;
+        }
+
         var allMessages = await _dbContext.ChatMessages
             .Where(x => x.DialogId == dialog.Id)
             .OrderBy(x => x.CreatedAtUtc)
             .Select(x => new KernestalAiService.AiChatMessage(x.Role, x.Content))
             .ToListAsync(cancellationToken);
 
+        var messagesForLlm = await BuildMessagesWithSystemPromptAsync(
+            currentUser.Id,
+            assistantForChat,
+            allMessages,
+            cancellationToken);
+
         try
         {
-            var response = await _kernestalAiService.GetCompletionAsync(allMessages, cancellationToken);
+            var response = await _kernestalAiService.GetCompletionAsync(messagesForLlm, cancellationToken);
 
             var assistantMessage = new ChatMessage
             {
@@ -218,6 +245,311 @@ public sealed class AiController : ControllerBase
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return Ok(new { message = "Dialog deleted." });
+    }
+
+    [HttpGet("assistants")]
+    public async Task<IActionResult> GetAssistants(CancellationToken cancellationToken)
+    {
+        var currentUser = await ResolveCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new { message = "User not found." });
+        }
+
+        await ClearStaleAssistantSelectionIfNeeded(currentUser, cancellationToken);
+
+        var selectedId = currentUser.SelectedAiAssistantId;
+        var items = await _dbContext.AiAssistants
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Name)
+            .Select(x => new
+            {
+                id = x.Id,
+                name = x.Name,
+                description = x.Description,
+                sortOrder = x.SortOrder,
+                selected = selectedId != null && selectedId == x.Id
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(new { assistants = items, selectedAssistantId = selectedId });
+    }
+
+    [HttpPut("assistants/selection")]
+    public async Task<IActionResult> SetAssistantSelection([FromBody] AiAssistantSelectionRequest request, CancellationToken cancellationToken)
+    {
+        var currentUser = await ResolveCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new { message = "User not found." });
+        }
+
+        if (request.AssistantId is null)
+        {
+            currentUser.SelectedAiAssistantId = null;
+        }
+        else
+        {
+            var exists = await _dbContext.AiAssistants.AnyAsync(
+                x => x.Id == request.AssistantId && x.IsActive,
+                cancellationToken);
+            if (!exists)
+            {
+                return BadRequest(new { message = "Assistant not found or inactive." });
+            }
+
+            currentUser.SelectedAiAssistantId = request.AssistantId;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { selectedAssistantId = currentUser.SelectedAiAssistantId });
+    }
+
+    [HttpGet("assistant-extra-fields")]
+    public async Task<IActionResult> GetAssistantExtraFields([FromQuery] Guid assistantId, CancellationToken cancellationToken)
+    {
+        var currentUser = await ResolveCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new { message = "User not found." });
+        }
+
+        var assistantOk = await _dbContext.AiAssistants
+            .AsNoTracking()
+            .AnyAsync(x => x.Id == assistantId && x.IsActive, cancellationToken);
+        if (!assistantOk)
+        {
+            return NotFound(new { message = "Assistant not found or inactive." });
+        }
+
+        var definitions = await _dbContext.AiAssistantFieldDefinitions
+            .AsNoTracking()
+            .Where(x => x.AiAssistantId == assistantId)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Label)
+            .Select(x => new
+            {
+                id = x.Id,
+                fieldKey = x.FieldKey,
+                label = x.Label,
+                fieldType = x.FieldType,
+                sortOrder = x.SortOrder,
+                isRequired = x.IsRequired
+            })
+            .ToListAsync(cancellationToken);
+
+        var extrasRow = await _dbContext.UserAiAssistantExtras
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.UserId == currentUser.Id && x.AiAssistantId == assistantId,
+                cancellationToken);
+
+        Dictionary<string, string> values = new();
+        if (extrasRow is not null && !string.IsNullOrWhiteSpace(extrasRow.ValuesJson))
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(extrasRow.ValuesJson);
+                if (parsed is not null)
+                {
+                    values = parsed;
+                }
+            }
+            catch
+            {
+                // ignore malformed json
+            }
+        }
+
+        return Ok(new { definitions, values });
+    }
+
+    [HttpPut("assistant-extra-fields")]
+    public async Task<IActionResult> PutAssistantExtraFields([FromBody] UserAiAssistantExtrasPutRequest request, CancellationToken cancellationToken)
+    {
+        var currentUser = await ResolveCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new { message = "User not found." });
+        }
+
+        var assistantOk = await _dbContext.AiAssistants
+            .AnyAsync(x => x.Id == request.AssistantId && x.IsActive, cancellationToken);
+        if (!assistantOk)
+        {
+            return NotFound(new { message = "Assistant not found or inactive." });
+        }
+
+        var defs = await _dbContext.AiAssistantFieldDefinitions
+            .Where(x => x.AiAssistantId == request.AssistantId)
+            .ToListAsync(cancellationToken);
+
+        var allowed = defs.Select(x => x.FieldKey).ToHashSet(StringComparer.Ordinal);
+        var incoming = request.Values ?? new Dictionary<string, string>();
+
+        var cleaned = new Dictionary<string, string>();
+        foreach (var kv in incoming)
+        {
+            if (!allowed.Contains(kv.Key))
+            {
+                continue;
+            }
+
+            cleaned[kv.Key] = kv.Value ?? "";
+        }
+
+        foreach (var d in defs.Where(x => x.IsRequired))
+        {
+            if (!cleaned.TryGetValue(d.FieldKey, out var v) || string.IsNullOrWhiteSpace(v))
+            {
+                return BadRequest(new { message = $"Заполни обязательное поле: {d.Label}" });
+            }
+        }
+
+        var json = JsonSerializer.Serialize(cleaned);
+
+        var row = await _dbContext.UserAiAssistantExtras
+            .FirstOrDefaultAsync(
+                x => x.UserId == currentUser.Id && x.AiAssistantId == request.AssistantId,
+                cancellationToken);
+
+        if (row is null)
+        {
+            row = new UserAiAssistantExtras
+            {
+                Id = Guid.NewGuid(),
+                UserId = currentUser.Id,
+                AiAssistantId = request.AssistantId,
+                ValuesJson = json
+            };
+            _dbContext.UserAiAssistantExtras.Add(row);
+        }
+        else
+        {
+            row.ValuesJson = json;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { message = "Saved.", values = cleaned });
+    }
+
+    private async Task ClearStaleAssistantSelectionIfNeeded(AppUser user, CancellationToken cancellationToken)
+    {
+        if (user.SelectedAiAssistantId is null)
+        {
+            return;
+        }
+
+        var ok = await _dbContext.AiAssistants.AnyAsync(
+            x => x.Id == user.SelectedAiAssistantId && x.IsActive,
+            cancellationToken);
+        if (!ok)
+        {
+            user.SelectedAiAssistantId = null;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private async Task<List<KernestalAiService.AiChatMessage>> BuildMessagesWithSystemPromptAsync(
+        Guid userId,
+        Guid? assistantIdForChat,
+        IReadOnlyList<KernestalAiService.AiChatMessage> dialogMessages,
+        CancellationToken cancellationToken)
+    {
+        if (assistantIdForChat is null || assistantIdForChat == Guid.Empty)
+        {
+            return dialogMessages.ToList();
+        }
+
+        var systemPrompt = await _dbContext.AiAssistants
+            .AsNoTracking()
+            .Where(x => x.Id == assistantIdForChat && x.IsActive)
+            .Select(x => x.SystemPrompt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(systemPrompt))
+        {
+            return dialogMessages.ToList();
+        }
+
+        var assistantId = assistantIdForChat.Value;
+        var extrasBlock = await BuildUserExtrasBlockAsync(userId, assistantId, cancellationToken);
+        var fullSystem = systemPrompt.Trim();
+        if (!string.IsNullOrWhiteSpace(extrasBlock))
+        {
+            fullSystem += "\n\n" + extrasBlock;
+        }
+
+        var list = new List<KernestalAiService.AiChatMessage>
+        {
+            new("system", fullSystem)
+        };
+        list.AddRange(dialogMessages);
+        return list;
+    }
+
+    private async Task<string?> BuildUserExtrasBlockAsync(Guid userId, Guid assistantId, CancellationToken cancellationToken)
+    {
+        var defs = await _dbContext.AiAssistantFieldDefinitions
+            .AsNoTracking()
+            .Where(x => x.AiAssistantId == assistantId)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Label)
+            .ToListAsync(cancellationToken);
+
+        if (defs.Count == 0)
+        {
+            return null;
+        }
+
+        var row = await _dbContext.UserAiAssistantExtras
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserId == userId && x.AiAssistantId == assistantId, cancellationToken);
+
+        Dictionary<string, string> map = new();
+        if (row is not null && !string.IsNullOrWhiteSpace(row.ValuesJson))
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(row.ValuesJson);
+                if (parsed is not null)
+                {
+                    map = parsed;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        var lines = new List<string>();
+        foreach (var d in defs)
+        {
+            if (!map.TryGetValue(d.FieldKey, out var val))
+            {
+                continue;
+            }
+
+            val ??= "";
+            if (string.IsNullOrWhiteSpace(val))
+            {
+                continue;
+            }
+
+            lines.Add($"{d.Label}: {val.Trim()}");
+        }
+
+        if (lines.Count == 0)
+        {
+            return null;
+        }
+
+        return "Дополнительные данные пользователя:\n" + string.Join("\n", lines);
     }
 
     private async Task<AppUser?> ResolveCurrentUserAsync(CancellationToken cancellationToken)
