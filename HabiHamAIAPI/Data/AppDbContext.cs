@@ -116,6 +116,7 @@ public sealed class AppDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Id).HasColumnName("id");
             entity.Property(x => x.UserId).HasColumnName("user_id");
+            entity.Property(x => x.AiAssistantId).HasColumnName("ai_assistant_id");
             entity.Property(x => x.Title).HasColumnName("title").HasMaxLength(200).IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
@@ -124,6 +125,10 @@ public sealed class AppDbContext : DbContext
                 .WithMany(x => x.Dialogs)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.AiAssistant)
+                .WithMany()
+                .HasForeignKey(x => x.AiAssistantId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ChatMessage>(entity =>

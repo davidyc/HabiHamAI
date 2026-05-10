@@ -44,6 +44,8 @@ public sealed class AdminDialogsController : ControllerBase
                 userId = x.UserId,
                 username = x.User != null ? x.User.Username : string.Empty,
                 title = x.Title,
+                aiAssistantId = x.AiAssistantId,
+                aiAssistantName = x.AiAssistant != null ? x.AiAssistant.Name : null,
                 createdAtUtc = x.CreatedAtUtc,
                 updatedAtUtc = x.UpdatedAtUtc,
                 messagesCount = x.Messages.Count

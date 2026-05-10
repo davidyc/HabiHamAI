@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +14,10 @@ namespace HabiHamAIAPI.Controllers;
 [Authorize(Roles = "Admin,AiUser")]
 public sealed class AiController : ControllerBase
 {
+    private static readonly Regex UserFieldPlaceholderRegex = new(
+        @"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}",
+        RegexOptions.Compiled);
+
     private readonly KernestalAiService _kernestalAiService;
     private readonly AppDbContext _dbContext;
 
@@ -99,6 +104,7 @@ public sealed class AiController : ControllerBase
                 CreatedAtUtc = DateTime.UtcNow
             };
             _dbContext.ChatMessages.Add(assistantMessage);
+            dialog.AiAssistantId = assistantForChat;
             dialog.UpdatedAtUtc = DateTime.UtcNow;
             currentUser.AiSummary = TruncateForSummary(response, 8000);
             await _dbContext.SaveChangesAsync(cancellationToken);
@@ -132,6 +138,8 @@ public sealed class AiController : ControllerBase
             {
                 id = x.Id,
                 title = x.Title,
+                aiAssistantId = x.AiAssistantId,
+                aiAssistantName = x.AiAssistant != null ? x.AiAssistant.Name : null,
                 createdAtUtc = x.CreatedAtUtc,
                 updatedAtUtc = x.UpdatedAtUtc,
                 messagesCount = x.Messages.Count
@@ -477,11 +485,20 @@ public sealed class AiController : ControllerBase
         }
 
         var assistantId = assistantIdForChat.Value;
-        var extrasBlock = await BuildUserExtrasBlockAsync(userId, assistantId, cancellationToken);
-        var fullSystem = systemPrompt.Trim();
-        if (!string.IsNullOrWhiteSpace(extrasBlock))
+        var trimmedPrompt = systemPrompt.Trim();
+        var extrasMap = await LoadUserExtrasMapAsync(userId, assistantId, cancellationToken);
+        var usesPlaceholders = ContainsUserFieldPlaceholders(trimmedPrompt);
+        var fullSystem = usesPlaceholders
+            ? ApplyUserFieldPlaceholders(trimmedPrompt, extrasMap)
+            : trimmedPrompt;
+
+        if (!usesPlaceholders)
         {
-            fullSystem += "\n\n" + extrasBlock;
+            var extrasBlock = await BuildUserExtrasBlockFromMapAsync(assistantId, extrasMap, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(extrasBlock))
+            {
+                fullSystem += "\n\n" + extrasBlock;
+            }
         }
 
         var list = new List<KernestalAiService.AiChatMessage>
@@ -492,7 +509,73 @@ public sealed class AiController : ControllerBase
         return list;
     }
 
-    private async Task<string?> BuildUserExtrasBlockAsync(Guid userId, Guid assistantId, CancellationToken cancellationToken)
+    private static bool ContainsUserFieldPlaceholders(string template) =>
+        UserFieldPlaceholderRegex.IsMatch(template ?? "");
+
+    private static string ApplyUserFieldPlaceholders(string template, IReadOnlyDictionary<string, string> values)
+    {
+        return UserFieldPlaceholderRegex.Replace(template, m =>
+        {
+            var key = m.Groups[1].Value;
+            if (TryGetExtraValue(values, key, out var v))
+            {
+                return v.Trim();
+            }
+
+            return "";
+        });
+    }
+
+    private static bool TryGetExtraValue(IReadOnlyDictionary<string, string> values, string key, out string value)
+    {
+        if (values.TryGetValue(key, out var raw))
+        {
+            value = raw ?? "";
+            return true;
+        }
+
+        foreach (var kv in values)
+        {
+            if (string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                value = kv.Value ?? "";
+                return true;
+            }
+        }
+
+        value = "";
+        return false;
+    }
+
+    private async Task<Dictionary<string, string>> LoadUserExtrasMapAsync(
+        Guid userId,
+        Guid assistantId,
+        CancellationToken cancellationToken)
+    {
+        var row = await _dbContext.UserAiAssistantExtras
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserId == userId && x.AiAssistantId == assistantId, cancellationToken);
+
+        if (row is null || string.IsNullOrWhiteSpace(row.ValuesJson))
+        {
+            return new Dictionary<string, string>();
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(row.ValuesJson);
+            return parsed ?? new Dictionary<string, string>();
+        }
+        catch
+        {
+            return new Dictionary<string, string>();
+        }
+    }
+
+    private async Task<string?> BuildUserExtrasBlockFromMapAsync(
+        Guid assistantId,
+        IReadOnlyDictionary<string, string> map,
+        CancellationToken cancellationToken)
     {
         var defs = await _dbContext.AiAssistantFieldDefinitions
             .AsNoTracking()
@@ -506,36 +589,14 @@ public sealed class AiController : ControllerBase
             return null;
         }
 
-        var row = await _dbContext.UserAiAssistantExtras
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.UserId == userId && x.AiAssistantId == assistantId, cancellationToken);
-
-        Dictionary<string, string> map = new();
-        if (row is not null && !string.IsNullOrWhiteSpace(row.ValuesJson))
-        {
-            try
-            {
-                var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(row.ValuesJson);
-                if (parsed is not null)
-                {
-                    map = parsed;
-                }
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
         var lines = new List<string>();
         foreach (var d in defs)
         {
-            if (!map.TryGetValue(d.FieldKey, out var val))
+            if (!TryGetExtraValue(map, d.FieldKey, out var val))
             {
                 continue;
             }
 
-            val ??= "";
             if (string.IsNullOrWhiteSpace(val))
             {
                 continue;

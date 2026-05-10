@@ -1491,9 +1491,25 @@ function AppContent() {
     [users]
   );
   const adminDialogOptions = useMemo(
-    () => adminDialogs.map((d) => <option key={d.id} value={d.id}>{d.title || "Диалог"} ({d.username || "неизвестно"})</option>),
+    () =>
+      adminDialogs.map((d) => {
+        const assistantLabel = (d.aiAssistantName || "").trim()
+          ? d.aiAssistantName
+          : "без помощника";
+        return (
+          <option key={d.id} value={d.id}>
+            {d.title || "Диалог"} ({d.username || "неизвестно"}) — {assistantLabel}
+          </option>
+        );
+      }),
     [adminDialogs]
   );
+  const adminSelectedDialogAssistantLabel = useMemo(() => {
+    const d = adminDialogs.find((x) => x.id === adminCurrentDialogId);
+    if (!d) return "";
+    if ((d.aiAssistantName || "").trim()) return d.aiAssistantName;
+    return "в диалоге не было помощника";
+  }, [adminDialogs, adminCurrentDialogId]);
   const adminManageSelectedUser = useMemo(
     () => users.find((u) => u.id === adminManageUserId) || null,
     [users, adminManageUserId]
@@ -2333,6 +2349,12 @@ function AppContent() {
               </button>
             </div>
 
+            {adminCurrentDialogId ? (
+              <p style={{ color: "var(--muted)", margin: "0.35rem 0 0.5rem", fontSize: "0.92rem" }}>
+                Помощник: {adminSelectedDialogAssistantLabel}
+              </p>
+            ) : null}
+
             <div className="chat-messages small">
               {adminDialogMessages.length === 0 && <div className="chat-msg assistant">Нет сообщений для выбранного диалога.</div>}
               {adminDialogMessages.map((m) => (
@@ -2437,11 +2459,15 @@ function AppContent() {
               placeholder="Необязательно"
             />
             <label>Системный промпт</label>
+            <p className="subtitle" style={{ margin: "0 0 8px" }}>
+              В тексте можно использовать подстановки из полей помощника:{" "}
+              <code style={{ fontFamily: "ui-monospace, monospace" }}>{"{{ключ}}"}</code> (латиница, как в колонке «Ключ»).
+            </p>
             <textarea
               value={assistantDraft.systemPrompt}
               onChange={(e) => setAssistantDraft((d) => ({ ...d, systemPrompt: e.target.value }))}
               rows={8}
-              placeholder="Инструкции для модели"
+              placeholder='Инструкции для модели. Пример: Вес: {{weight}} кг; цель: {{goal}}'
             />
             <label>Настройки (JSON, необязательно)</label>
             <textarea
