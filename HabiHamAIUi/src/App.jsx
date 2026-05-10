@@ -28,6 +28,7 @@ function AppContent() {
   const [password, setPassword] = useState("admin123");
   const [loginError, setLoginError] = useState("");
   const [isLoginLoading, setIsLoginLoading] = useState(false);
+  const [activeApiRequests, setActiveApiRequests] = useState(0);
 
   const [dialogs, setDialogs] = useState([]);
   const [currentDialogId, setCurrentDialogId] = useState("");
@@ -126,8 +127,10 @@ function AppContent() {
   const [historyWorkoutLogs, setHistoryWorkoutLogs] = useState([]);
   const planningImportInputRef = useRef(null);
   const exercisesImportInputRef = useRef(null);
+  const isApiLoading = activeApiRequests > 0;
 
   async function request(method, path, body, token) {
+    setActiveApiRequests((prev) => prev + 1);
     try {
       const response = await fetch(baseUrl.trim().replace(/\/+$/, "") + path, {
         method,
@@ -141,6 +144,8 @@ function AppContent() {
       return { status: response.status, ok: response.ok, data };
     } catch (error) {
       return { status: 0, ok: false, data: { message: "Ошибка сети", detail: String(error) } };
+    } finally {
+      setActiveApiRequests((prev) => Math.max(0, prev - 1));
     }
   }
 
@@ -1762,7 +1767,13 @@ function AppContent() {
   }, [chatAssistantPreviewId, aiAssistants, adminAiAssistants]);
 
   return (
-    <Routes>
+    <>
+      {isApiLoading && <div className="global-api-overlay" aria-hidden="true" />}
+      <div className={`global-api-loader${isApiLoading ? " visible" : ""}`} aria-live="polite" aria-hidden={!isApiLoading}>
+        <span className="spinner" aria-hidden="true" />
+        <span>Загрузка данных...</span>
+      </div>
+      <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route
         path="/login"
@@ -3448,7 +3459,8 @@ function AppContent() {
           )
         }
       />
-    </Routes>
+      </Routes>
+    </>
   );
 }
 

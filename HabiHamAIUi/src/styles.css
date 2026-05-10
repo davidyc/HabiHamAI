@@ -270,6 +270,41 @@ button:disabled {
   animation: spin 0.8s linear infinite;
 }
 
+.global-api-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(2, 6, 23, 0.35);
+  backdrop-filter: blur(1px);
+  cursor: wait;
+}
+
+.global-api-loader {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(79, 140, 255, 0.4);
+  background: rgba(15, 23, 42, 0.9);
+  color: #dbeafe;
+  font-size: 14px;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.45);
+}
+
+.global-api-loader.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
