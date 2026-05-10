@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using HabiHamAIAPI.Data;
@@ -356,6 +357,12 @@ public sealed class AiUserService : IAiUserService
             }
         }
 
+        var hasWeightField = definitions.Any(x => string.Equals(x.fieldKey, "weight", StringComparison.OrdinalIgnoreCase));
+        if (hasWeightField && currentUser.WeightKg.HasValue)
+        {
+            values["weight"] = currentUser.WeightKg.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
         return new OkObjectResult(new { definitions, values });
     }
 
@@ -397,6 +404,15 @@ public sealed class AiUserService : IAiUserService
             if (!cleaned.TryGetValue(d.FieldKey, out var v) || string.IsNullOrWhiteSpace(v))
             {
                 return new BadRequestObjectResult(new { message = $"Заполни обязательное поле: {d.Label}" });
+            }
+        }
+
+        if (TryReadWeightFromValues(cleaned, out var parsedWeight))
+        {
+            currentUser.WeightKg = parsedWeight;
+            if (parsedWeight.HasValue)
+            {
+                await UpsertWeightEntryAsync(currentUser.Id, DateOnly.FromDateTime(DateTime.UtcNow), parsedWeight.Value, cancellationToken);
             }
         }
 
@@ -633,5 +649,57 @@ public sealed class AiUserService : IAiUserService
 
         var t = text.Trim();
         return t.Length <= maxLength ? t : t[..maxLength];
+    }
+
+    private static bool TryReadWeightFromValues(IReadOnlyDictionary<string, string> values, out decimal? weightKg)
+    {
+        weightKg = null;
+        if (!TryGetExtraValue(values, "weight", out var raw))
+        {
+            return false;
+        }
+
+        var normalized = (raw ?? string.Empty).Trim().Replace(',', '.');
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            weightKg = null;
+            return true;
+        }
+
+        if (decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+            && value > 0
+            && value <= 700)
+        {
+            weightKg = value;
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task UpsertWeightEntryAsync(Guid userId, DateOnly date, decimal weightKg, CancellationToken cancellationToken)
+    {
+        var row = await _dbContext.UserWeightEntries
+            .FirstOrDefaultAsync(x => x.UserId == userId && x.Date == date, cancellationToken);
+        var now = DateTime.UtcNow;
+
+        if (row is null)
+        {
+            row = new UserWeightEntry
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Date = date,
+                WeightKg = weightKg,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            };
+            _dbContext.UserWeightEntries.Add(row);
+        }
+        else
+        {
+            row.WeightKg = weightKg;
+            row.UpdatedAtUtc = now;
+        }
     }
 }

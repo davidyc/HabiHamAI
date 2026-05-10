@@ -1,5 +1,5 @@
 function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLogout }) {
-  const sidebarTabs = ["workouts"];
+  const sidebarTabs = ["workouts", "progress"];
   const topbarTabs = [
     "profile",
     ...(hasAiAccess ? ["ai"] : []),
@@ -18,7 +18,13 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
               className={`topbar-nav-item ${tab === id ? "active" : ""}`}
               onClick={() => onTabChange(id)}
             >
-              {id === "ai" ? "AI помощник" : id === "profile" ? "Профиль" : "Админ"}
+              {id === "ai"
+                ? "AI помощник"
+                : id === "profile"
+                  ? "Профиль"
+                  : id === "progress"
+                    ? "Мой прогресс"
+                    : "Админ"}
             </button>
           ))}
         </nav>
@@ -44,7 +50,7 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
               className={`sidebar-nav-item ${tab === id ? "active" : ""}`}
               onClick={() => onTabChange(id)}
             >
-              {id === "workouts" ? "Тренировки" : id}
+              {id === "workouts" ? "Тренировки" : id === "progress" ? "Мой прогресс" : id}
             </button>
           ))}
         </nav>

@@ -24,4 +24,16 @@ public sealed class UsersController : ControllerBase
     [HttpPut("me")]
     public Task<IActionResult> UpdateMyProfile([FromBody] UpdateUserProfileRequest request) =>
         _service.UpdateMyProfileAsync(User, request);
+
+    [HttpGet("me/weight-tracker")]
+    public Task<IActionResult> GetMyWeightTracker(CancellationToken cancellationToken) =>
+        _service.GetMyWeightTrackerAsync(User, cancellationToken);
+
+    [HttpPost("me/weight-tracker")]
+    public Task<IActionResult> UpsertMyWeightTrackerEntry([FromBody] UpsertUserWeightEntryRequest request, CancellationToken cancellationToken) =>
+        _service.UpsertMyWeightTrackerEntryAsync(User, request, cancellationToken);
+
+    [HttpDelete("me/weight-tracker/{entryId:guid}")]
+    public Task<IActionResult> DeleteMyWeightTrackerEntry(Guid entryId, CancellationToken cancellationToken) =>
+        _service.DeleteMyWeightTrackerEntryAsync(User, entryId, cancellationToken);
 }

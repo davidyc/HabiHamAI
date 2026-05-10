@@ -15,6 +15,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<UserAiAssistantExtras> UserAiAssistantExtras => Set<UserAiAssistantExtras>();
     public DbSet<ChatDialog> ChatDialogs => Set<ChatDialog>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<UserWeightEntry> UserWeightEntries => Set<UserWeightEntry>();
     public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
     public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
@@ -51,6 +52,10 @@ public sealed class AppDbContext : DbContext
                 .HasForeignKey(x => x.SelectedAiAssistantId)
                 .OnDelete(DeleteBehavior.SetNull);
             entity.HasMany(x => x.WorkoutSessions)
+                .WithOne(x => x.User)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.WeightEntries)
                 .WithOne(x => x.User)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
@@ -170,6 +175,20 @@ public sealed class AppDbContext : DbContext
                 .WithOne(x => x.Session)
                 .HasForeignKey(x => x.SessionId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserWeightEntry>(entity =>
+        {
+            entity.ToTable("user_weight_entries");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
+            entity.Property(x => x.Date).HasColumnName("date").HasColumnType("date").IsRequired();
+            entity.Property(x => x.WeightKg).HasColumnName("weight_kg").HasPrecision(5, 2).IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.Date }).IsUnique();
+            entity.HasIndex(x => new { x.UserId, x.UpdatedAtUtc });
         });
 
         modelBuilder.Entity<WorkoutExercise>(entity =>

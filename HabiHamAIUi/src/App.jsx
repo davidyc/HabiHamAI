@@ -39,6 +39,7 @@ function AppContent() {
   const [workoutSessions, setWorkoutSessions] = useState([]);
   const [workoutsSubTab, setWorkoutsSubTab] = useState("manage");
   const [workoutsManageSubTab, setWorkoutsManageSubTab] = useState("add");
+  const [progressSubTab, setProgressSubTab] = useState("weight-tracker");
   const [workoutExerciseCatalog, setWorkoutExerciseCatalog] = useState([]);
   const [selectedCatalogExerciseId, setSelectedCatalogExerciseId] = useState("");
   const [newCatalogExerciseName, setNewCatalogExerciseName] = useState("");
@@ -63,6 +64,13 @@ function AppContent() {
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
   const [profileAiSummary, setProfileAiSummary] = useState("");
+  const [weightTrackerEntries, setWeightTrackerEntries] = useState([]);
+  const [weightTrackerDate, setWeightTrackerDate] = useState(() => getTodayIsoDate());
+  const [weightTrackerValue, setWeightTrackerValue] = useState("");
+  /** Фильтр периода для таблицы/графика/выгрузки (по умолчанию — последняя неделя, как в истории тренировок). */
+  const [weightFilterDateFrom, setWeightFilterDateFrom] = useState(() => getIsoDateDaysAgo(6));
+  const [weightFilterDateTo, setWeightFilterDateTo] = useState(() => getTodayIsoDate());
+  const [pendingDeleteWeightEntry, setPendingDeleteWeightEntry] = useState(null);
 
   const [users, setUsers] = useState([]);
   const [adminCreateUsername, setAdminCreateUsername] = useState("");
@@ -726,6 +734,69 @@ function AppContent() {
     setProfileFirstName(profile.firstName || "");
     setProfileLastName(profile.lastName || "");
     setProfileAiSummary(profile.aiSummary || "");
+    await loadWeightTracker(token);
+  }
+
+  async function loadWeightTracker(token = accessToken) {
+    if (!token) return;
+    const result = await request("GET", "/users/me/weight-tracker", null, token);
+    handleResult(result);
+    if (!result.ok) return;
+    setWeightTrackerEntries(Array.isArray(result.data) ? result.data : []);
+  }
+
+  async function submitWeightTrackerEntry() {
+    if (!accessToken) return;
+    const value = Number(String(weightTrackerValue).trim().replace(",", "."));
+    if (!weightTrackerDate) return setErrorView("Укажи дату для веса.");
+    if (!Number.isFinite(value) || value <= 0) return setErrorView("Укажи корректный вес в кг.");
+
+    const result = await request(
+      "POST",
+      "/users/me/weight-tracker",
+      { date: weightTrackerDate, weightKg: value },
+      accessToken
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    if (Array.isArray(result.data)) {
+      setWeightTrackerEntries(result.data);
+    }
+    await loadWeightTracker(accessToken);
+    await loadMyProfile(accessToken);
+    await syncLinkedAiExtrasFromProfileBody({
+      birthDate: profileBirthDate || null,
+      heightCm: profileToNumberOrNull(profileHeightCm),
+      weightKg: value
+    });
+    setWeightTrackerValue("");
+  }
+
+  async function confirmDeleteWeightTrackerEntry() {
+    if (!accessToken || !pendingDeleteWeightEntry?.id) return;
+    const entryId = pendingDeleteWeightEntry.id;
+    const result = await request(
+      "DELETE",
+      `/users/me/weight-tracker/${entryId}`,
+      null,
+      accessToken
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    setPendingDeleteWeightEntry(null);
+    if (Array.isArray(result.data)) {
+      setWeightTrackerEntries(result.data);
+    }
+    await loadWeightTracker(accessToken);
+    await loadMyProfile(accessToken);
+    const pr = await request("GET", "/users/me", null, accessToken);
+    if (pr.ok && pr.data) {
+      await syncLinkedAiExtrasFromProfileBody({
+        birthDate: pr.data.birthDate || null,
+        heightCm: pr.data.heightCm,
+        weightKg: pr.data.weightKg
+      });
+    }
   }
 
   async function loadWorkoutSessions(token = accessToken) {
@@ -1433,6 +1504,16 @@ function AppContent() {
     setHistoryDateTo(end.toISOString().slice(0, 10));
   }
 
+  function applyWeightDatePreset(days) {
+    if (!days || days < 1) return;
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    const start = new Date(end);
+    start.setDate(start.getDate() - (days - 1));
+    setWeightFilterDateFrom(start.toISOString().slice(0, 10));
+    setWeightFilterDateTo(end.toISOString().slice(0, 10));
+  }
+
   function exportHistorySessionJson(session) {
     if (!session) return;
     const datePart = String(session.date || session._date || "").slice(0, 10) || "unknown-date";
@@ -1451,6 +1532,27 @@ function AppContent() {
       },
       total: historyWorkoutLogs.length,
       workouts: historyWorkoutLogs
+    });
+  }
+
+  function exportWeightSelectionJson() {
+    const entries = weightTrackerEntries.filter((row) => {
+      const d = String(row.date || "").slice(0, 10);
+      if (!d) return false;
+      if (weightFilterDateFrom && d < weightFilterDateFrom) return false;
+      if (weightFilterDateTo && d > weightFilterDateTo) return false;
+      return true;
+    });
+    const fromPart = weightFilterDateFrom || "all";
+    const toPart = weightFilterDateTo || "all";
+    downloadJsonFile(`weight-tracker-${fromPart}-to-${toPart}.json`, {
+      exportedAt: new Date().toISOString(),
+      filters: {
+        from: weightFilterDateFrom || null,
+        to: weightFilterDateTo || null
+      },
+      total: entries.length,
+      entries
     });
   }
 
@@ -1749,6 +1851,60 @@ function AppContent() {
     () => workoutExerciseCatalog.find((x) => String(x.id) === String(selectedCatalogExerciseId)) || null,
     [workoutExerciseCatalog, selectedCatalogExerciseId]
   );
+  const filteredWeightTrackerEntries = useMemo(
+    () =>
+      weightTrackerEntries.filter((row) => {
+        const d = String(row.date || "").slice(0, 10);
+        if (!d) return false;
+        if (weightFilterDateFrom && d < weightFilterDateFrom) return false;
+        if (weightFilterDateTo && d > weightFilterDateTo) return false;
+        return true;
+      }),
+    [weightTrackerEntries, weightFilterDateFrom, weightFilterDateTo]
+  );
+  const weightChartData = useMemo(
+    () =>
+      [...filteredWeightTrackerEntries]
+        .filter((x) => x?.date && Number.isFinite(Number(x?.weightKg)))
+        .map((x) => ({ id: x.id, date: x.date, weightKg: Number(x.weightKg) }))
+        .sort((a, b) => Date.parse(a.date) - Date.parse(b.date)),
+    [filteredWeightTrackerEntries]
+  );
+  const weightChartBounds = useMemo(() => {
+    if (weightChartData.length === 0) return null;
+    const min = Math.min(...weightChartData.map((x) => x.weightKg));
+    const max = Math.max(...weightChartData.map((x) => x.weightKg));
+    if (min === max) {
+      return { min: min - 1, max: max + 1 };
+    }
+    const pad = Math.max((max - min) * 0.1, 0.5);
+    return { min: min - pad, max: max + pad };
+  }, [weightChartData]);
+  const weightChartPoints = useMemo(() => {
+    if (!weightChartBounds || weightChartData.length === 0) return [];
+    const chartW = 640;
+    const chartH = 260;
+    const left = 48;
+    const right = 16;
+    const top = 16;
+    const bottom = 34;
+    const innerW = chartW - left - right;
+    const innerH = chartH - top - bottom;
+    const count = weightChartData.length;
+    return weightChartData.map((row, idx) => {
+      const x = left + (count === 1 ? innerW / 2 : (idx / (count - 1)) * innerW);
+      const yRatio = (row.weightKg - weightChartBounds.min) / (weightChartBounds.max - weightChartBounds.min);
+      const y = top + (1 - yRatio) * innerH;
+      return { ...row, x, y };
+    });
+  }, [weightChartData, weightChartBounds]);
+  const weightChartPath = useMemo(
+    () =>
+      weightChartPoints
+        .map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+        .join(" "),
+    [weightChartPoints]
+  );
   const historyMaxSetCount = useMemo(
     () => Math.max(
       0,
@@ -1884,6 +2040,10 @@ function AppContent() {
                   if (id === "ai" && !hasAiAccess) return;
                   setTab(id);
                   if (id === "profile") {
+                    loadMyProfile();
+                  }
+                  if (id === "progress") {
+                    setProgressSubTab("weight-tracker");
                     loadMyProfile();
                   }
                   if (id === "workouts") {
@@ -2345,6 +2505,164 @@ function AppContent() {
               <button onClick={() => setIsProfileEditModalOpen(true)} title="Редактировать профиль">✏️</button>
               <button className="ghost-btn" onClick={() => loadMyProfile()}>Обновить с сервера</button>
             </div>
+          </section>
+        </section>}
+
+        {tab === "progress" && <section className="card-grid">
+          <section className="card full-span">
+            <h3>Мой прогресс</h3>
+            <p className="subtitle">Здесь фиксируется история веса и синхронизируется с профилем и AI-тренером.</p>
+            <div className="row">
+              <button
+                className={progressSubTab === "weight-tracker" ? "top-nav-tab active" : "top-nav-tab"}
+                onClick={() => setProgressSubTab("weight-tracker")}
+              >
+                Треккер веса
+              </button>
+            </div>
+            {progressSubTab === "weight-tracker" && (
+              <>
+                <div className="row profile-row">
+                  <div>
+                    <label>Дата</label>
+                    <input
+                      type="date"
+                      value={weightTrackerDate}
+                      onChange={(e) => setWeightTrackerDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label>Вес (кг)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={weightTrackerValue}
+                      onChange={(e) => setWeightTrackerValue(e.target.value)}
+                      placeholder="Например: 78.4"
+                    />
+                  </div>
+                </div>
+                <div className="row">
+                  <button type="button" onClick={submitWeightTrackerEntry}>Сохранить вес</button>
+                  <button type="button" className="ghost-btn" onClick={() => loadWeightTracker()}>Обновить</button>
+                </div>
+                <h4 style={{ margin: "12px 0 8px", fontSize: 14 }}>Период на графике и в таблице</h4>
+                <div className="row">
+                  <input
+                    type="date"
+                    value={weightFilterDateFrom}
+                    onChange={(e) => setWeightFilterDateFrom(e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    value={weightFilterDateTo}
+                    onChange={(e) => setWeightFilterDateTo(e.target.value)}
+                  />
+                </div>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={exportWeightSelectionJson}
+                    disabled={filteredWeightTrackerEntries.length === 0}
+                  >
+                    Выгрузить JSON (вся выборка)
+                  </button>
+                </div>
+                <div className="history-presets">
+                  <button type="button" className="ghost-btn" onClick={() => applyWeightDatePreset(1)}>День</button>
+                  <button type="button" className="ghost-btn" onClick={() => applyWeightDatePreset(7)}>Неделя</button>
+                  <button type="button" className="ghost-btn" onClick={() => applyWeightDatePreset(10)}>10 дней</button>
+                  <button type="button" className="ghost-btn" onClick={() => applyWeightDatePreset(15)}>15 дней</button>
+                  <button type="button" className="ghost-btn" onClick={() => applyWeightDatePreset(30)}>Месяц</button>
+                </div>
+                <div className="users-table-wrap" style={{ marginTop: 8 }}>
+                  <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>График веса</h4>
+                  {weightTrackerEntries.length === 0 ? (
+                    <div className="workout-empty">Добавь минимум одну запись веса, чтобы увидеть график.</div>
+                  ) : weightChartPoints.length === 0 ? (
+                    <div className="workout-empty">Нет записей по выбранному фильтру.</div>
+                  ) : (
+                    <svg viewBox="0 0 640 260" width="100%" height="260" role="img" aria-label="График изменения веса">
+                      <line x1="48" y1="16" x2="48" y2="226" stroke="rgba(157,194,169,0.35)" />
+                      <line x1="48" y1="226" x2="624" y2="226" stroke="rgba(157,194,169,0.35)" />
+                      {weightChartPath ? (
+                        <path d={weightChartPath} fill="none" stroke="#2ea463" strokeWidth="3" strokeLinecap="round" />
+                      ) : null}
+                      {weightChartPoints.map((p, pi) => (
+                        <g key={`weight-point-${p.id ?? p.date}-${pi}`}>
+                          <circle cx={p.x} cy={p.y} r="4" fill="#9ff7c3" stroke="#0f172a" strokeWidth="1.5" />
+                          <title>{`${p.date}: ${p.weightKg} кг`}</title>
+                        </g>
+                      ))}
+                      <text x="8" y="20" fill="var(--muted)" fontSize="12">{weightChartBounds?.max.toFixed(1)} кг</text>
+                      <text x="8" y="230" fill="var(--muted)" fontSize="12">{weightChartBounds?.min.toFixed(1)} кг</text>
+                      {weightChartPoints[0] ? (
+                        <text x={weightChartPoints[0].x} y="248" textAnchor="start" fill="var(--muted)" fontSize="12">
+                          {weightChartPoints[0].date}
+                        </text>
+                      ) : null}
+                      {weightChartPoints[weightChartPoints.length - 1] ? (
+                        <text
+                          x={weightChartPoints[weightChartPoints.length - 1].x}
+                          y="248"
+                          textAnchor="end"
+                          fill="var(--muted)"
+                          fontSize="12"
+                        >
+                          {weightChartPoints[weightChartPoints.length - 1].date}
+                        </text>
+                      ) : null}
+                    </svg>
+                  )}
+                </div>
+                <div className="users-table-wrap" style={{ marginTop: 8 }}>
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Дата</th>
+                        <th>Вес (кг)</th>
+                        <th aria-label="Удалить" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weightTrackerEntries.length === 0 && (
+                        <tr>
+                          <td colSpan="3">Записей пока нет.</td>
+                        </tr>
+                      )}
+                      {weightTrackerEntries.length > 0 && filteredWeightTrackerEntries.length === 0 && (
+                        <tr>
+                          <td colSpan="3">Нет записей по выбранному фильтру.</td>
+                        </tr>
+                      )}
+                      {filteredWeightTrackerEntries.map((row) => (
+                        <tr key={row.id}>
+                          <td>{row.date || "-"}</td>
+                          <td>{row.weightKg ?? "-"}</td>
+                          <td style={{ width: 52 }}>
+                            <button
+                              type="button"
+                              className="danger-btn"
+                              title="Удалить запись"
+                              onClick={() =>
+                                setPendingDeleteWeightEntry({
+                                  id: row.id,
+                                  date: row.date,
+                                  weightKg: row.weightKg
+                                })}
+                            >
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </section>
         </section>}
 
@@ -3056,6 +3374,36 @@ function AppContent() {
                 <button onClick={saveMyProfile}>Сохранить</button>
                 <button className="ghost-btn" onClick={() => setIsProfileEditModalOpen(false)}>Отмена</button>
               </div>
+          </ModalShell>
+        )}
+
+        {pendingDeleteWeightEntry && (
+          <ModalShell
+            open={Boolean(pendingDeleteWeightEntry)}
+            onClose={() => setPendingDeleteWeightEntry(null)}
+            titleId="weight-delete-confirm-title"
+          >
+            <div className="confirm-modal">
+              <div className="confirm-modal__badge" aria-hidden="true">⚖️</div>
+              <h3 id="weight-delete-confirm-title" className="confirm-modal__title">Удалить запись веса?</h3>
+              <p className="confirm-modal__detail">
+                <span className="confirm-modal__label">Дата</span>
+                <span className="confirm-modal__value">{pendingDeleteWeightEntry.date || "—"}</span>
+              </p>
+              <p className="confirm-modal__detail">
+                <span className="confirm-modal__label">Вес</span>
+                <span className="confirm-modal__value">{pendingDeleteWeightEntry.weightKg ?? "—"} кг</span>
+              </p>
+              <p className="confirm-modal__hint">Запись исчезнет из таблицы и графика. Профиль и AI-тренер обновятся по последнему оставшемуся весу.</p>
+              <div className="confirm-modal__actions">
+                <button type="button" className="danger-btn" onClick={confirmDeleteWeightTrackerEntry}>
+                  Удалить
+                </button>
+                <button type="button" className="ghost-btn" onClick={() => setPendingDeleteWeightEntry(null)}>
+                  Отмена
+                </button>
+              </div>
+            </div>
           </ModalShell>
         )}
 

@@ -20,4 +20,5 @@ public sealed class AppUser
     public AiAssistant? SelectedAiAssistant { get; set; }
     public List<ChatDialog> Dialogs { get; set; } = [];
     public List<WorkoutSession> WorkoutSessions { get; set; } = [];
+    public List<UserWeightEntry> WeightEntries { get; set; } = [];
 }
