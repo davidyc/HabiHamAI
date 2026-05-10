@@ -6,7 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace HabiHamAIAPI.Services;
 
-public sealed class TokenService
+public sealed class TokenService : ITokenService
 {
     private readonly IConfiguration _configuration;
 

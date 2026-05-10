@@ -1,3 +1,4 @@
+using HabiHamAIAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -6,11 +7,15 @@ namespace HabiHamAIAPI.Controllers;
 [ApiController]
 [Route("[controller]")]
 [Authorize]
-public class PingController : ControllerBase
+public sealed class PingController : ControllerBase
 {
-    [HttpGet]
-    public IActionResult Ping()
+    private readonly IPingService _service;
+
+    public PingController(IPingService service)
     {
-        return Ok(new { status = "ok", message = "pong" });
+        _service = service;
     }
+
+    [HttpGet]
+    public IActionResult Ping() => _service.Ping();
 }

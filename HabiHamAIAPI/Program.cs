@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using HabiHamAIAPI.Services;
+using HabiHamAIAPI.Services.Ai;
 
 LoadDotEnv();
 var builder = WebApplication.CreateBuilder(args);
@@ -16,7 +17,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSingleton<TokenService>();
 builder.Services.Configure<KernestalOptions>(builder.Configuration.GetSection("Kernestal"));
 builder.Services.PostConfigure<KernestalOptions>(options =>
 {
@@ -24,7 +24,17 @@ builder.Services.PostConfigure<KernestalOptions>(options =>
     options.ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? options.ApiKey;
     options.Model = Environment.GetEnvironmentVariable("OPENAI_MODEL") ?? options.Model;
 });
-builder.Services.AddHttpClient<KernestalAiService>();
+builder.Services.AddSingleton<ITokenService, TokenService>();
+builder.Services.AddHttpClient<IKernestalAiService, KernestalAiService>();
+builder.Services.AddScoped<IAiUserService, AiUserService>();
+builder.Services.AddScoped<IAdminAiAssistantsService, AdminAiAssistantsService>();
+builder.Services.AddScoped<IAdminAiAssistantExtraFieldsService, AdminAiAssistantExtraFieldsService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUsersService, UsersService>();
+builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();
+builder.Services.AddScoped<IAdminDialogsService, AdminDialogsService>();
+builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
+builder.Services.AddSingleton<IPingService, PingService>();
 builder.Services.AddScoped<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 builder.Services.AddDbContext<AppDbContext>(options =>
 {

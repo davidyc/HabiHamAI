@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace HabiHamAIAPI.Services;
 
-public sealed class KernestalAiService
+public sealed class KernestalAiService : IKernestalAiService
 {
     private readonly HttpClient _httpClient;
     private readonly KernestalOptions _options;

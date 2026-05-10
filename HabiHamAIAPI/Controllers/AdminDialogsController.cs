@@ -1,7 +1,7 @@
-using HabiHamAIAPI.Data;
+using HabiHamAIAPI.Models;
+using HabiHamAIAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace HabiHamAIAPI.Controllers;
 
@@ -10,151 +10,30 @@ namespace HabiHamAIAPI.Controllers;
 [Authorize(Roles = "Admin")]
 public sealed class AdminDialogsController : ControllerBase
 {
-    public sealed class UpsertAdminDialogRequest
-    {
-        public Guid UserId { get; set; }
-        public string? Title { get; set; }
-    }
+    private readonly IAdminDialogsService _service;
 
-    private readonly AppDbContext _dbContext;
-
-    public AdminDialogsController(AppDbContext dbContext)
+    public AdminDialogsController(IAdminDialogsService service)
     {
-        _dbContext = dbContext;
+        _service = service;
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetDialogs([FromQuery] Guid? userId, CancellationToken cancellationToken)
-    {
-        var query = _dbContext.ChatDialogs
-            .AsNoTracking()
-            .Include(x => x.User)
-            .AsQueryable();
-
-        if (userId.HasValue && userId.Value != Guid.Empty)
-        {
-            query = query.Where(x => x.UserId == userId.Value);
-        }
-
-        var dialogs = await query
-            .OrderByDescending(x => x.UpdatedAtUtc)
-            .Select(x => new
-            {
-                id = x.Id,
-                userId = x.UserId,
-                username = x.User != null ? x.User.Username : string.Empty,
-                title = x.Title,
-                aiAssistantId = x.AiAssistantId,
-                aiAssistantName = x.AiAssistant != null ? x.AiAssistant.Name : null,
-                createdAtUtc = x.CreatedAtUtc,
-                updatedAtUtc = x.UpdatedAtUtc,
-                messagesCount = x.Messages.Count
-            })
-            .ToListAsync(cancellationToken);
-
-        return Ok(dialogs);
-    }
+    public Task<IActionResult> GetDialogs([FromQuery] Guid? userId, CancellationToken cancellationToken) =>
+        _service.GetDialogsAsync(userId, cancellationToken);
 
     [HttpGet("{dialogId:guid}/messages")]
-    public async Task<IActionResult> GetDialogMessages(Guid dialogId, CancellationToken cancellationToken)
-    {
-        var dialogExists = await _dbContext.ChatDialogs
-            .AsNoTracking()
-            .AnyAsync(x => x.Id == dialogId, cancellationToken);
-        if (!dialogExists)
-        {
-            return NotFound(new { message = "Dialog not found." });
-        }
-
-        var messages = await _dbContext.ChatMessages
-            .AsNoTracking()
-            .Where(x => x.DialogId == dialogId)
-            .OrderBy(x => x.CreatedAtUtc)
-            .Select(x => new
-            {
-                id = x.Id,
-                role = x.Role,
-                content = x.Content,
-                createdAtUtc = x.CreatedAtUtc
-            })
-            .ToListAsync(cancellationToken);
-
-        return Ok(messages);
-    }
+    public Task<IActionResult> GetDialogMessages(Guid dialogId, CancellationToken cancellationToken) =>
+        _service.GetDialogMessagesAsync(dialogId, cancellationToken);
 
     [HttpPost]
-    public async Task<IActionResult> CreateDialog([FromBody] UpsertAdminDialogRequest request, CancellationToken cancellationToken)
-    {
-        if (request.UserId == Guid.Empty)
-        {
-            return BadRequest(new { message = "UserId is required." });
-        }
-
-        var userExists = await _dbContext.Users.AsNoTracking().AnyAsync(x => x.Id == request.UserId, cancellationToken);
-        if (!userExists)
-        {
-            return NotFound(new { message = "User not found." });
-        }
-
-        var now = DateTime.UtcNow;
-        var dialog = new Models.ChatDialog
-        {
-            Id = Guid.NewGuid(),
-            UserId = request.UserId,
-            Title = string.IsNullOrWhiteSpace(request.Title) ? "Новый диалог" : request.Title.Trim(),
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now
-        };
-
-        _dbContext.ChatDialogs.Add(dialog);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return Ok(new
-        {
-            id = dialog.Id,
-            userId = dialog.UserId,
-            title = dialog.Title,
-            createdAtUtc = dialog.CreatedAtUtc,
-            updatedAtUtc = dialog.UpdatedAtUtc
-        });
-    }
+    public Task<IActionResult> CreateDialog([FromBody] AdminUpsertDialogRequest request, CancellationToken cancellationToken) =>
+        _service.CreateDialogAsync(request, cancellationToken);
 
     [HttpPut("{dialogId:guid}")]
-    public async Task<IActionResult> RenameDialog(Guid dialogId, [FromBody] UpsertAdminDialogRequest request, CancellationToken cancellationToken)
-    {
-        var dialog = await _dbContext.ChatDialogs.FirstOrDefaultAsync(x => x.Id == dialogId, cancellationToken);
-        if (dialog is null)
-        {
-            return NotFound(new { message = "Dialog not found." });
-        }
-
-        dialog.Title = string.IsNullOrWhiteSpace(request.Title) ? dialog.Title : request.Title.Trim();
-        dialog.UpdatedAtUtc = DateTime.UtcNow;
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return Ok(new
-        {
-            id = dialog.Id,
-            userId = dialog.UserId,
-            title = dialog.Title,
-            createdAtUtc = dialog.CreatedAtUtc,
-            updatedAtUtc = dialog.UpdatedAtUtc
-        });
-    }
+    public Task<IActionResult> RenameDialog(Guid dialogId, [FromBody] AdminUpsertDialogRequest request, CancellationToken cancellationToken) =>
+        _service.RenameDialogAsync(dialogId, request, cancellationToken);
 
     [HttpDelete("{dialogId:guid}")]
-    public async Task<IActionResult> DeleteDialog(Guid dialogId, CancellationToken cancellationToken)
-    {
-        var dialog = await _dbContext.ChatDialogs.FirstOrDefaultAsync(x => x.Id == dialogId, cancellationToken);
-        if (dialog is null)
-        {
-            return NotFound(new { message = "Dialog not found." });
-        }
-
-        _dbContext.ChatDialogs.Remove(dialog);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return Ok(new { message = "Dialog deleted." });
-    }
+    public Task<IActionResult> DeleteDialog(Guid dialogId, CancellationToken cancellationToken) =>
+        _service.DeleteDialogAsync(dialogId, cancellationToken);
 }
