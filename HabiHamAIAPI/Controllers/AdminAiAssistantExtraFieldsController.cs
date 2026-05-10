@@ -82,6 +82,7 @@ public sealed class AdminAiAssistantExtraFieldsController : ControllerBase
             FieldType = type,
             SortOrder = request.SortOrder,
             IsRequired = request.IsRequired,
+            IsSystem = false,
             CreatedAtUtc = DateTime.UtcNow
         };
 
@@ -149,6 +150,11 @@ public sealed class AdminAiAssistantExtraFieldsController : ControllerBase
             return NotFound(new { message = "Field not found." });
         }
 
+        if (entity.IsSystem)
+        {
+            return BadRequest(new { message = "Нельзя удалить поле встроенного помощника." });
+        }
+
         _dbContext.AiAssistantFieldDefinitions.Remove(entity);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -165,6 +171,7 @@ public sealed class AdminAiAssistantExtraFieldsController : ControllerBase
             FieldType = x.FieldType,
             SortOrder = x.SortOrder,
             IsRequired = x.IsRequired,
+            IsSystem = x.IsSystem,
             CreatedAtUtc = x.CreatedAtUtc
         };
 

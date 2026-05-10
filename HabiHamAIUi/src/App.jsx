@@ -152,6 +152,59 @@ function AppContent() {
     }, null, 2));
   }
 
+  function profileToNumberOrNull(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  function ageFromBirthDate(isoDateStr) {
+    if (!isoDateStr || !String(isoDateStr).trim()) return "";
+    const parts = String(isoDateStr).slice(0, 10).split("-");
+    if (parts.length !== 3) return "";
+    const y = Number(parts[0]);
+    const m = Number(parts[1]) - 1;
+    const day = Number(parts[2]);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(day)) return "";
+    const d = new Date(y, m, day);
+    if (Number.isNaN(d.getTime())) return "";
+    const today = new Date();
+    let age = today.getFullYear() - d.getFullYear();
+    const md = today.getMonth() - d.getMonth();
+    if (md < 0 || (md === 0 && today.getDate() < d.getDate())) age -= 1;
+    return age >= 0 && age < 150 ? String(age) : "";
+  }
+
+  function birthDateIsoFromAgeYearsString(ageStr) {
+    const n = parseInt(String(ageStr).trim(), 10);
+    if (!Number.isFinite(n) || n < 0 || n > 150) return "";
+    const today = new Date();
+    const birth = new Date(today.getFullYear() - n, today.getMonth(), today.getDate());
+    return birth.toISOString().slice(0, 10);
+  }
+
+  /** Вес, рост и возраст: приоритет у данных профиля, если они заданы; иначе сохранённые доп. значения. */
+  function mergeAiExtrasWithProfile(merged, keySet) {
+    const next = { ...merged };
+    if (keySet.has("weight")) {
+      const p = profileWeightKg.trim();
+      const s = String(next.weight ?? "").trim();
+      next.weight = p || s || "";
+    }
+    if (keySet.has("height")) {
+      const p = profileHeightCm.trim();
+      const s = String(next.height ?? "").trim();
+      next.height = p || s || "";
+    }
+    if (keySet.has("age")) {
+      const fromBirth = ageFromBirthDate(profileBirthDate);
+      const s = String(next.age ?? "").trim();
+      next.age = fromBirth || s || "";
+    }
+    return next;
+  }
+
   function tryGetUserNameFromToken(token) {
     try {
       const payloadPart = token.split(".")[1];
@@ -247,12 +300,19 @@ function AppContent() {
     setChatMessages((prev) => [...prev, { role: "user", content: prompt }]);
     setChatPrompt("");
 
-    const previewMatch = chatAssistantPreviewId
-      ? aiAssistants.find((x) => String(x.id) === String(chatAssistantPreviewId))
-        ?? adminAiAssistants.find((x) => String(x.id) === String(chatAssistantPreviewId))
-      : null;
+    const previewMatch =
+      chatAssistantPreviewId && !(tab === "workouts" && workoutsSubTab === "ai-trainer")
+        ? aiAssistants.find((x) => String(x.id) === String(chatAssistantPreviewId))
+          ?? adminAiAssistants.find((x) => String(x.id) === String(chatAssistantPreviewId))
+        : null;
+    const trainerAssistant = aiAssistants.find((x) => x.assistantCode === "trainer");
     const selectedAssistant = aiAssistants.find((x) => x.selected);
-    const assistantIdForChat = previewMatch?.id ?? selectedAssistant?.id ?? null;
+    const useWorkoutTrainerChat = tab === "workouts" && workoutsSubTab === "ai-trainer";
+    const assistantIdForChat =
+      previewMatch?.id
+      ?? (useWorkoutTrainerChat && trainerAssistant ? trainerAssistant.id : null)
+      ?? selectedAssistant?.id
+      ?? null;
     const result = await request(
       "POST",
       "/ai/chat",
@@ -421,6 +481,8 @@ function AppContent() {
   async function openAiExtraInfoModal(assistantId) {
     if (!assistantId) return;
     setAiExtraInfoAssistantId(assistantId);
+    setAiExtraInfoDefinitions([]);
+    setAiExtraInfoValues({});
     setIsAiExtraInfoModalOpen(true);
     const r = await request(
       "GET",
@@ -437,7 +499,69 @@ function AppContent() {
     for (const d of defs) {
       merged[d.fieldKey] = vals[d.fieldKey] ?? "";
     }
-    setAiExtraInfoValues(merged);
+    const keySet = new Set(defs.map((d) => d.fieldKey));
+    setAiExtraInfoValues(mergeAiExtrasWithProfile(merged, keySet));
+  }
+
+  function handleAiExtraFieldChange(fieldKey, value) {
+    setAiExtraInfoValues((prev) => ({ ...prev, [fieldKey]: value }));
+    if (fieldKey === "weight") setProfileWeightKg(value);
+    if (fieldKey === "height") setProfileHeightCm(value);
+    if (fieldKey === "age") {
+      const t = String(value).trim();
+      if (!t) {
+        setProfileBirthDate("");
+        return;
+      }
+      const iso = birthDateIsoFromAgeYearsString(t);
+      if (iso) setProfileBirthDate(iso);
+    }
+  }
+
+  async function syncLinkedAiExtrasFromProfileBody(profileBody) {
+    if (!accessToken || !aiToken || !profileBody) return;
+    const weight =
+      profileBody.weightKg != null && profileBody.weightKg !== undefined
+        ? String(profileBody.weightKg)
+        : "";
+    const height =
+      profileBody.heightCm != null && profileBody.heightCm !== undefined
+        ? String(profileBody.heightCm)
+        : "";
+    const age = ageFromBirthDate(profileBody.birthDate || "");
+    for (const a of aiAssistants) {
+      const ar = await request(
+        "GET",
+        `/ai/assistant-extra-fields?assistantId=${encodeURIComponent(a.id)}`,
+        null,
+        aiToken
+      );
+      if (!ar.ok) continue;
+      const defs = Array.isArray(ar.data?.definitions) ? ar.data.definitions : [];
+      const keySet = new Set(defs.map((d) => d.fieldKey));
+      const vals =
+        ar.data?.values && typeof ar.data.values === "object" ? { ...ar.data.values } : {};
+      let touched = false;
+      if (keySet.has("weight")) {
+        vals.weight = weight;
+        touched = true;
+      }
+      if (keySet.has("height")) {
+        vals.height = height;
+        touched = true;
+      }
+      if (keySet.has("age")) {
+        vals.age = age;
+        touched = true;
+      }
+      if (!touched) continue;
+      await request(
+        "PUT",
+        "/ai/assistant-extra-fields",
+        { assistantId: a.id, values: vals },
+        aiToken
+      );
+    }
   }
 
   async function submitAiExtraInfoModal() {
@@ -449,7 +573,42 @@ function AppContent() {
       aiToken
     );
     handleResult(r);
-    if (r.ok) setIsAiExtraInfoModalOpen(false);
+    if (!r.ok) return;
+
+    const keys = new Set(aiExtraInfoDefinitions.map((d) => d.fieldKey));
+    const v = aiExtraInfoValues;
+    let birthDate = profileBirthDate;
+    let heightCm = profileHeightCm;
+    let weightKg = profileWeightKg;
+    if (keys.has("weight")) weightKg = v.weight != null ? String(v.weight) : weightKg;
+    if (keys.has("height")) heightCm = v.height != null ? String(v.height) : heightCm;
+    if (keys.has("age")) {
+      const a = v.age != null ? String(v.age).trim() : "";
+      if (a) {
+        const iso = birthDateIsoFromAgeYearsString(a);
+        if (iso) birthDate = iso;
+      }
+    }
+
+    if (accessToken) {
+      const body = {
+        birthDate: birthDate || null,
+        heightCm: profileToNumberOrNull(heightCm),
+        weightKg: profileToNumberOrNull(weightKg),
+        phone: profilePhone.trim() || null,
+        city: profileCity.trim() || null,
+        about: profileAbout.trim() || null,
+        firstName: profileFirstName.trim() || null,
+        lastName: profileLastName.trim() || null
+      };
+      const pr = await request("PUT", "/users/me", body, accessToken);
+      handleResult(pr);
+      if (!pr.ok) return;
+      await loadMyProfile(accessToken);
+      await syncLinkedAiExtrasFromProfileBody(body);
+    }
+
+    setIsAiExtraInfoModalOpen(false);
   }
 
   async function loadAdminExtraFields(assistantId) {
@@ -1313,17 +1472,10 @@ function AppContent() {
   async function saveMyProfile() {
     if (!accessToken) return;
 
-    const toNumberOrNull = (value) => {
-      const raw = value.trim();
-      if (!raw) return null;
-      const parsed = Number(raw);
-      return Number.isNaN(parsed) ? null : parsed;
-    };
-
     const body = {
       birthDate: profileBirthDate || null,
-      heightCm: toNumberOrNull(profileHeightCm),
-      weightKg: toNumberOrNull(profileWeightKg),
+      heightCm: profileToNumberOrNull(profileHeightCm),
+      weightKg: profileToNumberOrNull(profileWeightKg),
       phone: profilePhone.trim() || null,
       city: profileCity.trim() || null,
       about: profileAbout.trim() || null,
@@ -1336,6 +1488,7 @@ function AppContent() {
     if (result.ok) {
       setIsProfileEditModalOpen(false);
       await loadMyProfile(accessToken);
+      await syncLinkedAiExtrasFromProfileBody(body);
     }
   }
 
@@ -1522,6 +1675,31 @@ function AppContent() {
     () => workoutSessions.find((x) => String(x.sessionCode || "").startsWith("workout::") && x.isActive === true),
     [workoutSessions]
   );
+
+  const isLoggedIn = Boolean(accessToken);
+  const isAdmin = currentUserRole === "Admin";
+  const hasAiAccess = currentUserRole === "Admin" || currentUserRole === "AiUser";
+
+  const workoutTrainerAssistant = useMemo(
+    () => aiAssistants.find((x) => x?.assistantCode === "trainer") ?? null,
+    [aiAssistants]
+  );
+  const showWorkoutAiTrainerTab = Boolean(workoutTrainerAssistant?.selected);
+
+  /** Пока открыта модалка доп. полей ИИ — подтягиваем вес / рост / возраст из профиля, не затирая сохранённые значения, если в профиле пусто. */
+  useEffect(() => {
+    if (!isAiExtraInfoModalOpen) return;
+    const keys = new Set(aiExtraInfoDefinitions.map((d) => d.fieldKey));
+    if (!keys.has("weight") && !keys.has("height") && !keys.has("age")) return;
+    setAiExtraInfoValues((prev) => mergeAiExtrasWithProfile(prev, keys));
+  }, [
+    profileBirthDate,
+    profileHeightCm,
+    profileWeightKg,
+    isAiExtraInfoModalOpen,
+    aiExtraInfoDefinitions
+  ]);
+
   useEffect(() => {
     if (tab !== "workouts" || workoutsSubTab !== "my-workout") return;
     const active = workoutSessions.find(
@@ -1544,6 +1722,20 @@ function AppContent() {
     if (tab !== "workouts" || workoutsSubTab !== "history") return;
     loadWorkoutHistory();
   }, [tab, workoutsSubTab, historyDateFrom, historyDateTo]);
+  useEffect(() => {
+    if (tab !== "workouts" || !hasAiAccess || !aiToken) return;
+    loadAiAssistants(aiToken);
+  }, [tab, hasAiAccess, aiToken]);
+  useEffect(() => {
+    if (tab !== "workouts" || workoutsSubTab !== "ai-trainer") return;
+    if (!aiToken) return;
+    loadDialogs(aiToken);
+  }, [tab, workoutsSubTab, aiToken]);
+  useEffect(() => {
+    if (tab !== "workouts" || workoutsSubTab !== "ai-trainer") return;
+    if (showWorkoutAiTrainerTab) return;
+    setWorkoutsSubTab("my-workout");
+  }, [tab, workoutsSubTab, showWorkoutAiTrainerTab]);
   const selectedProgram = useMemo(
     () => workoutPrograms.find((x) => x.sessionCode === selectedProgramCode) || null,
     [workoutPrograms, selectedProgramCode]
@@ -1568,10 +1760,6 @@ function AppContent() {
       ?? null
     );
   }, [chatAssistantPreviewId, aiAssistants, adminAiAssistants]);
-
-  const isLoggedIn = Boolean(accessToken);
-  const isAdmin = currentUserRole === "Admin";
-  const hasAiAccess = currentUserRole === "Admin" || currentUserRole === "AiUser";
 
   return (
     <Routes>
@@ -1766,71 +1954,69 @@ function AppContent() {
               </ul>
             )}
 
-            <div
-              className="ai-assistant-chat-panel"
-              style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.12))" }}
-            >
-              <h4 style={{ marginTop: 0 }}>Чат с помощником</h4>
-              <p className="subtitle">
-                {aiAssistants.some((x) => x.selected) ? (
-                  <>
-                    Сейчас ответы строятся с помощником «
-                    <strong>{aiAssistants.find((x) => x.selected)?.name}</strong>
-                    »: его системный промпт и заполненные для него доп. поля передаются в модель вместе с историей диалога.
-                  </>
-                ) : (
-                  <>
-                    Помощник не включён — модель видит только историю этого диалога без дополнительного системного промпта. Включи помощника кнопкой «Включить» выше.
-                  </>
-                )}
+            {aiAssistants.some((x) => x.selected) ? (
+              <div
+                className="ai-assistant-chat-panel"
+                style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.12))" }}
+              >
+                <h4 style={{ marginTop: 0 }}>Чат с помощником</h4>
+                <p className="subtitle">
+                  Сейчас ответы строятся с помощником «
+                  <strong>{aiAssistants.find((x) => x.selected)?.name}</strong>
+                  »: его системный промпт и заполненные для него доп. поля передаются в модель вместе с историей диалога.
+                </p>
+                <p className="subtitle">Можно создать отдельный диалог или писать без выбранного диалога — тогда создастся новый.</p>
+                <div className="row">
+                  <select value={currentDialogId} onChange={(e) => { setCurrentDialogId(e.target.value); loadDialogMessages(e.target.value); }}>
+                    <option value="">Нет диалогов</option>
+                    {dialogOptions}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiDialogTitleDraft("");
+                      setAiDialogModalKind("new");
+                    }}
+                  >
+                    + Новый
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!currentDialogId) return;
+                      const current = dialogs.find((d) => d.id === currentDialogId);
+                      setAiDialogTitleDraft(current?.title || "Новый диалог");
+                      setAiDialogModalKind("rename");
+                    }}
+                    title="Переименовать"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    onClick={() => {
+                      if (!currentDialogId) return;
+                      setAiDialogModalKind("delete");
+                    }}
+                    title="Удалить"
+                  >
+                    🗑️
+                  </button>
+                </div>
+                <div className="chat-messages">
+                  {chatMessages.map((m, i) => <div key={i} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>{m.content}</div>)}
+                </div>
+                <div className="row">
+                  <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Введите сообщение..." />
+                  <button type="button" onClick={sendChat}>Отправить</button>
+                </div>
+              </div>
+            ) : aiAssistants.length > 0 ? (
+              <p className="subtitle" style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.12))" }}>
+                Чат будет доступен после включения помощника кнопкой «Включить» выше.
               </p>
-              <p className="subtitle">Можно создать отдельный диалог или писать без выбранного диалога — тогда создастся новый.</p>
-              <div className="row">
-                <select value={currentDialogId} onChange={(e) => { setCurrentDialogId(e.target.value); loadDialogMessages(e.target.value); }}>
-                  <option value="">Нет диалогов</option>
-                  {dialogOptions}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAiDialogTitleDraft("");
-                    setAiDialogModalKind("new");
-                  }}
-                >
-                  + Новый
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!currentDialogId) return;
-                    const current = dialogs.find((d) => d.id === currentDialogId);
-                    setAiDialogTitleDraft(current?.title || "Новый диалог");
-                    setAiDialogModalKind("rename");
-                  }}
-                  title="Переименовать"
-                >
-                  ✏️
-                </button>
-                <button
-                  type="button"
-                  className="danger-btn"
-                  onClick={() => {
-                    if (!currentDialogId) return;
-                    setAiDialogModalKind("delete");
-                  }}
-                  title="Удалить"
-                >
-                  🗑️
-                </button>
-              </div>
-              <div className="chat-messages">
-                {chatMessages.map((m, i) => <div key={i} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>{m.content}</div>)}
-              </div>
-              <div className="row">
-                <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Введите сообщение..." />
-                <button type="button" onClick={sendChat}>Отправить</button>
-              </div>
-            </div>
+            ) : null}
           </section>
         </section>}
 
@@ -1840,9 +2026,77 @@ function AppContent() {
             <p className="subtitle">Управляй программами, своими упражнениями и фактическими тренировками.</p>
             <div className="workouts-subtabs">
               <button className={workoutsSubTab === "my-workout" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("my-workout")}>Моя тренировка</button>
+              {showWorkoutAiTrainerTab ? (
+                <button
+                  type="button"
+                  className={workoutsSubTab === "ai-trainer" ? "top-nav-tab active" : "top-nav-tab"}
+                  onClick={() => setWorkoutsSubTab("ai-trainer")}
+                >
+                  ИИ тренер
+                </button>
+              ) : null}
               <button className={workoutsSubTab === "history" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("history")}>История</button>
               <button className={workoutsSubTab === "manage" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("manage")}>Управление тренировкой</button>
             </div>
+
+            {workoutsSubTab === "ai-trainer" && showWorkoutAiTrainerTab && (
+              <div
+                className="ai-assistant-chat-panel"
+                style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.12))" }}
+              >
+                <h4 style={{ marginTop: 0 }}>ИИ тренер</h4>
+                <p className="subtitle">
+                  Ответы строятся активным помощником «Тренер»: системный промпт и ваши доп. поля из вкладки «ИИ». Те же диалоги, что и в разделе «ИИ».
+                </p>
+                <div className="row">
+                  <select value={currentDialogId} onChange={(e) => { setCurrentDialogId(e.target.value); loadDialogMessages(e.target.value); }}>
+                    <option value="">Нет диалогов</option>
+                    {dialogOptions}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiDialogTitleDraft("");
+                      setAiDialogModalKind("new");
+                    }}
+                  >
+                    + Новый
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!currentDialogId) return;
+                      const current = dialogs.find((d) => d.id === currentDialogId);
+                      setAiDialogTitleDraft(current?.title || "Новый диалог");
+                      setAiDialogModalKind("rename");
+                    }}
+                    title="Переименовать"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    onClick={() => {
+                      if (!currentDialogId) return;
+                      setAiDialogModalKind("delete");
+                    }}
+                    title="Удалить"
+                  >
+                    🗑️
+                  </button>
+                </div>
+                <div className="chat-messages">
+                  {chatMessages.map((m, i) => (
+                    <div key={i} className={`chat-msg ${m.role === "user" ? "user" : "assistant"}`}>{m.content}</div>
+                  ))}
+                </div>
+                <div className="row">
+                  <input value={chatPrompt} onChange={(e) => setChatPrompt(e.target.value)} placeholder="Сообщение ИИ тренеру…" />
+                  <button type="button" onClick={sendChat}>Отправить</button>
+                </div>
+              </div>
+            )}
 
             {workoutsSubTab === "manage" && (
               <>
@@ -2173,6 +2427,7 @@ function AppContent() {
                 <thead>
                   <tr>
                     <th>Название</th>
+                    <th>Код</th>
                     <th>Порядок</th>
                     <th>Активен</th>
                     <th>Промпт</th>
@@ -2181,11 +2436,12 @@ function AppContent() {
                 </thead>
                 <tbody>
                   {adminAiAssistants.length === 0 && (
-                    <tr><td colSpan="5">Нет записей</td></tr>
+                    <tr><td colSpan="6">Нет записей</td></tr>
                   )}
                   {adminAiAssistants.map((row) => (
                     <tr key={row.id}>
                       <td>{row.name}</td>
+                      <td style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.9em" }}>{row.assistantCode || "—"}</td>
                       <td>{row.sortOrder}</td>
                       <td>{row.isActive ? "Да" : "Нет"}</td>
                       <td className="admin-ai-summary-cell">{row.systemPrompt ? `${String(row.systemPrompt).slice(0, 80)}${String(row.systemPrompt).length > 80 ? "…" : ""}` : "—"}</td>
@@ -2210,7 +2466,9 @@ function AppContent() {
                         >
                           Тест чата
                         </button>
-                        <button type="button" className="danger-btn" onClick={() => setPendingDeleteAssistantId(row.id)} title="Удалить">🗑️</button>
+                        {!row.isSystem && (
+                          <button type="button" className="danger-btn" onClick={() => setPendingDeleteAssistantId(row.id)} title="Удалить">🗑️</button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -2540,16 +2798,18 @@ function AppContent() {
                             <td>{f.isRequired ? "Да" : "Нет"}</td>
                             <td className="admin-actions">
                               <button type="button" onClick={() => openAdminExtraFieldEdit(f)} title="Редактировать">✏️</button>
-                              <button
-                                type="button"
-                                className="danger-btn"
-                                onClick={() =>
-                                  setPendingDeleteExtraField({ assistantId: assistantDraft.id, fieldId: f.id })
-                                }
-                                title="Удалить"
-                              >
-                                🗑️
-                              </button>
+                              {!f.isSystem && (
+                                <button
+                                  type="button"
+                                  className="danger-btn"
+                                  onClick={() =>
+                                    setPendingDeleteExtraField({ assistantId: assistantDraft.id, fieldId: f.id })
+                                  }
+                                  title="Удалить"
+                                >
+                                  🗑️
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -2788,7 +3048,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {(tab === "ai" || tab === "admin") && hasAiAccess && aiDialogModalKind === "new" && (
+        {(tab === "ai" || tab === "admin" || (tab === "workouts" && workoutsSubTab === "ai-trainer")) && hasAiAccess && aiDialogModalKind === "new" && (
           <ModalShell
             open={aiDialogModalKind === "new"}
             onClose={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}
@@ -2806,7 +3066,7 @@ function AppContent() {
               </div>
           </ModalShell>
         )}
-        {(tab === "ai" || tab === "admin") && hasAiAccess && aiDialogModalKind === "rename" && (
+        {(tab === "ai" || tab === "admin" || (tab === "workouts" && workoutsSubTab === "ai-trainer")) && hasAiAccess && aiDialogModalKind === "rename" && (
           <ModalShell
             open={aiDialogModalKind === "rename"}
             onClose={() => { setAiDialogModalKind(null); setAiDialogTitleDraft(""); }}
@@ -2824,7 +3084,7 @@ function AppContent() {
               </div>
           </ModalShell>
         )}
-        {(tab === "ai" || tab === "admin") && hasAiAccess && aiDialogModalKind === "delete" && (
+        {(tab === "ai" || tab === "admin" || (tab === "workouts" && workoutsSubTab === "ai-trainer")) && hasAiAccess && aiDialogModalKind === "delete" && (
           <ModalShell open={aiDialogModalKind === "delete"} onClose={() => setAiDialogModalKind(null)}>
               <h3>Удалить диалог</h3>
               <p className="subtitle">Удалить текущий выбранный диалог без восстановления?</p>
@@ -2842,6 +3102,10 @@ function AppContent() {
               <strong>{aiAssistants.find((x) => String(x.id) === String(aiExtraInfoAssistantId))?.name || "—"}</strong>
               . Поля задаёт администратор для каждого помощника отдельно; при чате с выбранным помощником они попадают в контекст модели.
             </p>
+            <p className="subtitle">
+              Поля веса, роста (см) и возраста синхронизированы с карточкой профиля: возраст считается из даты рождения; значение из профиля имеет приоритет,
+              если оно заполнено. Сохранение здесь обновляет и профиль на сервере.
+            </p>
             {aiExtraInfoDefinitions.length === 0 ? (
               <p className="subtitle">Для этого помощника пока нет дополнительных полей.</p>
             ) : (
@@ -2857,7 +3121,7 @@ function AppContent() {
                       rows={4}
                       value={aiExtraInfoValues[def.fieldKey] ?? ""}
                       onChange={(e) =>
-                        setAiExtraInfoValues((prev) => ({ ...prev, [def.fieldKey]: e.target.value }))
+                        handleAiExtraFieldChange(def.fieldKey, e.target.value)
                       }
                     />
                   ) : def.fieldType === "number" ? (
@@ -2865,7 +3129,7 @@ function AppContent() {
                       type="number"
                       value={aiExtraInfoValues[def.fieldKey] ?? ""}
                       onChange={(e) =>
-                        setAiExtraInfoValues((prev) => ({ ...prev, [def.fieldKey]: e.target.value }))
+                        handleAiExtraFieldChange(def.fieldKey, e.target.value)
                       }
                     />
                   ) : (
@@ -2873,7 +3137,7 @@ function AppContent() {
                       type="text"
                       value={aiExtraInfoValues[def.fieldKey] ?? ""}
                       onChange={(e) =>
-                        setAiExtraInfoValues((prev) => ({ ...prev, [def.fieldKey]: e.target.value }))
+                        handleAiExtraFieldChange(def.fieldKey, e.target.value)
                       }
                     />
                   )}

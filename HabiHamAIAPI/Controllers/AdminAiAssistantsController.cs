@@ -63,6 +63,7 @@ public sealed class AdminAiAssistantsController : ControllerBase
             SettingsJson = string.IsNullOrWhiteSpace(request.SettingsJson) ? null : request.SettingsJson.Trim(),
             SortOrder = request.SortOrder,
             IsActive = request.IsActive,
+            IsSystem = false,
             CreatedAtUtc = now
         };
 
@@ -120,6 +121,11 @@ public sealed class AdminAiAssistantsController : ControllerBase
             return NotFound(new { message = "Assistant not found." });
         }
 
+        if (entity.IsSystem)
+        {
+            return BadRequest(new { message = "Нельзя удалить встроенного помощника." });
+        }
+
         _dbContext.AiAssistants.Remove(entity);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -130,12 +136,14 @@ public sealed class AdminAiAssistantsController : ControllerBase
         new()
         {
             Id = x.Id,
+            AssistantCode = x.AssistantCode,
             Name = x.Name,
             Description = x.Description,
             SystemPrompt = x.SystemPrompt,
             SettingsJson = x.SettingsJson,
             SortOrder = x.SortOrder,
             IsActive = x.IsActive,
+            IsSystem = x.IsSystem,
             CreatedAtUtc = x.CreatedAtUtc
         };
 }

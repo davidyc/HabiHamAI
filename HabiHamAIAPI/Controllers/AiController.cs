@@ -275,6 +275,7 @@ public sealed class AiController : ControllerBase
             .Select(x => new
             {
                 id = x.Id,
+                assistantCode = x.AssistantCode,
                 name = x.Name,
                 description = x.Description,
                 sortOrder = x.SortOrder,

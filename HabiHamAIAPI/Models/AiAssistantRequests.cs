@@ -28,12 +28,14 @@ public sealed class AdminUpdateAiAssistantRequest
 public sealed class AdminAiAssistantResponse
 {
     public Guid Id { get; set; }
+    public string? AssistantCode { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string SystemPrompt { get; set; } = string.Empty;
     public string? SettingsJson { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
+    public bool IsSystem { get; set; }
     public DateTime CreatedAtUtc { get; set; }
 }
 
@@ -55,6 +57,7 @@ public sealed class AdminAiAssistantExtraFieldResponse
     public string FieldType { get; set; } = string.Empty;
     public int SortOrder { get; set; }
     public bool IsRequired { get; set; }
+    public bool IsSystem { get; set; }
     public DateTime CreatedAtUtc { get; set; }
 }
 

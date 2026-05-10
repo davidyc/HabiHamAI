@@ -68,6 +68,9 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
             entity.Property(x => x.IsActive).HasColumnName("is_active").IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.AssistantCode).HasColumnName("assistant_code").HasMaxLength(64);
+            entity.Property(x => x.IsSystem).HasColumnName("is_system").HasDefaultValue(false).IsRequired();
+            entity.HasIndex(x => x.AssistantCode).IsUnique();
             entity.HasIndex(x => x.SortOrder);
         });
 
@@ -82,6 +85,7 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.FieldType).HasColumnName("field_type").HasMaxLength(30).IsRequired();
             entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
             entity.Property(x => x.IsRequired).HasColumnName("is_required").IsRequired();
+            entity.Property(x => x.IsSystem).HasColumnName("is_system").HasDefaultValue(false).IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.HasIndex(x => new { x.AiAssistantId, x.FieldKey }).IsUnique();
             entity.HasIndex(x => new { x.AiAssistantId, x.SortOrder });
