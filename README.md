@@ -4,10 +4,10 @@
 
 ## Репозиторий и локальный запуск
 
-| Каталог | Назначение |
-|---------|------------|
+| Каталог         | Назначение                                   |
+| --------------- | -------------------------------------------- |
 | `HabiHamAIAPI/` | REST API, EF Core, миграции в `Migrations/`. |
-| `HabiHamAIUi/` | SPA, основной код экранов в `src/App.jsx`. |
+| `HabiHamAIUi/`  | SPA, основной код экранов в `src/App.jsx`.   |
 
 **Backend:** в каталоге `HabiHamAIAPI` выполните `dotnet run` (профиль `http` в `Properties/launchSettings.json` — по умолчанию **http://localhost:5193**). Нужны PostgreSQL и параметры JWT; при старте применяются миграции. LLM: переменные `OPENAI_*` / секция Kernestal (см. раздел 7 ниже).
 
@@ -31,11 +31,11 @@
 
 ## 2. Архитектура
 
-| Слой | Технологии | Примечание |
-|------|------------|------------|
-| Клиент | React 18, `react-router-dom`, Vite | Точка входа: `HabiHamAIUi/src/main.jsx`. Основная логика UI — монолитный **`App.jsx`** (~4k строк): вкладки, модалки, вызовы API. Навигация: **`TopNav.jsx`**. Обёртка модалок: **`shared/ui/ModalShell.jsx`**. |
-| API | ASP.NET Core, JWT Bearer, EF Core, Npgsql | `HabiHamAIAPI/Program.cs`: миграции при старте, CORS, Swagger. |
-| БД | PostgreSQL | Схема через миграции в `HabiHamAIAPI/Migrations`. |
+| Слой   | Технологии                                | Примечание                                                                                                                                                                                                      |
+| ------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Клиент | React 18, `react-router-dom`, Vite        | Точка входа: `HabiHamAIUi/src/main.jsx`. Основная логика UI — монолитный **`App.jsx`** (~4k строк): вкладки, модалки, вызовы API. Навигация: **`TopNav.jsx`**. Обёртка модалок: **`shared/ui/ModalShell.jsx`**. |
+| API    | ASP.NET Core, JWT Bearer, EF Core, Npgsql | `HabiHamAIAPI/Program.cs`: миграции при старте, CORS, Swagger.                                                                                                                                                  |
+| БД     | PostgreSQL                                | Схема через миграции в `HabiHamAIAPI/Migrations`.                                                                                                                                                               |
 
 Клиент ходит на API по базовому URL: **`import.meta.env.VITE_API_BASE_URL`** или по умолчанию `http://localhost:5193` (см. `App.jsx`). Заголовок авторизации: `Authorization: Bearer <token>`.
 
@@ -45,11 +45,11 @@
 
 Определены в `AppUserRole` (`Admin`, `User`, `AiUser`).
 
-| Роль | Доступ |
-|------|--------|
-| **User** | Профиль, вес, тренировки, регистрация/вход. Без раздела «AI помощник». |
-| **AiUser** | То же + `/ai/*`, выбор ассистента, диалоги, чат, доп. поля ассистентов. |
-| **Admin** | Всё выше + `/admin/*` (пользователи, диалоги, AI ассистенты и extra-fields). |
+| Роль       | Доступ                                                                       |
+| ---------- | ---------------------------------------------------------------------------- |
+| **User**   | Профиль, вес, тренировки, регистрация/вход. Без раздела «AI помощник».       |
+| **AiUser** | То же + `/ai/*`, выбор ассистента, диалоги, чат, доп. поля ассистентов.      |
+| **Admin**  | Всё выше + `/admin/*` (пользователи, диалоги, AI ассистенты и extra-fields). |
 
 При входе UI хранит три токена: **`accessToken`** (текущий пользователь), **`adminToken`** и **`aiToken`** — для одного и того же пользователя-админа это один JWT, но код разделяет сценарии вызовов.
 
@@ -61,20 +61,20 @@
 
 ### 4.1. Аутентификация (`/auth`)
 
-| Метод | Путь | Доступ | Назначение |
-|-------|------|--------|------------|
-| POST | `/auth/login` | Анонимно | Вход: `username`, `password` → JWT и профиль. |
-| POST | `/auth/register` | Анонимно | Регистрация нового пользователя. |
+| Метод | Путь             | Доступ   | Назначение                                    |
+| ----- | ---------------- | -------- | --------------------------------------------- |
+| POST  | `/auth/login`    | Анонимно | Вход: `username`, `password` → JWT и профиль. |
+| POST  | `/auth/register` | Анонимно | Регистрация нового пользователя.              |
 
 ### 4.2. Текущий пользователь (`/users`, JWT)
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| GET | `/users/me` | Профиль. |
-| PUT | `/users/me` | Обновление профиля (в т.ч. рост/вес/дата рождения, AI summary и др.). |
-| GET | `/users/me/weight-tracker` | Список записей веса. |
-| POST | `/users/me/weight-tracker` | Добавить/обновить запись (дата + вес). |
-| DELETE | `/users/me/weight-tracker/{entryId}` | Удалить запись. |
+| Метод  | Путь                                 | Назначение                                                            |
+| ------ | ------------------------------------ | --------------------------------------------------------------------- |
+| GET    | `/users/me`                          | Профиль.                                                              |
+| PUT    | `/users/me`                          | Обновление профиля (в т.ч. рост/вес/дата рождения, AI summary и др.). |
+| GET    | `/users/me/weight-tracker`           | Список записей веса.                                                  |
+| POST   | `/users/me/weight-tracker`           | Добавить/обновить запись (дата + вес).                                |
+| DELETE | `/users/me/weight-tracker/{entryId}` | Удалить запись.                                                       |
 
 ### 4.3. Тренировки (`/users/me/workouts`, JWT)
 
@@ -84,88 +84,88 @@
 - `workout::…` — активная или завершённая фактическая тренировка.
 - `catalog::…` — служебная сессия на одно упражнение для **каталога** упражнений (обходной путь без отдельного endpoint «создать только упражнение»).
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| GET | `/users/me/workouts?includeHistory=false` | Список сессий (клиент обычно без истории — программы + активная тренировка). |
-| GET | `/users/me/workouts/history?from&to&program` | История завершённых тренировок за период / фильтр по программе. |
-| GET | `/users/me/workouts/history/options` | Справочники для фильтров истории (если используется). |
-| GET | `/users/me/workouts/import-template` | JSON-шаблон импорта (legacy). |
-| GET | `/users/me/workouts/planning/import-template` | Шаблон импорта планирования программ. |
-| POST | `/users/me/workouts/planning/import` | Массовый импорт программ из JSON. |
-| GET | `/users/me/workouts/{sessionId}` | Сессия по id. |
-| POST | `/users/me/workouts` | Upsert сессии: создание/обновление программы или тренировки, состав упражнений и подходов, флаг `isActive`. |
-| DELETE | `/users/me/workouts/{sessionId}` | Удалить сессию. |
-| GET | `/users/me/workouts/exercises` | Каталог упражнений (агрегация по служебным сессиям `catalog::`). |
-| GET | `/users/me/workouts/exercises/import-template` | Шаблон JSON для импорта упражнений. |
-| GET | `/users/me/workouts/exercises/export` | Экспорт id + название упражнений. |
-| POST | `/users/me/workouts/exercises/import` | Импорт упражнений из JSON. |
-| GET | `/users/me/workouts/exercises/{exerciseId}` | Одно упражнение каталога. |
-| POST | `/users/me/workouts/{sessionId}/exercises` | Добавить упражнение в сессию (API). |
-| PUT | `/users/me/workouts/exercises/{exerciseId}` | Обновить упражнение. |
-| DELETE | `/users/me/workouts/exercises/{exerciseId}` | Удалить упражнение (в UI — в т.ч. из каталога). |
+| Метод  | Путь                                           | Назначение                                                                                                  |
+| ------ | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| GET    | `/users/me/workouts?includeHistory=false`      | Список сессий (клиент обычно без истории — программы + активная тренировка).                                |
+| GET    | `/users/me/workouts/history?from&to&program`   | История завершённых тренировок за период / фильтр по программе.                                             |
+| GET    | `/users/me/workouts/history/options`           | Справочники для фильтров истории (если используется).                                                       |
+| GET    | `/users/me/workouts/import-template`           | JSON-шаблон импорта (legacy).                                                                               |
+| GET    | `/users/me/workouts/planning/import-template`  | Шаблон импорта планирования программ.                                                                       |
+| POST   | `/users/me/workouts/planning/import`           | Массовый импорт программ из JSON.                                                                           |
+| GET    | `/users/me/workouts/{sessionId}`               | Сессия по id.                                                                                               |
+| POST   | `/users/me/workouts`                           | Upsert сессии: создание/обновление программы или тренировки, состав упражнений и подходов, флаг `isActive`. |
+| DELETE | `/users/me/workouts/{sessionId}`               | Удалить сессию.                                                                                             |
+| GET    | `/users/me/workouts/exercises`                 | Каталог упражнений (агрегация по служебным сессиям `catalog::`).                                            |
+| GET    | `/users/me/workouts/exercises/import-template` | Шаблон JSON для импорта упражнений.                                                                         |
+| GET    | `/users/me/workouts/exercises/export`          | Экспорт id + название упражнений.                                                                           |
+| POST   | `/users/me/workouts/exercises/import`          | Импорт упражнений из JSON.                                                                                  |
+| GET    | `/users/me/workouts/exercises/{exerciseId}`    | Одно упражнение каталога.                                                                                   |
+| POST   | `/users/me/workouts/{sessionId}/exercises`     | Добавить упражнение в сессию (API).                                                                         |
+| PUT    | `/users/me/workouts/exercises/{exerciseId}`    | Обновить упражнение.                                                                                        |
+| DELETE | `/users/me/workouts/exercises/{exerciseId}`    | Удалить упражнение (в UI — в т.ч. из каталога).                                                             |
 
 ### 4.4. AI для пользователя (`/ai`, JWT, роли `Admin` или `AiUser`)
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| POST | `/ai/chat` | Отправка сообщения: `prompt`, `dialogId`, `assistantId` (опционально — иначе выбранный/тренер/превью). |
-| GET | `/ai/dialogs` | Список диалогов. |
-| GET | `/ai/dialogs/{dialogId}/messages` | Сообщения диалога. |
-| POST | `/ai/dialogs` | Создать диалог. |
-| PUT | `/ai/dialogs/{dialogId}` | Переименовать. |
-| DELETE | `/ai/dialogs/{dialogId}` | Удалить. |
-| GET | `/ai/assistants` | Список ассистентов + признак выбранного. |
-| PUT | `/ai/assistants/selection` | Выбрать активного ассистента (`assistantId` или снять выбор). |
-| GET | `/ai/assistant-extra-fields?assistantId=` | Схема полей + сохранённые значения пользователя. |
-| PUT | `/ai/assistant-extra-fields` | Сохранить значения доп. полей для ассистента. |
+| Метод  | Путь                                      | Назначение                                                                                             |
+| ------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| POST   | `/ai/chat`                                | Отправка сообщения: `prompt`, `dialogId`, `assistantId` (опционально — иначе выбранный/тренер/превью). |
+| GET    | `/ai/dialogs`                             | Список диалогов.                                                                                       |
+| GET    | `/ai/dialogs/{dialogId}/messages`         | Сообщения диалога.                                                                                     |
+| POST   | `/ai/dialogs`                             | Создать диалог.                                                                                        |
+| PUT    | `/ai/dialogs/{dialogId}`                  | Переименовать.                                                                                         |
+| DELETE | `/ai/dialogs/{dialogId}`                  | Удалить.                                                                                               |
+| GET    | `/ai/assistants`                          | Список ассистентов + признак выбранного.                                                               |
+| PUT    | `/ai/assistants/selection`                | Выбрать активного ассистента (`assistantId` или снять выбор).                                          |
+| GET    | `/ai/assistant-extra-fields?assistantId=` | Схема полей + сохранённые значения пользователя.                                                       |
+| PUT    | `/ai/assistant-extra-fields`              | Сохранить значения доп. полей для ассистента.                                                          |
 
 Провайдер LLM настраивается секцией **Kernestal** и переменными окружения `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` (см. `Program.cs`).
 
 ### 4.5. Админ: пользователи (`/admin/users`, JWT `Admin`)
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| GET | `/admin/users` | Список пользователей. |
-| GET | `/admin/users/{id}` | Карточка пользователя. |
-| POST | `/admin/users` | Создать (username, password, role). |
-| PUT | `/admin/users/{id}` | Обновить username/role. |
-| PUT | `/admin/users/{id}/password` | Смена пароля. |
-| DELETE | `/admin/users/{id}` | Удалить. |
+| Метод  | Путь                         | Назначение                          |
+| ------ | ---------------------------- | ----------------------------------- |
+| GET    | `/admin/users`               | Список пользователей.               |
+| GET    | `/admin/users/{id}`          | Карточка пользователя.              |
+| POST   | `/admin/users`               | Создать (username, password, role). |
+| PUT    | `/admin/users/{id}`          | Обновить username/role.             |
+| PUT    | `/admin/users/{id}/password` | Смена пароля.                       |
+| DELETE | `/admin/users/{id}`          | Удалить.                            |
 
 ### 4.6. Админ: диалоги (`/admin/dialogs`, JWT `Admin`)
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| GET | `/admin/dialogs?userId=` | Диалоги (опционально по пользователю). |
-| GET | `/admin/dialogs/{dialogId}/messages` | Сообщения. |
-| POST | `/admin/dialogs` | Создать диалог для пользователя. |
-| PUT | `/admin/dialogs/{dialogId}` | Переименовать. |
-| DELETE | `/admin/dialogs/{dialogId}` | Удалить. |
+| Метод  | Путь                                 | Назначение                             |
+| ------ | ------------------------------------ | -------------------------------------- |
+| GET    | `/admin/dialogs?userId=`             | Диалоги (опционально по пользователю). |
+| GET    | `/admin/dialogs/{dialogId}/messages` | Сообщения.                             |
+| POST   | `/admin/dialogs`                     | Создать диалог для пользователя.       |
+| PUT    | `/admin/dialogs/{dialogId}`          | Переименовать.                         |
+| DELETE | `/admin/dialogs/{dialogId}`          | Удалить.                               |
 
 ### 4.7. Админ: AI ассистенты (`/admin/ai-assistants`, JWT `Admin`)
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| GET | `/admin/ai-assistants` | Список. |
-| GET | `/admin/ai-assistants/{id}` | Детали. |
-| POST | `/admin/ai-assistants` | Создать. |
-| PUT | `/admin/ai-assistants/{id}` | Обновить (имя, промпт, JSON настроек, сортировка, активность). |
-| DELETE | `/admin/ai-assistants/{id}` | Удалить. |
+| Метод  | Путь                        | Назначение                                                     |
+| ------ | --------------------------- | -------------------------------------------------------------- |
+| GET    | `/admin/ai-assistants`      | Список.                                                        |
+| GET    | `/admin/ai-assistants/{id}` | Детали.                                                        |
+| POST   | `/admin/ai-assistants`      | Создать.                                                       |
+| PUT    | `/admin/ai-assistants/{id}` | Обновить (имя, промпт, JSON настроек, сортировка, активность). |
+| DELETE | `/admin/ai-assistants/{id}` | Удалить.                                                       |
 
 ### 4.8. Админ: доп. поля ассистента (`/admin/ai-assistants/{assistantId}/extra-fields`)
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| GET | `.../extra-fields` | Список определений полей. |
-| POST | `.../extra-fields` | Создать поле (`fieldKey`, `label`, `fieldType`, `sortOrder`, `isRequired`). |
-| PUT | `.../extra-fields/{fieldId}` | Обновить. |
-| DELETE | `.../extra-fields/{fieldId}` | Удалить. |
+| Метод  | Путь                         | Назначение                                                                  |
+| ------ | ---------------------------- | --------------------------------------------------------------------------- |
+| GET    | `.../extra-fields`           | Список определений полей.                                                   |
+| POST   | `.../extra-fields`           | Создать поле (`fieldKey`, `label`, `fieldType`, `sortOrder`, `isRequired`). |
+| PUT    | `.../extra-fields/{fieldId}` | Обновить.                                                                   |
+| DELETE | `.../extra-fields/{fieldId}` | Удалить.                                                                    |
 
 ### 4.9. Служебное
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| GET | `/ping` | Проверка JWT (требует авторизацию в коде контроллера). |
+| Метод | Путь    | Назначение                                             |
+| ----- | ------- | ------------------------------------------------------ |
+| GET   | `/ping` | Проверка JWT (требует авторизацию в коде контроллера). |
 
 ---
 
@@ -199,13 +199,13 @@
 
 Подвкладки:
 
-| Код состояния | UI | Функции |
-|---------------|-----|---------|
-| `manage` + `add` | Программы | Список программ (`program::`), создание/редактирование в модалке, удаление, импорт планирования JSON, шаблоны. |
-| `manage` + `exercises` | Упражнения | Каталог, создание упражнения (через POST тренировки-служебной записи), импорт/экспорт JSON, удаление. |
-| `my-workout` | Моя тренировка | Выбор программы, старт тренировки, черновик, модалка активной тренировки: поля дня/даты/заметок, упражнения, подходы, сворачивание блоков подходов, смена порядка упражнений, сохранение/завершение. |
-| `ai-trainer` | ИИ тренер | Показывается, если у пользователя **выбран** ассистент с `assistantCode === "trainer"`. Чат и диалоги как в разделе AI. |
-| `history` | История | Фильтр по датам, список завершённых тренировок, просмотр в модалке, удаление, экспорт JSON сессии. |
+| Код состояния          | UI             | Функции                                                                                                                                                                                              |
+| ---------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `manage` + `add`       | Программы      | Список программ (`program::`), создание/редактирование в модалке, удаление, импорт планирования JSON, шаблоны.                                                                                       |
+| `manage` + `exercises` | Упражнения     | Каталог, создание упражнения (через POST тренировки-служебной записи), импорт/экспорт JSON, удаление.                                                                                                |
+| `my-workout`           | Моя тренировка | Выбор программы, старт тренировки, черновик, модалка активной тренировки: поля дня/даты/заметок, упражнения, подходы, сворачивание блоков подходов, смена порядка упражнений, сохранение/завершение. |
+| `ai-trainer`           | ИИ тренер      | Показывается, если у пользователя **выбран** ассистент с `assistantCode === "trainer"`. Чат и диалоги как в разделе AI.                                                                              |
+| `history`              | История        | Фильтр по датам, список завершённых тренировок, просмотр в модалке, удаление, экспорт JSON сессии.                                                                                                   |
 
 ### 6.4. Вкладка «Мой прогресс»
 
@@ -233,11 +233,11 @@
 
 ## 7. Конфигурация и окружение (API)
 
-| Переменная / настройка | Назначение |
-|------------------------|------------|
-| `DB_CONNECTION_STRING` или `ConnectionStrings:DefaultConnection` | PostgreSQL. |
-| `JWT_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE` или `Jwt` в конфиге | Подпись JWT. |
-| `OPENAI_*` / `Kernestal` | LLM endpoint, ключ, модель. |
+| Переменная / настройка                                                             | Назначение                                     |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `DB_CONNECTION_STRING` или `ConnectionStrings:DefaultConnection`                   | PostgreSQL.                                    |
+| `JWT_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE` или `Jwt` в конфиге                        | Подпись JWT.                                   |
+| `OPENAI_*` / `Kernestal`                                                           | LLM endpoint, ключ, модель.                    |
 | `ADMIN_BOOTSTRAP_USERNAME`, `ADMIN_BOOTSTRAP_PASSWORD` или секция `AdminBootstrap` | Создание/обновление администратора при старте. |
 
 ---
@@ -252,15 +252,14 @@
 
 ## 9. Связанные файлы для навигации по коду
 
-| Область | Файлы |
-|---------|--------|
-| API вход | `HabiHamAIAPI/Program.cs`, `Controllers/*.cs` |
-| Тренировки | `Services/WorkoutsService.cs`, `Models/Workout*.cs` |
-| Пользователь и вес | `Services/UsersService.cs` |
-| AI пользователя | `Services/Ai/AiUserService.cs`, `Controllers/AiController.cs` |
-| AI админка | `Services/Ai/AdminAiAssistantsService.cs`, `AdminAiAssistantExtraFieldsService.cs` |
-| Клиент | `HabiHamAIUi/src/App.jsx`, `TopNav.jsx`, `shared/ui/ModalShell.jsx` |
-| Стили экрана | `HabiHamAIUi/src/styles.css` + `shared/styles/*` |
+| Область            | Файлы                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| API вход           | `HabiHamAIAPI/Program.cs`, `Controllers/*.cs`                                      |
+| Тренировки         | `Services/WorkoutsService.cs`, `Models/Workout*.cs`                                |
+| Пользователь и вес | `Services/UsersService.cs`                                                         |
+| AI пользователя    | `Services/Ai/AiUserService.cs`, `Controllers/AiController.cs`                      |
+| AI админка         | `Services/Ai/AdminAiAssistantsService.cs`, `AdminAiAssistantExtraFieldsService.cs` |
+| Клиент             | `HabiHamAIUi/src/App.jsx`, `TopNav.jsx`, `shared/ui/ModalShell.jsx`                |
+| Стили экрана       | `HabiHamAIUi/src/styles.css` + `shared/styles/*`                                   |
 
 README можно дополнять по мере появления новых endpoint и экранов.
-

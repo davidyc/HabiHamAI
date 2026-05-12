@@ -1,6 +1,16 @@
 @HabiHamAIAPI_HostAddress = http://localhost:5193
 @AdminBearerToken = REPLACE_WITH_ADMIN_JWT
 
+### Telegram webhook (smoke: без ответа в Telegram — только проверка 200 и логов)
+POST {{HabiHamAIAPI_HostAddress}}/api/telegram/webhook
+Content-Type: application/json
+
+{
+  "update_id": 100000001
+}
+
+###
+
 POST {{HabiHamAIAPI_HostAddress}}/auth/register
 Content-Type: application/json
 

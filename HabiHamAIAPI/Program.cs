@@ -9,15 +9,36 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using HabiHamAIAPI.Services;
 using HabiHamAIAPI.Services.Ai;
+using HabiHamAIAPI.Services.Telegram;
+using Telegram.Bot;
 
 LoadDotEnv();
 var builder = WebApplication.CreateBuilder(args);
+
+var telegramBotToken = (Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
+    ?? builder.Configuration["Telegram:BotToken"]
+    ?? string.Empty).Trim();
 
 // Add services to the container.
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.Configure<KernestalOptions>(builder.Configuration.GetSection("Kernestal"));
+builder.Services.Configure<TelegramBotOptions>(builder.Configuration.GetSection("Telegram"));
+builder.Services.PostConfigure<TelegramBotOptions>(options =>
+{
+    var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
+    if (!string.IsNullOrEmpty(token))
+    {
+        options.BotToken = token;
+    }
+
+    var baseUrl = Environment.GetEnvironmentVariable("TELEGRAM_PUBLIC_BASE_URL");
+    if (!string.IsNullOrEmpty(baseUrl))
+    {
+        options.PublicBaseUrl = baseUrl;
+    }
+});
 builder.Services.PostConfigure<KernestalOptions>(options =>
 {
     options.BaseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL") ?? options.BaseUrl;
@@ -35,6 +56,12 @@ builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();
 builder.Services.AddScoped<IAdminDialogsService, AdminDialogsService>();
 builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
 builder.Services.AddSingleton<IPingService, PingService>();
+if (!string.IsNullOrEmpty(telegramBotToken))
+{
+    builder.Services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(telegramBotToken));
+    builder.Services.AddSingleton<ITelegramUpdateHandler, TelegramUpdateHandler>();
+    builder.Services.AddHostedService<TelegramWebhookRegistrationHostedService>();
+}
 builder.Services.AddScoped<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
