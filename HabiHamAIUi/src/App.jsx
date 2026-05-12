@@ -129,6 +129,8 @@ function AppContent() {
   const [pendingDeleteCatalogExerciseId, setPendingDeleteCatalogExerciseId] = useState(null);
   const [pendingDeleteWorkoutSessionId, setPendingDeleteWorkoutSessionId] = useState(null);
   const [pendingDeleteCurrentWorkoutExerciseId, setPendingDeleteCurrentWorkoutExerciseId] = useState(null);
+  /** id упражнения → свёрнут блок подходов в модалке активной тренировки */
+  const [activeWorkoutCollapsedExerciseIds, setActiveWorkoutCollapsedExerciseIds] = useState({});
   const [selectedWorkoutHistorySession, setSelectedWorkoutHistorySession] = useState(null);
   const [historyDateFrom, setHistoryDateFrom] = useState(() => getIsoDateDaysAgo(6));
   const [historyDateTo, setHistoryDateTo] = useState(() => getTodayIsoDate());
@@ -1258,6 +1260,18 @@ function AppContent() {
 
   function hideActiveWorkoutModal() {
     setIsActiveWorkoutModalOpen(false);
+    setActiveWorkoutCollapsedExerciseIds({});
+  }
+
+  function toggleActiveWorkoutExerciseCollapsed(exerciseId) {
+    setActiveWorkoutCollapsedExerciseIds((prev) => {
+      if (prev[exerciseId]) {
+        const next = { ...prev };
+        delete next[exerciseId];
+        return next;
+      }
+      return { ...prev, [exerciseId]: true };
+    });
   }
 
   function openOrResumeWorkoutModal() {
@@ -1314,6 +1328,19 @@ function AppContent() {
         ...prev,
         exercises: prev.exercises.filter((x) => x.id !== exerciseId)
       };
+    });
+  }
+
+  function moveCurrentWorkoutExercise(exerciseId, direction) {
+    setCurrentWorkout((prev) => {
+      if (!prev) return prev;
+      const idx = prev.exercises.findIndex((x) => x.id === exerciseId);
+      if (idx < 0) return prev;
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= prev.exercises.length) return prev;
+      const next = [...prev.exercises];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return { ...prev, exercises: next };
     });
   }
 
@@ -3540,7 +3567,7 @@ function AppContent() {
                 placeholder="Опционально"
               />
               <div className="row">
-                <button className="ghost-btn" onClick={addExerciseToCurrentWorkout}>Добавить упражнение</button>
+                <button className="ghost-btn ghost-btn--emerald" onClick={addExerciseToCurrentWorkout}>Добавить упражнение</button>
               </div>
               <div className="users-table-wrap">
                 <table className="users-table">
@@ -3556,14 +3583,60 @@ function AppContent() {
                         <td colSpan="2">Нет упражнений. Добавь первое упражнение.</td>
                       </tr>
                     )}
-                    {currentWorkout.exercises.map((exercise) => ([
+                    {currentWorkout.exercises.flatMap((exercise, exIdx) => {
+                      const setsCollapsed = Boolean(activeWorkoutCollapsedExerciseIds[exercise.id]);
+                      const setCount = exercise.sets?.length ?? 0;
+                      const headRow = (
                         <tr key={`${exercise.id}-head`}>
                           <td colSpan="2">
-                            <b>{exercise.name || "—"}</b>
-                            {" · "}
-                            <span>{exercise.meta || "—"}</span>
+                            <div className="row" style={{ flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                              <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                                <b>{exercise.name || "—"}</b>
+                                {" · "}
+                                <span>{exercise.meta || "—"}</span>
+                                {setsCollapsed ? (
+                                  <span className="subtitle" style={{ marginLeft: 8 }}>
+                                    · {setCount}{" "}
+                                    {setCount === 1 ? "подход" : setCount >= 2 && setCount <= 4 ? "подхода" : "подходов"}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="row" style={{ flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  className="ghost-btn"
+                                  title={setsCollapsed ? "Развернуть подходы" : "Свернуть подходы"}
+                                  aria-label={setsCollapsed ? "Развернуть подходы" : "Свернуть подходы"}
+                                  aria-expanded={!setsCollapsed}
+                                  onClick={() => toggleActiveWorkoutExerciseCollapsed(exercise.id)}
+                                >
+                                  {setsCollapsed ? "▸" : "▾"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-btn"
+                                  title="Выше"
+                                  disabled={exIdx === 0}
+                                  onClick={() => moveCurrentWorkoutExercise(exercise.id, -1)}
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-btn"
+                                  title="Ниже"
+                                  disabled={exIdx >= currentWorkout.exercises.length - 1}
+                                  onClick={() => moveCurrentWorkoutExercise(exercise.id, 1)}
+                                >
+                                  ↓
+                                </button>
+                              </div>
+                            </div>
                           </td>
-                        </tr>,
+                        </tr>
+                      );
+                      if (setsCollapsed) return [headRow];
+                      const setsRow = (
                         <tr key={`${exercise.id}-sets`}>
                           <td colSpan="2">
                             <div className="workout-sets">
@@ -3630,12 +3703,14 @@ function AppContent() {
                               ))}
                             </div>
                             <div className="row">
-                              <button className="ghost-btn" onClick={() => addCurrentWorkoutSet(exercise.id)}>+</button>
+                              <button className="ghost-btn ghost-btn--emerald" onClick={() => addCurrentWorkoutSet(exercise.id)}>+</button>
                               <button className="danger-btn" onClick={() => openDeleteCurrentWorkoutExerciseModal(exercise.id)} title="Удалить">✕</button>
                             </div>
                           </td>
                         </tr>
-                      ]))}
+                      );
+                      return [headRow, setsRow];
+                    })}
                   </tbody>
                 </table>
               </div>

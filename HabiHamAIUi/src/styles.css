@@ -641,6 +641,10 @@ button:active {
   background: linear-gradient(180deg, #475569, #334155);
 }
 
+.ghost-btn.ghost-btn--emerald {
+  background: linear-gradient(180deg, #0d9488, #0f766e);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
