@@ -1,11 +1,12 @@
 using HabiHamAIAPI.Options;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
+using Telegram.Bot.Types;
 
 namespace HabiHamAIAPI.Services.Telegram;
 
 /// <summary>
-/// Registers the Telegram webhook on startup when <see cref="TelegramBotOptions.PublicBaseUrl"/> is configured.
+/// On startup: updates the bot command menu (<c>SetMyCommands</c>). When <see cref="TelegramBotOptions.PublicBaseUrl"/> is set, also registers the Telegram webhook to <c>{PublicBaseUrl}/api/telegram/webhook</c>.
 /// </summary>
 public sealed class TelegramWebhookRegistrationHostedService : IHostedService
 {
@@ -25,6 +26,9 @@ public sealed class TelegramWebhookRegistrationHostedService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        await _botClient.SetMyCommands(TelegramBotMenu.BotCommands, cancellationToken: cancellationToken);
+        _logger.LogInformation("Telegram bot command menu (SetMyCommands) updated.");
+
         var opts = _options.Value;
         var baseUrl = opts.PublicBaseUrl.Trim().TrimEnd('/');
         if (string.IsNullOrEmpty(baseUrl))

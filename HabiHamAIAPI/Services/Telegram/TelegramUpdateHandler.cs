@@ -1,16 +1,23 @@
+using System.Globalization;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace HabiHamAIAPI.Services.Telegram;
 
 public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
 {
-    private readonly ITelegramBotClient _botClient;
+    private const decimal MinWeightKg = 0.01m;
+    private const decimal MaxWeightKg = 700m;
 
-    public TelegramUpdateHandler(ITelegramBotClient botClient)
+    private readonly ITelegramBotClient _botClient;
+    private readonly TelegramChatStateStore _state;
+
+    public TelegramUpdateHandler(ITelegramBotClient botClient, TelegramChatStateStore state)
     {
         _botClient = botClient;
+        _state = state;
     }
 
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
@@ -26,9 +33,151 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
             return;
         }
 
+        var chatId = message.Chat.Id;
+        var command = ParseBotCommand(text);
+
+        switch (command)
+        {
+            case "start":
+                _state.Set(chatId, TelegramChatDialogState.Idle);
+                await _botClient.SendMessage(
+                    chatId,
+                    TelegramBotMenu.Welcome,
+                    replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                    cancellationToken: cancellationToken);
+                return;
+            case "weight":
+                await BeginWeightInputAsync(chatId, cancellationToken);
+                return;
+            case "help":
+                await _botClient.SendMessage(chatId, TelegramBotMenu.Help, cancellationToken: cancellationToken);
+                return;
+            case "keyboard":
+                await _botClient.SendMessage(
+                    chatId,
+                    "Кнопки меню снова показаны.",
+                    replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                    cancellationToken: cancellationToken);
+                return;
+            case "hide":
+                _state.Set(chatId, TelegramChatDialogState.Idle);
+                await _botClient.SendMessage(
+                    chatId,
+                    "Клавиатура скрыта. Вернуть: /keyboard или кнопка меню «Показать кнопки меню».",
+                    replyMarkup: new ReplyKeyboardRemove(),
+                    cancellationToken: cancellationToken);
+                return;
+        }
+
+        if (text == TelegramBotMenu.BtnSendWeight)
+        {
+            await BeginWeightInputAsync(chatId, cancellationToken);
+            return;
+        }
+
+        if (text == TelegramBotMenu.BtnHelp)
+        {
+            await _botClient.SendMessage(chatId, TelegramBotMenu.Help, cancellationToken: cancellationToken);
+            return;
+        }
+
+        if (text == TelegramBotMenu.BtnHideKeyboard)
+        {
+            _state.Set(chatId, TelegramChatDialogState.Idle);
+            await _botClient.SendMessage(
+                chatId,
+                "Клавиатура скрыта. Если ждали вес — ввод отменён.",
+                replyMarkup: new ReplyKeyboardRemove(),
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        if (text == TelegramBotMenu.BtnCancelWeight)
+        {
+            _state.Set(chatId, TelegramChatDialogState.Idle);
+            await _botClient.SendMessage(
+                chatId,
+                "Ввод веса отменён.",
+                replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        if (_state.Get(chatId) == TelegramChatDialogState.AwaitingWeightKg)
+        {
+            if (TryParseWeightKg(text, out var kg))
+            {
+                if (kg < MinWeightKg || kg > MaxWeightKg)
+                {
+                    await _botClient.SendMessage(
+                        chatId,
+                        $"Число должно быть от {MinWeightKg.ToString(CultureInfo.InvariantCulture)} до {MaxWeightKg.ToString(CultureInfo.InvariantCulture)} кг. Попробуйте ещё раз.",
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+
+                _state.Set(chatId, TelegramChatDialogState.Idle);
+                await _botClient.SendMessage(
+                    chatId,
+                    $"Вес принят: <b>{kg.ToString(CultureInfo.InvariantCulture)}</b> кг.",
+                    parseMode: ParseMode.Html,
+                    replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                    cancellationToken: cancellationToken);
+                return;
+            }
+
+            await _botClient.SendMessage(
+                chatId,
+                "Сейчас ожидается только число веса в кг (например 72.5). Либо нажмите «Отмена».",
+                cancellationToken: cancellationToken);
+            return;
+        }
+
         await _botClient.SendMessage(
-            message.Chat.Id,
+            chatId,
             $"Вы написали: {text}",
             cancellationToken: cancellationToken);
+    }
+
+    private async Task BeginWeightInputAsync(long chatId, CancellationToken cancellationToken)
+    {
+        _state.Set(chatId, TelegramChatDialogState.AwaitingWeightKg);
+        await _botClient.SendMessage(
+            chatId,
+            TelegramBotMenu.WeightPrompt,
+            parseMode: ParseMode.Html,
+            replyMarkup: TelegramBotMenu.WeightInputKeyboardRows,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>Сообщение целиком должно быть одним десятичным числом (запятая или точка как разделитель).</summary>
+    private static bool TryParseWeightKg(string text, out decimal kg)
+    {
+        kg = default;
+        var s = text.Trim().Replace(",", ".", StringComparison.Ordinal);
+        if (s.Length == 0)
+        {
+            return false;
+        }
+
+        return decimal.TryParse(
+            s,
+            NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite | NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign,
+            CultureInfo.InvariantCulture,
+            out kg);
+    }
+
+    /// <summary>Извлекает имя команды без / и без @botname.</summary>
+    private static string? ParseBotCommand(string text)
+    {
+        if (!text.StartsWith('/'))
+        {
+            return null;
+        }
+
+        var rest = text.AsSpan(1);
+        var at = rest.IndexOf('@');
+        var name = at >= 0 ? rest[..at] : rest;
+        return name.Length == 0 ? null : name.ToString().ToLowerInvariant();
     }
 }

@@ -59,6 +59,7 @@ builder.Services.AddSingleton<IPingService, PingService>();
 if (!string.IsNullOrEmpty(telegramBotToken))
 {
     builder.Services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(telegramBotToken));
+    builder.Services.AddSingleton<TelegramChatStateStore>();
     builder.Services.AddSingleton<ITelegramUpdateHandler, TelegramUpdateHandler>();
     builder.Services.AddHostedService<TelegramWebhookRegistrationHostedService>();
 }
