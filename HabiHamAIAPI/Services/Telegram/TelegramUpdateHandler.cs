@@ -80,7 +80,7 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
                 await _botClient.SendMessage(
                     chatId,
                     linkMsg,
-                    replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                    replyMarkup: TelegramBotMenu.MainKeyboard,
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -95,27 +95,32 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
                 await _botClient.SendMessage(
                     chatId,
                     TelegramBotMenu.Welcome,
-                    replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: TelegramBotMenu.MainKeyboard,
                     cancellationToken: cancellationToken);
                 return;
             case "weight":
                 await BeginWeightInputAsync(chatId, cancellationToken);
                 return;
             case "help":
-                await _botClient.SendMessage(chatId, TelegramBotMenu.Help, cancellationToken: cancellationToken);
+                await _botClient.SendMessage(
+                    chatId,
+                    TelegramBotMenu.Help,
+                    parseMode: ParseMode.Html,
+                    cancellationToken: cancellationToken);
                 return;
             case "keyboard":
                 await _botClient.SendMessage(
                     chatId,
-                    "Кнопки меню снова показаны.",
-                    replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                    "Кнопка меню снова на экране.",
+                    replyMarkup: TelegramBotMenu.MainKeyboard,
                     cancellationToken: cancellationToken);
                 return;
             case "hide":
                 _state.Set(chatId, TelegramChatDialogState.Idle);
                 await _botClient.SendMessage(
                     chatId,
-                    "Клавиатура скрыта. Вернуть: /keyboard или кнопка меню «Показать кнопки меню».",
+                    "Клавиатура скрыта. Вернуть: /keyboard или команда в меню ☰.",
                     replyMarkup: new ReplyKeyboardRemove(),
                     cancellationToken: cancellationToken);
                 return;
@@ -127,30 +132,13 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
             return;
         }
 
-        if (text == TelegramBotMenu.BtnHelp)
-        {
-            await _botClient.SendMessage(chatId, TelegramBotMenu.Help, cancellationToken: cancellationToken);
-            return;
-        }
-
-        if (text == TelegramBotMenu.BtnHideKeyboard)
-        {
-            _state.Set(chatId, TelegramChatDialogState.Idle);
-            await _botClient.SendMessage(
-                chatId,
-                "Клавиатура скрыта. Если ждали вес — ввод отменён.",
-                replyMarkup: new ReplyKeyboardRemove(),
-                cancellationToken: cancellationToken);
-            return;
-        }
-
         if (text == TelegramBotMenu.BtnCancelWeight)
         {
             _state.Set(chatId, TelegramChatDialogState.Idle);
             await _botClient.SendMessage(
                 chatId,
                 "Ввод веса отменён.",
-                replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                replyMarkup: TelegramBotMenu.MainKeyboard,
                 cancellationToken: cancellationToken);
             return;
         }
@@ -179,7 +167,7 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
                     await _botClient.SendMessage(
                         chatId,
                         "Сначала привяжите аккаунт в веб-приложении: профиль → «Подключить Telegram».",
-                        replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                        replyMarkup: TelegramBotMenu.MainKeyboard,
                         cancellationToken: cancellationToken);
                     return;
                 }
@@ -207,14 +195,14 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
                     chatId,
                     $"Вес сохранён в дневнике: <b>{kg.ToString(CultureInfo.InvariantCulture)}</b> кг.",
                     parseMode: ParseMode.Html,
-                    replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                    replyMarkup: TelegramBotMenu.MainKeyboard,
                     cancellationToken: cancellationToken);
                 return;
             }
 
             await _botClient.SendMessage(
                 chatId,
-                "Сейчас ожидается только число веса в кг (например 72.5). Либо нажмите «Отмена».",
+                "Сейчас ожидается только число веса в кг (например 72.5). Либо нажмите «↩️  Отмена».",
                 cancellationToken: cancellationToken);
             return;
         }
@@ -233,6 +221,7 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
             await _botClient.SendMessage(
                 chatId,
                 "Сначала привяжите аккаунт в веб-приложении: профиль → «Подключить Telegram», затем откройте ссылку в этом чате.",
+                replyMarkup: TelegramBotMenu.MainKeyboard,
                 cancellationToken: cancellationToken);
             return;
         }
@@ -242,7 +231,7 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
             chatId,
             TelegramBotMenu.WeightPrompt,
             parseMode: ParseMode.Html,
-            replyMarkup: TelegramBotMenu.WeightInputKeyboardRows,
+            replyMarkup: TelegramBotMenu.WeightInputKeyboard,
             cancellationToken: cancellationToken);
     }
 

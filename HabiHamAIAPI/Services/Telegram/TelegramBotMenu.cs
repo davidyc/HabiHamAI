@@ -1,47 +1,58 @@
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace HabiHamAIAPI.Services.Telegram;
 
 /// <summary>Статичные подписи меню и команды бота (русский интерфейс).</summary>
 internal static class TelegramBotMenu
 {
-    internal const string BtnHelp = "Помощь";
-    internal const string BtnHideKeyboard = "Скрыть клавиатуру";
-    internal const string BtnSendWeight = "Отправить вес";
-    internal const string BtnCancelWeight = "Отмена";
+    /// <summary>Единственная основная кнопка меню (остальное — команды в ☰).</summary>
+    internal const string BtnSendWeight = "⚖️  Записать вес";
+
+    internal const string BtnCancelWeight = "↩️  Отмена";
 
     internal static readonly IReadOnlyList<BotCommand> BotCommands =
     [
-        new() { Command = "start", Description = "Главное меню" },
-        new() { Command = "weight", Description = "Отправить вес" },
-        new() { Command = "help", Description = "Справка" },
-        new() { Command = "keyboard", Description = "Показать кнопки меню" },
-        new() { Command = "hide", Description = "Скрыть кнопки" },
+        new() { Command = "start", Description = "Главное меню и кнопка" },
+        new() { Command = "weight", Description = "Записать вес" },
+        new() { Command = "help", Description = "Справка по боту" },
+        new() { Command = "keyboard", Description = "Показать кнопку меню" },
+        new() { Command = "hide", Description = "Скрыть клавиатуру" },
     ];
 
-    internal static readonly string[][] MainKeyboardRows =
-    [
-        [BtnSendWeight],
-        [BtnHelp, BtnHideKeyboard],
-    ];
+    internal static readonly ReplyKeyboardMarkup MainKeyboard = new(
+        [[new KeyboardButton(BtnSendWeight)]])
+    {
+        ResizeKeyboard = true,
+        IsPersistent = true,
+        InputFieldPlaceholder = "Команды — в меню слева от поля ввода",
+    };
 
     /// <summary>Пока ждём число — одна кнопка отмены.</summary>
-    internal static readonly string[][] WeightInputKeyboardRows = [[BtnCancelWeight]];
+    internal static readonly ReplyKeyboardMarkup WeightInputKeyboard = new(
+        [[new KeyboardButton(BtnCancelWeight)]])
+    {
+        ResizeKeyboard = true,
+        InputFieldPlaceholder = "Введите вес в кг, например 72.5",
+    };
 
     internal const string WeightPrompt =
-        "Введите вес в килограммах одним числом (например <b>72.5</b> или <b>72,5</b>). Другие сообщения сейчас не принимаются.\n\n"
-        + "Нажмите «Отмена», чтобы выйти.";
+        "Введите вес в килограммах <b>одним числом</b> (например <b>72.5</b> или <b>72,5</b>).\n\n"
+        + "Другие сообщения сейчас не принимаются. Нажмите кнопку отмены ниже, чтобы выйти.";
 
     internal const string Welcome =
-        "Здравствуйте! Я бот HabiHamAI.\n\n"
-        + "Откройте команды через меню (☰ слева от поля ввода) или нажмите кнопки ниже.";
+        "✨ <b>HabiHamAI</b>\n"
+        + "───────────────\n"
+        + "Дневник веса под рукой: нажмите кнопку ниже 👇\n\n"
+        + "<i>Совет:</i> команды и справка — в меню <b>☰</b> слева от поля ввода.\n\n"
+        + "Если аккаунт ещё не привязан, сделайте это в приложении: профиль → «Подключить Telegram».";
 
     internal const string Help =
-        "Доступно:\n"
-        + "• /start — приветствие и кнопки меню\n"
-        + "• /weight или кнопка «Отправить вес» — ввод веса (затем только число в кг)\n"
-        + "• /help — эта справка\n"
-        + "• /keyboard — снова показать кнопки\n"
-        + "• /hide — убрать кнопки с экрана\n\n"
-        + "В обычном режиме произвольный текст повторяется обратно.";
+        "<b>Что умеет бот</b>\n"
+        + "───────────────\n"
+        + "• Кнопка «Записать вес» или /weight — запись веса в дневник (нужна привязка аккаунта)\n"
+        + "• /start — приветствие и кнопка меню\n"
+        + "• /keyboard — снова показать кнопку\n"
+        + "• /hide — убрать клавиатуру\n\n"
+        + "В обычном режиме произвольный текст бот просто повторяет.";
 }
