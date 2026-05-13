@@ -141,8 +141,17 @@ function AppContent() {
   const [historyDateFrom, setHistoryDateFrom] = useState(() => getIsoDateDaysAgo(6));
   const [historyDateTo, setHistoryDateTo] = useState(() => getTodayIsoDate());
   const [historyWorkoutLogs, setHistoryWorkoutLogs] = useState([]);
+  const [bikeActivities, setBikeActivities] = useState([]);
+  const [bikeDateFrom, setBikeDateFrom] = useState(() => getIsoDateDaysAgo(30));
+  const [bikeDateTo, setBikeDateTo] = useState(() => getTodayIsoDate());
+  const [bikeImportMessage, setBikeImportMessage] = useState("");
+  const [bikeDetail, setBikeDetail] = useState(null);
+  const [bikeDetailLoading, setBikeDetailLoading] = useState(false);
+  const [bikeDetailOpen, setBikeDetailOpen] = useState(false);
+  const [pendingDeleteBikeActivityId, setPendingDeleteBikeActivityId] = useState(null);
   const planningImportInputRef = useRef(null);
   const exercisesImportInputRef = useRef(null);
+  const bikeTcxImportRef = useRef(null);
   const isApiLoading = activeApiRequests > 0;
 
   async function request(method, path, body, token) {
@@ -1096,6 +1105,98 @@ function AppContent() {
     }
   }
 
+  function formatBikeDurationSeconds(sec) {
+    if (sec == null || !Number.isFinite(Number(sec))) return "—";
+    const s = Math.round(Number(sec));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = s % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+    return `${m}:${String(r).padStart(2, "0")}`;
+  }
+
+  function formatUtcDateTime(iso) {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("ru-RU");
+    } catch {
+      return String(iso);
+    }
+  }
+
+  async function loadBikeActivities() {
+    if (!accessToken) return;
+    const qs = new URLSearchParams();
+    qs.set("from", bikeDateFrom);
+    qs.set("to", bikeDateTo);
+    qs.set("sport", "Biking");
+    const result = await request("GET", `/users/me/bike-activities?${qs}`, null, accessToken);
+    handleResult(result);
+    if (result.ok && Array.isArray(result.data)) {
+      setBikeActivities(result.data);
+    }
+  }
+
+  async function importBikeTcxFile(file) {
+    if (!accessToken || !file) return;
+    setActiveApiRequests((p) => p + 1);
+    setBikeImportMessage("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const url = `${baseUrl.trim().replace(/\/+$/, "")}/users/me/bike-activities/import`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: fd
+      });
+      const data = await response.json().catch(() => ({}));
+      const result = { ok: response.ok, status: response.status, data };
+      handleResult(result);
+      if (result.ok) {
+        setBikeImportMessage("Файл успешно импортирован.");
+        await loadBikeActivities();
+      } else {
+        setBikeImportMessage(data.message || JSON.stringify(data, null, 2));
+      }
+    } catch (error) {
+      setBikeImportMessage(String(error));
+    } finally {
+      setActiveApiRequests((p) => Math.max(0, p - 1));
+      if (bikeTcxImportRef.current) bikeTcxImportRef.current.value = "";
+    }
+  }
+
+  async function openBikeActivityDetail(id) {
+    if (!accessToken) return;
+    setBikeDetailOpen(true);
+    setBikeDetailLoading(true);
+    setBikeDetail(null);
+    const result = await request("GET", `/users/me/bike-activities/${id}?trackpointLimit=5000`, null, accessToken);
+    setBikeDetailLoading(false);
+    if (result.ok) {
+      setBikeDetail(result.data);
+    } else {
+      handleResult(result);
+      setBikeDetailOpen(false);
+    }
+  }
+
+  async function deleteBikeActivityConfirmed() {
+    if (!pendingDeleteBikeActivityId || !accessToken) return;
+    const deletedId = pendingDeleteBikeActivityId;
+    const result = await request("DELETE", `/users/me/bike-activities/${deletedId}`, null, accessToken);
+    handleResult(result);
+    if (result.ok || result.status === 204) {
+      setPendingDeleteBikeActivityId(null);
+      if (bikeDetail?.id === deletedId) {
+        setBikeDetail(null);
+        setBikeDetailOpen(false);
+      }
+      await loadBikeActivities();
+    }
+  }
+
   function downloadJsonFile(fileName, payload) {
     const content = JSON.stringify(payload, null, 2);
     const blob = new Blob([content], { type: "application/json;charset=utf-8" });
@@ -1901,6 +2002,10 @@ function AppContent() {
     loadWorkoutHistory();
   }, [tab, workoutsSubTab, historyDateFrom, historyDateTo]);
   useEffect(() => {
+    if (tab !== "workouts" || workoutsSubTab !== "bike-activities" || !accessToken) return;
+    loadBikeActivities();
+  }, [tab, workoutsSubTab, accessToken, bikeDateFrom, bikeDateTo]);
+  useEffect(() => {
     if (tab !== "workouts" || !hasAiAccess || !aiToken) return;
     loadAiAssistants(aiToken);
   }, [tab, hasAiAccess, aiToken]);
@@ -2283,6 +2388,7 @@ function AppContent() {
                 </button>
               ) : null}
               <button className={workoutsSubTab === "history" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("history")}>История</button>
+              <button className={workoutsSubTab === "bike-activities" ? "top-nav-tab active" : "top-nav-tab"} type="button" onClick={() => setWorkoutsSubTab("bike-activities")}>Велотренировки</button>
               <button className={workoutsSubTab === "manage" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("manage")}>Управление тренировкой</button>
             </div>
 
@@ -2527,6 +2633,87 @@ function AppContent() {
                       </div>
                     </article>
                   ))}
+                </div>
+              </>
+            )}
+            {workoutsSubTab === "bike-activities" && (
+              <>
+                <h4>Велотренировки (TCX)</h4>
+                <p className="subtitle">
+                  Загрузите экспорт TCX (например из Zepp). Принимаются только поездки со спортом <strong>Biking</strong>. Файл на сервере не хранится — сохраняются разобранные данные.
+                </p>
+                <div className="row">
+                  <button type="button" onClick={() => bikeTcxImportRef.current?.click()}>Загрузить TCX</button>
+                  <input
+                    ref={bikeTcxImportRef}
+                    type="file"
+                    accept=".tcx,application/xml,text/xml"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) importBikeTcxFile(f);
+                    }}
+                  />
+                </div>
+                {bikeImportMessage ? <p className="subtitle" style={{ whiteSpace: "pre-wrap" }}>{bikeImportMessage}</p> : null}
+                <div className="row">
+                  <label>
+                    С даты{" "}
+                    <input type="date" value={bikeDateFrom} onChange={(e) => setBikeDateFrom(e.target.value)} />
+                  </label>
+                  <label>
+                    По дату{" "}
+                    <input type="date" value={bikeDateTo} onChange={(e) => setBikeDateTo(e.target.value)} />
+                  </label>
+                  <button type="button" className="ghost-btn" onClick={() => loadBikeActivities()}>
+                    Обновить
+                  </button>
+                </div>
+                <div className="users-table-wrap">
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Старт</th>
+                        <th>Название</th>
+                        <th>Длительность</th>
+                        <th>Дистанция, км</th>
+                        <th>Ккал</th>
+                        <th>ЧСС ср. / макс</th>
+                        <th>Точек трека</th>
+                        <th>Импорт</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bikeActivities.length === 0 && (
+                        <tr>
+                          <td colSpan="9">Нет записей по выбранному периоду.</td>
+                        </tr>
+                      )}
+                      {bikeActivities.map((row) => (
+                        <tr key={row.id}>
+                          <td>{formatUtcDateTime(row.startTimeUtc)}</td>
+                          <td>{row.notes || "—"}</td>
+                          <td>{formatBikeDurationSeconds(row.totalSeconds)}</td>
+                          <td>{row.distanceMeters != null ? (Number(row.distanceMeters) / 1000).toFixed(2) : "—"}</td>
+                          <td>{row.calories != null ? Math.round(row.calories) : "—"}</td>
+                          <td>
+                            {(row.averageHeartRateBpm ?? "—")} / {(row.maxHeartRateBpm ?? "—")}
+                          </td>
+                          <td>{row.trackpointCount}</td>
+                          <td>{formatUtcDateTime(row.importedAtUtc)}</td>
+                          <td>
+                            <button type="button" className="ghost-btn" onClick={() => openBikeActivityDetail(row.id)}>
+                              Точки трека
+                            </button>{" "}
+                            <button type="button" className="danger-btn" onClick={() => setPendingDeleteBikeActivityId(row.id)} title="Удалить">
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </>
             )}
@@ -3968,6 +4155,90 @@ function AppContent() {
                 <button className="danger-btn" onClick={confirmDeleteWorkoutSession} title="Удалить">🗑️</button>
                 <button className="ghost-btn" onClick={() => setPendingDeleteWorkoutSessionId(null)}>Отмена</button>
               </div>
+          </ModalShell>
+        )}
+
+        {tab === "workouts" && workoutsSubTab === "bike-activities" && pendingDeleteBikeActivityId && (
+          <ModalShell open onClose={() => setPendingDeleteBikeActivityId(null)}>
+            <h3>Удалить велотренировку?</h3>
+            <p className="subtitle">Запись и все точки трека будут удалены из базы.</p>
+            <div className="row">
+              <button type="button" className="danger-btn" onClick={deleteBikeActivityConfirmed}>
+                Удалить
+              </button>
+              <button type="button" className="ghost-btn" onClick={() => setPendingDeleteBikeActivityId(null)}>
+                Отмена
+              </button>
+            </div>
+          </ModalShell>
+        )}
+
+        {tab === "workouts" && workoutsSubTab === "bike-activities" && bikeDetailOpen && (
+          <ModalShell
+            open
+            wide
+            scroll
+            titleId="bike-detail-title"
+            onClose={() => {
+              setBikeDetailOpen(false);
+              setBikeDetail(null);
+            }}
+          >
+            <h3 id="bike-detail-title">Точки трека</h3>
+            {bikeDetailLoading ? (
+              <p className="subtitle">Загрузка…</p>
+            ) : bikeDetail ? (
+              <>
+                <p className="subtitle">
+                  {bikeDetail.notes || bikeDetail.sport} · {formatUtcDateTime(bikeDetail.startTimeUtc)}
+                  {bikeDetail.trackpointCount > (bikeDetail.trackpoints?.length || 0)
+                    ? ` · показано ${bikeDetail.trackpoints?.length || 0} из ${bikeDetail.trackpointCount}`
+                    : null}
+                </p>
+                <div className="users-table-wrap" style={{ maxHeight: 440, overflow: "auto" }}>
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Время</th>
+                        <th>Широта</th>
+                        <th>Долгота</th>
+                        <th>Высота, м</th>
+                        <th>ЧСС</th>
+                        <th>Каденс</th>
+                        <th>Скорость, м/с</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(bikeDetail.trackpoints || []).map((p, i) => (
+                        <tr key={`${p.timeUtc}-${i}`}>
+                          <td>{formatUtcDateTime(p.timeUtc)}</td>
+                          <td>{p.latitude != null ? Number(p.latitude).toFixed(6) : "—"}</td>
+                          <td>{p.longitude != null ? Number(p.longitude).toFixed(6) : "—"}</td>
+                          <td>{p.altitudeMeters != null ? Number(p.altitudeMeters).toFixed(1) : "—"}</td>
+                          <td>{p.heartRateBpm ?? "—"}</td>
+                          <td>{p.cadence ?? "—"}</td>
+                          <td>{p.speedMetersPerSecond != null ? Number(p.speedMetersPerSecond).toFixed(2) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <p className="subtitle">Нет данных.</p>
+            )}
+            <div className="row">
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => {
+                  setBikeDetailOpen(false);
+                  setBikeDetail(null);
+                }}
+              >
+                Закрыть
+              </button>
+            </div>
           </ModalShell>
         )}
 

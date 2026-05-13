@@ -20,6 +20,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
     public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
+    public DbSet<UserBikeActivity> UserBikeActivities => Set<UserBikeActivity>();
+    public DbSet<UserBikeActivityTrackPoint> UserBikeActivityTrackPoints => Set<UserBikeActivityTrackPoint>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -59,6 +61,10 @@ public sealed class AppDbContext : DbContext
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.WeightEntries)
+                .WithOne(x => x.User)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.BikeActivities)
                 .WithOne(x => x.User)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
@@ -238,6 +244,48 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.Rpe).HasColumnName("rpe").HasMaxLength(50).IsRequired();
             entity.Property(x => x.Order).HasColumnName("order_no").IsRequired();
             entity.HasIndex(x => new { x.ExerciseId, x.Order });
+        });
+
+        modelBuilder.Entity<UserBikeActivity>(entity =>
+        {
+            entity.ToTable("user_bike_activities");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("user_id");
+            entity.Property(x => x.Sport).HasColumnName("sport").HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(500);
+            entity.Property(x => x.StartTimeUtc).HasColumnName("start_time_utc").IsRequired();
+            entity.Property(x => x.TotalSeconds).HasColumnName("total_seconds");
+            entity.Property(x => x.DistanceMeters).HasColumnName("distance_meters");
+            entity.Property(x => x.Calories).HasColumnName("calories");
+            entity.Property(x => x.AverageHeartRateBpm).HasColumnName("avg_heart_rate_bpm");
+            entity.Property(x => x.MaxHeartRateBpm).HasColumnName("max_heart_rate_bpm");
+            entity.Property(x => x.Intensity).HasColumnName("intensity").HasMaxLength(40);
+            entity.Property(x => x.TriggerMethod).HasColumnName("trigger_method").HasMaxLength(40);
+            entity.Property(x => x.ImportedAtUtc).HasColumnName("imported_at_utc").IsRequired();
+            entity.Property(x => x.TrackpointCount).HasColumnName("trackpoint_count").IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.StartTimeUtc });
+            entity.HasMany(x => x.TrackPoints)
+                .WithOne(x => x.Activity)
+                .HasForeignKey(x => x.ActivityId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserBikeActivityTrackPoint>(entity =>
+        {
+            entity.ToTable("user_bike_activity_trackpoints");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.ActivityId).HasColumnName("activity_id");
+            entity.Property(x => x.OrderIndex).HasColumnName("order_no").IsRequired();
+            entity.Property(x => x.TimeUtc).HasColumnName("time_utc").IsRequired();
+            entity.Property(x => x.Latitude).HasColumnName("latitude");
+            entity.Property(x => x.Longitude).HasColumnName("longitude");
+            entity.Property(x => x.AltitudeMeters).HasColumnName("altitude_m");
+            entity.Property(x => x.HeartRateBpm).HasColumnName("heart_rate_bpm");
+            entity.Property(x => x.Cadence).HasColumnName("cadence");
+            entity.Property(x => x.SpeedMetersPerSecond).HasColumnName("speed_m_s");
+            entity.HasIndex(x => new { x.ActivityId, x.OrderIndex });
         });
     }
 }

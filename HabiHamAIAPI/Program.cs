@@ -2,6 +2,7 @@ using System.Text;
 using HabiHamAIAPI.Data;
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Options;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -63,7 +64,12 @@ builder.Services.AddScoped<ITelegramUserLinkService, TelegramUserLinkService>();
 builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();
 builder.Services.AddScoped<IAdminDialogsService, AdminDialogsService>();
 builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
+builder.Services.AddScoped<IBikeActivitiesService, BikeActivitiesService>();
 builder.Services.AddSingleton<IPingService, PingService>();
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 30 * 1024 * 1024;
+});
 if (!string.IsNullOrEmpty(telegramBotToken))
 {
     builder.Services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(telegramBotToken));

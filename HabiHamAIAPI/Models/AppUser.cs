@@ -23,4 +23,5 @@ public sealed class AppUser
     public List<ChatDialog> Dialogs { get; set; } = [];
     public List<WorkoutSession> WorkoutSessions { get; set; } = [];
     public List<UserWeightEntry> WeightEntries { get; set; } = [];
+    public List<UserBikeActivity> BikeActivities { get; set; } = [];
 }
