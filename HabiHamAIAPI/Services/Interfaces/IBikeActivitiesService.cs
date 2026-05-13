@@ -6,6 +6,9 @@ namespace HabiHamAIAPI.Services;
 
 public interface IBikeActivitiesService
 {
+    /// <summary>Импорт TCX по id пользователя (например из Telegram, без JWT).</summary>
+    Task<IActionResult> ImportTcxForUserIdAsync(Guid userId, Stream stream, string? fileName, CancellationToken cancellationToken);
+
     Task<IActionResult> ImportTcxAsync(ClaimsPrincipal principal, IFormFile? file, CancellationToken cancellationToken);
     Task<IActionResult> ListAsync(ClaimsPrincipal principal, DateOnly? from, DateOnly? to, string? sport, CancellationToken cancellationToken);
     Task<IActionResult> GetByIdAsync(ClaimsPrincipal principal, Guid id, int? trackpointLimit, CancellationToken cancellationToken);

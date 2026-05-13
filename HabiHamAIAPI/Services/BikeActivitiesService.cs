@@ -17,6 +17,23 @@ public sealed class BikeActivitiesService : IBikeActivitiesService
         _dbContext = dbContext;
     }
 
+    public async Task<IActionResult> ImportTcxForUserIdAsync(Guid userId, Stream stream, string? fileName, CancellationToken cancellationToken)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return new NotFoundObjectResult(new { message = "Пользователь не найден." });
+        }
+
+        var ext = Path.GetExtension(fileName ?? string.Empty);
+        if (!string.Equals(ext, ".tcx", StringComparison.OrdinalIgnoreCase))
+        {
+            return new BadRequestObjectResult(new { message = "Ожидается файл с расширением .tcx." });
+        }
+
+        return await ImportTcxStreamForUserAsync(user, stream, cancellationToken);
+    }
+
     public async Task<IActionResult> ImportTcxAsync(ClaimsPrincipal principal, IFormFile? file, CancellationToken cancellationToken)
     {
         var user = await GetCurrentUserAsync(principal, cancellationToken);
@@ -37,6 +54,11 @@ public sealed class BikeActivitiesService : IBikeActivitiesService
         }
 
         await using var stream = file.OpenReadStream();
+        return await ImportTcxStreamForUserAsync(user, stream, cancellationToken);
+    }
+
+    private async Task<IActionResult> ImportTcxStreamForUserAsync(AppUser user, Stream stream, CancellationToken cancellationToken)
+    {
         TcxActivityParser.ParsedActivity parsed;
         try
         {
