@@ -3589,8 +3589,8 @@ function AppContent() {
                       const headRow = (
                         <tr key={`${exercise.id}-head`}>
                           <td colSpan="2">
-                            <div className="row" style={{ flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
-                              <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                            <div className="row row--inline" style={{ gap: "8px" }}>
+                              <div style={{ flex: "1 1 min(100%, 200px)", minWidth: 0 }}>
                                 <b>{exercise.name || "—"}</b>
                                 {" · "}
                                 <span>{exercise.meta || "—"}</span>
@@ -3601,7 +3601,7 @@ function AppContent() {
                                   </span>
                                 ) : null}
                               </div>
-                              <div className="row" style={{ flexShrink: 0 }}>
+                              <div className="row row--inline row--inline-nowrap" style={{ flexShrink: 0 }}>
                                 <button
                                   type="button"
                                   className="ghost-btn"

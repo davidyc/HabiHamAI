@@ -321,6 +321,15 @@ button:active {
   align-items: center;
 }
 
+/** Не переводить в колонку на узких экранах (см. @media max-width 860px для .row). */
+.row.row--inline {
+  flex-wrap: wrap;
+}
+
+.row.row--inline-nowrap {
+  flex-wrap: nowrap;
+}
+
 .profile-row > div {
   flex: 1;
 }
@@ -1286,6 +1295,20 @@ button {
   .row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .row.row--inline,
+  .row.row--inline-nowrap {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .row.row--inline {
+    flex-wrap: wrap;
+  }
+
+  .row.row--inline-nowrap {
+    flex-wrap: nowrap;
   }
 
   .admin-actions {
