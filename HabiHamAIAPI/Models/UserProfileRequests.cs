@@ -15,6 +15,7 @@ public sealed class UserProfileResponse
     public string? FirstName { get; set; }
     public string? LastName { get; set; }
     public string? AiSummary { get; set; }
+    public bool TelegramLinked { get; set; }
 }
 
 public sealed class UpdateUserProfileRequest

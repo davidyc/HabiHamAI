@@ -3,6 +3,8 @@ namespace HabiHamAIAPI.Models;
 public sealed class AppUser
 {
     public Guid Id { get; set; }
+    /// <summary>Private chat id with the bot; used to map webhook updates to this account.</summary>
+    public long? TelegramChatId { get; set; }
     public string Username { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public AppUserRole Role { get; set; } = AppUserRole.User;

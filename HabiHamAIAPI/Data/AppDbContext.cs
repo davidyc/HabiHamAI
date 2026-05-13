@@ -16,6 +16,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<ChatDialog> ChatDialogs => Set<ChatDialog>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<UserWeightEntry> UserWeightEntries => Set<UserWeightEntry>();
+    public DbSet<TelegramLinkToken> TelegramLinkTokens => Set<TelegramLinkToken>();
     public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
     public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
@@ -47,6 +48,8 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.AiSummary).HasMaxLength(8000);
             entity.Property(x => x.SelectedAiAssistantId).HasColumnName("selected_ai_assistant_id");
             entity.HasIndex(x => x.Username).IsUnique();
+            entity.Property(x => x.TelegramChatId).HasColumnName("telegram_chat_id");
+            entity.HasIndex(x => x.TelegramChatId).IsUnique();
             entity.HasOne(x => x.SelectedAiAssistant)
                 .WithMany()
                 .HasForeignKey(x => x.SelectedAiAssistantId)
@@ -153,6 +156,23 @@ public sealed class AppDbContext : DbContext
             entity.HasOne(x => x.Dialog)
                 .WithMany(x => x.Messages)
                 .HasForeignKey(x => x.DialogId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TelegramLinkToken>(entity =>
+        {
+            entity.ToTable("telegram_link_tokens");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.TokenHashSha256Hex).HasColumnName("token_hash_sha256_hex").HasMaxLength(64).IsRequired();
+            entity.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
+            entity.Property(x => x.ExpiresAtUtc).HasColumnName("expires_at_utc").IsRequired();
+            entity.Property(x => x.ConsumedAtUtc).HasColumnName("consumed_at_utc");
+            entity.HasIndex(x => x.TokenHashSha256Hex).IsUnique();
+            entity.HasIndex(x => new { x.UserId, x.ConsumedAtUtc });
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

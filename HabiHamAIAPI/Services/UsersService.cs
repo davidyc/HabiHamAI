@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HabiHamAIAPI.Services;
 
-public sealed class UsersService : IUsersService
+public sealed class UsersService : IUsersService, IUserWeightRecordingService
 {
     private readonly AppDbContext _dbContext;
 
@@ -161,6 +161,31 @@ public sealed class UsersService : IUsersService
         return await GetMyWeightTrackerAsync(principal, cancellationToken);
     }
 
+    public async Task RecordWeightTrackerEntryAsync(Guid userId, DateOnly date, decimal weightKg, CancellationToken cancellationToken)
+    {
+        if (weightKg is <= 0 or > 700)
+        {
+            throw new ArgumentOutOfRangeException(nameof(weightKg), "Weight must be between 0 and 700 kg.");
+        }
+
+        var user = await _dbContext.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken)
+            ?? throw new InvalidOperationException("User not found.");
+
+        await UpsertWeightEntryAsync(user.Id, date, weightKg, cancellationToken);
+
+        var latestWeight = await _dbContext.UserWeightEntries
+            .AsNoTracking()
+            .Where(x => x.UserId == user.Id)
+            .OrderByDescending(x => x.Date)
+            .ThenByDescending(x => x.UpdatedAtUtc)
+            .Select(x => (decimal?)x.WeightKg)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        user.WeightKg = latestWeight;
+        await UpsertTrainerWeightAsync(user.Id, latestWeight, cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task<AppUser?> GetCurrentUserAsync(ClaimsPrincipal principal, CancellationToken cancellationToken = default)
     {
         var username = principal.FindFirstValue(ClaimTypes.Name)
@@ -306,7 +331,8 @@ public sealed class UsersService : IUsersService
             About = user.About,
             FirstName = user.FirstName,
             LastName = user.LastName,
-            AiSummary = user.AiSummary
+            AiSummary = user.AiSummary,
+            TelegramLinked = user.TelegramChatId.HasValue
         };
     }
 }

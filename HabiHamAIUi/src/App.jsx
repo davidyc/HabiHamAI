@@ -64,6 +64,12 @@ function AppContent() {
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
   const [profileAiSummary, setProfileAiSummary] = useState("");
+  const [profileTelegramLinked, setProfileTelegramLinked] = useState(false);
+  const [isTelegramLinkModalOpen, setIsTelegramLinkModalOpen] = useState(false);
+  const [telegramLinkUrl, setTelegramLinkUrl] = useState("");
+  const [telegramLinkExpiresAt, setTelegramLinkExpiresAt] = useState("");
+  const [telegramLinkLoading, setTelegramLinkLoading] = useState(false);
+  const [telegramLinkError, setTelegramLinkError] = useState("");
   const [weightTrackerEntries, setWeightTrackerEntries] = useState([]);
   const [weightTrackerDate, setWeightTrackerDate] = useState(() => getTodayIsoDate());
   const [weightTrackerValue, setWeightTrackerValue] = useState("");
@@ -736,7 +742,45 @@ function AppContent() {
     setProfileFirstName(profile.firstName || "");
     setProfileLastName(profile.lastName || "");
     setProfileAiSummary(profile.aiSummary || "");
+    setProfileTelegramLinked(Boolean(profile.telegramLinked));
     await loadWeightTracker(token);
+  }
+
+  function openTelegramLinkModal() {
+    setTelegramLinkError("");
+    setTelegramLinkUrl("");
+    setTelegramLinkExpiresAt("");
+    setIsTelegramLinkModalOpen(true);
+  }
+
+  async function createTelegramDeepLink() {
+    if (!accessToken) return;
+    setTelegramLinkLoading(true);
+    setTelegramLinkError("");
+    setTelegramLinkUrl("");
+    setTelegramLinkExpiresAt("");
+    const result = await request("POST", "/users/me/telegram/link", null, accessToken);
+    handleResult(result);
+    setTelegramLinkLoading(false);
+    if (!result.ok) {
+      setTelegramLinkError(result.data?.message || "Не удалось создать ссылку.");
+      return;
+    }
+    const d = result.data || {};
+    if (d.deepLinkUrl) setTelegramLinkUrl(d.deepLinkUrl);
+    if (d.expiresAtUtc) setTelegramLinkExpiresAt(d.expiresAtUtc);
+  }
+
+  async function unlinkTelegramAccount() {
+    if (!accessToken) return;
+    if (!window.confirm("Отвязать Telegram от этого аккаунта?")) return;
+    const result = await request("DELETE", "/users/me/telegram", null, accessToken);
+    handleResult(result);
+    if (!result.ok) return;
+    setIsTelegramLinkModalOpen(false);
+    setTelegramLinkUrl("");
+    setTelegramLinkExpiresAt("");
+    await loadMyProfile(accessToken);
   }
 
   async function loadWeightTracker(token = accessToken) {
@@ -2102,6 +2146,11 @@ function AppContent() {
                   setProfileFirstName("");
                   setProfileLastName("");
                   setProfileAiSummary("");
+                  setProfileTelegramLinked(false);
+                  setIsTelegramLinkModalOpen(false);
+                  setTelegramLinkUrl("");
+                  setTelegramLinkExpiresAt("");
+                  setTelegramLinkError("");
                   navigate("/login");
                 }}
               />
@@ -2526,6 +2575,19 @@ function AppContent() {
               <div className="profile-readonly-item profile-ai-summary-block">
                 <span className="profile-field-label">Саммари от ИИ</span>
                 <div className="profile-field-value profile-ai-summary-text">{profileAiSummary || "Появится после ответов ассистента в чате."}</div>
+              </div>
+              <div className="profile-readonly-item">
+                <span className="profile-field-label">Telegram</span>
+                <div className="profile-field-value">
+                  {profileTelegramLinked
+                    ? "Подключён — вес из бота сохраняется в дневник на вкладке «Прогресс»."
+                    : "Не подключён — можно вести вес только в приложении."}
+                </div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button type="button" className="ghost-btn" onClick={openTelegramLinkModal}>
+                    {profileTelegramLinked ? "Управление Telegram…" : "Подключить Telegram…"}
+                  </button>
+                </div>
               </div>
             </div>
             <div className="row">
@@ -3401,6 +3463,72 @@ function AppContent() {
                 <button onClick={saveMyProfile}>Сохранить</button>
                 <button className="ghost-btn" onClick={() => setIsProfileEditModalOpen(false)}>Отмена</button>
               </div>
+          </ModalShell>
+        )}
+
+        {tab === "profile" && isTelegramLinkModalOpen && (
+          <ModalShell
+            open={isTelegramLinkModalOpen}
+            onClose={() => setIsTelegramLinkModalOpen(false)}
+            scroll
+            titleId="telegram-link-title"
+          >
+            <h3 id="telegram-link-title">Telegram</h3>
+            {profileTelegramLinked ? (
+              <>
+                <p className="subtitle">Аккаунт привязан. Вес из бота записывается в дневник (вкладка «Прогресс»).</p>
+                <button type="button" className="danger-btn" onClick={() => void unlinkTelegramAccount()}>
+                  Отвязать
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="subtitle">
+                  Создайте ссылку, откройте её в Telegram и нажмите «Start» у бота. Ссылка одноразовая и действует ограниченное время.
+                </p>
+                {telegramLinkError ? (
+                  <p className="error-text" role="alert">
+                    {telegramLinkError}
+                  </p>
+                ) : null}
+                <button type="button" onClick={() => void createTelegramDeepLink()} disabled={telegramLinkLoading}>
+                  {telegramLinkLoading ? "Загрузка…" : telegramLinkUrl ? "Создать новую ссылку" : "Создать ссылку"}
+                </button>
+                {telegramLinkUrl ? (
+                  <>
+                    {telegramLinkExpiresAt ? (
+                      <p className="subtitle" style={{ marginTop: 10 }}>
+                        Действует до: {new Date(telegramLinkExpiresAt).toLocaleString()}
+                      </p>
+                    ) : null}
+                    <div className="row" style={{ marginTop: 12 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.open(telegramLinkUrl, "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        Открыть Telegram
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(telegramLinkUrl);
+                        }}
+                      >
+                        Копировать ссылку
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </>
+            )}
+            <div className="row" style={{ marginTop: 16 }}>
+              <button type="button" className="ghost-btn" onClick={() => setIsTelegramLinkModalOpen(false)}>
+                Закрыть
+              </button>
+            </div>
           </ModalShell>
         )}
 

@@ -13,12 +13,10 @@ namespace HabiHamAIAPI.Controllers;
 [Route("api/telegram")]
 public sealed class TelegramWebhookController : ControllerBase
 {
-    private readonly IServiceProvider _services;
     private readonly IOptions<TelegramBotOptions> _options;
 
-    public TelegramWebhookController(IServiceProvider services, IOptions<TelegramBotOptions> options)
+    public TelegramWebhookController(IOptions<TelegramBotOptions> options)
     {
-        _services = services;
         _options = options;
     }
 
@@ -26,7 +24,8 @@ public sealed class TelegramWebhookController : ControllerBase
     [HttpPost("webhook")]
     public async Task<IActionResult> Webhook(
         CancellationToken cancellationToken,
-        [FromServices] ILogger<TelegramWebhookController> logger)
+        [FromServices] ILogger<TelegramWebhookController> logger,
+        [FromServices] ITelegramUpdateHandler? handler)
     {
         if (string.IsNullOrWhiteSpace(_options.Value.BotToken))
         {
@@ -34,7 +33,6 @@ public sealed class TelegramWebhookController : ControllerBase
             return NotFound();
         }
 
-        var handler = _services.GetService<ITelegramUpdateHandler>();
         if (handler is null)
         {
             logger.LogWarning(

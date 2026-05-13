@@ -1,4 +1,7 @@
 using System.Globalization;
+using HabiHamAIAPI.Data;
+using HabiHamAIAPI.Services;
+using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -13,11 +16,25 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
 
     private readonly ITelegramBotClient _botClient;
     private readonly TelegramChatStateStore _state;
+    private readonly AppDbContext _dbContext;
+    private readonly ITelegramUserLinkService _linkService;
+    private readonly IUserWeightRecordingService _weightRecording;
+    private readonly ILogger<TelegramUpdateHandler> _logger;
 
-    public TelegramUpdateHandler(ITelegramBotClient botClient, TelegramChatStateStore state)
+    public TelegramUpdateHandler(
+        ITelegramBotClient botClient,
+        TelegramChatStateStore state,
+        AppDbContext dbContext,
+        ITelegramUserLinkService linkService,
+        IUserWeightRecordingService weightRecording,
+        ILogger<TelegramUpdateHandler> logger)
     {
         _botClient = botClient;
         _state = state;
+        _dbContext = dbContext;
+        _linkService = linkService;
+        _weightRecording = weightRecording;
+        _logger = logger;
     }
 
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
@@ -34,6 +51,41 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
         }
 
         var chatId = message.Chat.Id;
+        if (message.Chat.Type != ChatType.Private)
+        {
+            await _botClient.SendMessage(
+                chatId,
+                "Бот работает только в личном чате. Откройте диалог с ботом напрямую.",
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        if (TelegramStartPayloadParser.TryParse(text, out var startPayload))
+        {
+            if (!string.IsNullOrEmpty(startPayload))
+            {
+                var linkResult = await _linkService.TryConsumeStartPayloadAsync(startPayload, chatId, cancellationToken);
+                var linkMsg = linkResult.Status switch
+                {
+                    TelegramLinkConsumeStatus.Linked =>
+                        "Telegram подключён к вашему аккаунту. Можно отправлять вес через бота.",
+                    TelegramLinkConsumeStatus.AlreadyLinkedSameChat =>
+                        "Этот Telegram уже был подключён к вашему аккаунту.",
+                    TelegramLinkConsumeStatus.InvalidOrExpiredToken =>
+                        "Ссылка недействительна или устарела. Создайте новую в приложении (профиль → Telegram).",
+                    TelegramLinkConsumeStatus.ChatBelongsToOtherUser =>
+                        "Этот Telegram уже привязан к другому аккаунту.",
+                    _ => "Не удалось подключить Telegram."
+                };
+                await _botClient.SendMessage(
+                    chatId,
+                    linkMsg,
+                    replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                    cancellationToken: cancellationToken);
+                return;
+            }
+        }
+
         var command = ParseBotCommand(text);
 
         switch (command)
@@ -116,10 +168,44 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
                     return;
                 }
 
+                var appUserId = await _dbContext.Users
+                    .AsNoTracking()
+                    .Where(u => u.TelegramChatId == chatId)
+                    .Select(u => (Guid?)u.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (appUserId is null)
+                {
+                    _state.Set(chatId, TelegramChatDialogState.Idle);
+                    await _botClient.SendMessage(
+                        chatId,
+                        "Сначала привяжите аккаунт в веб-приложении: профиль → «Подключить Telegram».",
+                        replyMarkup: TelegramBotMenu.MainKeyboardRows,
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+
+                try
+                {
+                    await _weightRecording.RecordWeightTrackerEntryAsync(
+                        appUserId.Value,
+                        DateOnly.FromDateTime(DateTime.UtcNow),
+                        kg,
+                        cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Telegram: failed to save weight for chat {ChatId}", chatId);
+                    await _botClient.SendMessage(
+                        chatId,
+                        "Не удалось сохранить вес. Попробуйте позже или введите вес в приложении.",
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+
                 _state.Set(chatId, TelegramChatDialogState.Idle);
                 await _botClient.SendMessage(
                     chatId,
-                    $"Вес принят: <b>{kg.ToString(CultureInfo.InvariantCulture)}</b> кг.",
+                    $"Вес сохранён в дневнике: <b>{kg.ToString(CultureInfo.InvariantCulture)}</b> кг.",
                     parseMode: ParseMode.Html,
                     replyMarkup: TelegramBotMenu.MainKeyboardRows,
                     cancellationToken: cancellationToken);
@@ -141,6 +227,16 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
 
     private async Task BeginWeightInputAsync(long chatId, CancellationToken cancellationToken)
     {
+        var linked = await _dbContext.Users.AsNoTracking().AnyAsync(u => u.TelegramChatId == chatId, cancellationToken);
+        if (!linked)
+        {
+            await _botClient.SendMessage(
+                chatId,
+                "Сначала привяжите аккаунт в веб-приложении: профиль → «Подключить Telegram», затем откройте ссылку в этом чате.",
+                cancellationToken: cancellationToken);
+            return;
+        }
+
         _state.Set(chatId, TelegramChatDialogState.AwaitingWeightKg);
         await _botClient.SendMessage(
             chatId,
@@ -176,6 +272,12 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
         }
 
         var rest = text.AsSpan(1);
+        var space = rest.IndexOf(' ');
+        if (space >= 0)
+        {
+            rest = rest[..space];
+        }
+
         var at = rest.IndexOf('@');
         var name = at >= 0 ? rest[..at] : rest;
         return name.Length == 0 ? null : name.ToString().ToLowerInvariant();

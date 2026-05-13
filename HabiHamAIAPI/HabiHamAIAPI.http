@@ -1,5 +1,6 @@
 @HabiHamAIAPI_HostAddress = http://localhost:5193
 @AdminBearerToken = REPLACE_WITH_ADMIN_JWT
+@UserBearerToken = REPLACE_WITH_USER_JWT
 
 ### Telegram webhook (нужен токен бота в окружении/конфиге — иначе 404; минимальный Update для smoke)
 POST {{HabiHamAIAPI_HostAddress}}/api/telegram/webhook
@@ -51,5 +52,16 @@ Content-Type: application/json
   "password": "aiuser123",
   "role": "AiUser"
 }
+
+###
+
+### Профиль: ссылка привязки Telegram (нужен JWT пользователя и Telegram:BotUsername / TELEGRAM_BOT_USERNAME)
+POST {{HabiHamAIAPI_HostAddress}}/users/me/telegram/link
+Authorization: Bearer {{UserBearerToken}}
+
+###
+
+DELETE {{HabiHamAIAPI_HostAddress}}/users/me/telegram
+Authorization: Bearer {{UserBearerToken}}
 
 ###

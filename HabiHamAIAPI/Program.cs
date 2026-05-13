@@ -38,6 +38,12 @@ builder.Services.PostConfigure<TelegramBotOptions>(options =>
     {
         options.PublicBaseUrl = baseUrl;
     }
+
+    var botUsername = Environment.GetEnvironmentVariable("TELEGRAM_BOT_USERNAME");
+    if (!string.IsNullOrEmpty(botUsername))
+    {
+        options.BotUsername = botUsername.TrimStart('@');
+    }
 });
 builder.Services.PostConfigure<KernestalOptions>(options =>
 {
@@ -52,6 +58,8 @@ builder.Services.AddScoped<IAdminAiAssistantsService, AdminAiAssistantsService>(
 builder.Services.AddScoped<IAdminAiAssistantExtraFieldsService, AdminAiAssistantExtraFieldsService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUsersService, UsersService>();
+builder.Services.AddScoped<IUserWeightRecordingService>(static sp => (IUserWeightRecordingService)sp.GetRequiredService<IUsersService>());
+builder.Services.AddScoped<ITelegramUserLinkService, TelegramUserLinkService>();
 builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();
 builder.Services.AddScoped<IAdminDialogsService, AdminDialogsService>();
 builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
@@ -60,7 +68,7 @@ if (!string.IsNullOrEmpty(telegramBotToken))
 {
     builder.Services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(telegramBotToken));
     builder.Services.AddSingleton<TelegramChatStateStore>();
-    builder.Services.AddSingleton<ITelegramUpdateHandler, TelegramUpdateHandler>();
+    builder.Services.AddScoped<ITelegramUpdateHandler, TelegramUpdateHandler>();
     builder.Services.AddHostedService<TelegramWebhookRegistrationHostedService>();
 }
 builder.Services.AddScoped<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();

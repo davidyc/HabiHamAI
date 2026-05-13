@@ -1,5 +1,6 @@
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Services;
+using HabiHamAIAPI.Services.Telegram;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,10 +12,12 @@ namespace HabiHamAIAPI.Controllers;
 public sealed class UsersController : ControllerBase
 {
     private readonly IUsersService _service;
+    private readonly ITelegramUserLinkService _telegramLinkService;
 
-    public UsersController(IUsersService service)
+    public UsersController(IUsersService service, ITelegramUserLinkService telegramLinkService)
     {
         _service = service;
+        _telegramLinkService = telegramLinkService;
     }
 
     [HttpGet("me")]
@@ -36,4 +39,12 @@ public sealed class UsersController : ControllerBase
     [HttpDelete("me/weight-tracker/{entryId:guid}")]
     public Task<IActionResult> DeleteMyWeightTrackerEntry(Guid entryId, CancellationToken cancellationToken) =>
         _service.DeleteMyWeightTrackerEntryAsync(User, entryId, cancellationToken);
+
+    [HttpPost("me/telegram/link")]
+    public Task<IActionResult> CreateTelegramLink(CancellationToken cancellationToken) =>
+        _telegramLinkService.CreateLinkAsync(User, cancellationToken);
+
+    [HttpDelete("me/telegram")]
+    public Task<IActionResult> UnlinkTelegram(CancellationToken cancellationToken) =>
+        _telegramLinkService.UnlinkAsync(User, cancellationToken);
 }
