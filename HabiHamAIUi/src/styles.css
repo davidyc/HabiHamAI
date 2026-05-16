@@ -122,6 +122,103 @@ h1 {
   color: #f3fff8;
 }
 
+/* Вкладки тренировок — лёгкие отличия оттенка */
+.top-nav-tab--strength {
+  border-color: #3d6a4f;
+  background: #1b2b20;
+  color: #c6f5d6;
+}
+
+.top-nav-tab--strength.active {
+  background: linear-gradient(180deg, #2ea463, #268954);
+  color: #f3fff8;
+  border-color: #3f9f6a;
+}
+
+.top-nav-tab--ai-trainer {
+  border-color: #4a4a68;
+  background: #1f1f2b;
+  color: #d6d6f0;
+}
+
+.top-nav-tab--ai-trainer.active {
+  background: linear-gradient(180deg, #5a5a9e, #4f4f8f);
+  color: #f3f3ff;
+  border-color: #6a6ab0;
+}
+
+.top-nav-tab--bike {
+  border-color: #3d5f6a;
+  background: #1b262b;
+  color: #c6e8f5;
+}
+
+.top-nav-tab--bike.active {
+  background: linear-gradient(180deg, #2e8ea4, #267f94);
+  color: #f3fbff;
+  border-color: #3f96a8;
+}
+
+.top-nav-tab--my-workout {
+  border-color: #4a6640;
+  background: #21281c;
+  color: #d8f0c8;
+}
+
+.top-nav-tab--my-workout.active {
+  background: linear-gradient(180deg, #6a9e38, #5d8f30);
+  color: #f6fff0;
+  border-color: #7aad48;
+}
+
+.top-nav-tab--history {
+  border-color: #3d5868;
+  background: #1b242b;
+  color: #c6ddf5;
+}
+
+.top-nav-tab--history.active {
+  background: linear-gradient(180deg, #2e7aa4, #266d94);
+  color: #f3f9ff;
+  border-color: #3f8aa8;
+}
+
+.top-nav-tab--manage {
+  border-color: #3d6860;
+  background: #1b2b28;
+  color: #c6f5ec;
+}
+
+.top-nav-tab--manage.active {
+  background: linear-gradient(180deg, #2e9e84, #268f76);
+  color: #f3fffa;
+  border-color: #3f9f88;
+}
+
+.top-nav-tab--programs {
+  border-color: #3a644f;
+  background: #1a2922;
+  color: #c0f0d4;
+}
+
+.top-nav-tab--programs.active {
+  background: linear-gradient(180deg, #289e5c, #228f52);
+  color: #f0fff6;
+  border-color: #3a9970;
+}
+
+.top-nav-tab--exercises {
+  border-color: #3d6458;
+  background: #1b2a26;
+  color: #c4f5dc;
+}
+
+.top-nav-tab--exercises.active {
+  background: linear-gradient(180deg, #30a468, #28965e);
+  color: #f2fff7;
+  border-color: #40a878;
+}
+
 .user-chip {
   display: inline-flex;
   align-items: center;
@@ -344,6 +441,12 @@ button:active {
   gap: 8px;
   margin: 10px 0;
   flex-wrap: wrap;
+}
+
+.workouts-subtabs-nested {
+  margin-top: 0;
+  padding-left: 4px;
+  border-left: 2px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
 }
 
 .history-presets {

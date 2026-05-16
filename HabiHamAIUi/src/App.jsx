@@ -38,8 +38,18 @@ function AppContent() {
     { role: "assistant", content: "Привет! Войди через форму входа и отправь сообщение." }
   ]);
   const [workoutSessions, setWorkoutSessions] = useState([]);
-  const [workoutsSubTab, setWorkoutsSubTab] = useState("manage");
+  const [workoutsSubTab, setWorkoutsSubTab] = useState("strength");
+  const [strengthSubTab, setStrengthSubTab] = useState("manage");
   const [workoutsManageSubTab, setWorkoutsManageSubTab] = useState("add");
+
+  function openStrengthSubTab(sub) {
+    setWorkoutsSubTab("strength");
+    setStrengthSubTab(sub);
+  }
+
+  function workoutTabClass(theme, isActive) {
+    return `top-nav-tab top-nav-tab--${theme}${isActive ? " active" : ""}`;
+  }
   const [progressSubTab, setProgressSubTab] = useState("weight-tracker");
   const [workoutExerciseCatalog, setWorkoutExerciseCatalog] = useState([]);
   const [selectedCatalogExerciseId, setSelectedCatalogExerciseId] = useState("");
@@ -1356,7 +1366,7 @@ function AppContent() {
     if (!result.ok) return;
 
     await loadWorkoutSessions(accessToken);
-    setWorkoutsSubTab("manage");
+    openStrengthSubTab("manage");
     setWorkoutsManageSubTab("add");
   }
 
@@ -1382,7 +1392,7 @@ function AppContent() {
     if (!result.ok) return;
 
     await loadWorkoutExerciseCatalog(accessToken);
-    setWorkoutsSubTab("manage");
+    openStrengthSubTab("manage");
     setWorkoutsManageSubTab("exercises");
   }
 
@@ -1981,27 +1991,27 @@ function AppContent() {
   ]);
 
   useEffect(() => {
-    if (tab !== "workouts" || workoutsSubTab !== "my-workout") return;
+    if (tab !== "workouts" || workoutsSubTab !== "strength" || strengthSubTab !== "my-workout") return;
     const active = workoutSessions.find(
       (s) => String(s.sessionCode || "").startsWith("workout::") && s.isActive === true
     );
     if (active && !currentWorkout) {
       setCurrentWorkout(mapServerSessionToCurrentWorkout(active));
     }
-  }, [tab, workoutsSubTab, workoutSessions, currentWorkout]);
+  }, [tab, workoutsSubTab, strengthSubTab, workoutSessions, currentWorkout]);
   useEffect(() => {
     if (tab !== "workouts" || !accessToken) return;
     loadWorkoutSessions();
     loadWorkoutExerciseCatalog();
   }, [tab, accessToken]);
   useEffect(() => {
-    if (tab !== "workouts" || workoutsSubTab !== "history") return;
+    if (tab !== "workouts" || workoutsSubTab !== "strength" || strengthSubTab !== "history") return;
     loadWorkoutHistory();
-  }, [tab, workoutsSubTab]);
+  }, [tab, workoutsSubTab, strengthSubTab]);
   useEffect(() => {
-    if (tab !== "workouts" || workoutsSubTab !== "history") return;
+    if (tab !== "workouts" || workoutsSubTab !== "strength" || strengthSubTab !== "history") return;
     loadWorkoutHistory();
-  }, [tab, workoutsSubTab, historyDateFrom, historyDateTo]);
+  }, [tab, workoutsSubTab, strengthSubTab, historyDateFrom, historyDateTo]);
   useEffect(() => {
     if (tab !== "workouts" || workoutsSubTab !== "bike-activities" || !accessToken) return;
     loadBikeActivities();
@@ -2018,7 +2028,7 @@ function AppContent() {
   useEffect(() => {
     if (tab !== "workouts" || workoutsSubTab !== "ai-trainer") return;
     if (showWorkoutAiTrainerTab) return;
-    setWorkoutsSubTab("my-workout");
+    openStrengthSubTab("my-workout");
   }, [tab, workoutsSubTab, showWorkoutAiTrainerTab]);
   const selectedProgram = useMemo(
     () => workoutPrograms.find((x) => x.sessionCode === selectedProgramCode) || null,
@@ -2378,20 +2388,50 @@ function AppContent() {
             <h3>Тренировки</h3>
             <p className="subtitle">Управляй программами, своими упражнениями и фактическими тренировками.</p>
             <div className="workouts-subtabs">
-              <button className={workoutsSubTab === "my-workout" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("my-workout")}>Моя тренировка</button>
+              <button
+                type="button"
+                className={workoutTabClass("strength", workoutsSubTab === "strength")}
+                onClick={() => setWorkoutsSubTab("strength")}
+              >
+                Силовые тренировки
+              </button>
               {showWorkoutAiTrainerTab ? (
                 <button
                   type="button"
-                  className={workoutsSubTab === "ai-trainer" ? "top-nav-tab active" : "top-nav-tab"}
+                  className={workoutTabClass("ai-trainer", workoutsSubTab === "ai-trainer")}
                   onClick={() => setWorkoutsSubTab("ai-trainer")}
                 >
                   ИИ тренер
                 </button>
               ) : null}
-              <button className={workoutsSubTab === "history" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("history")}>История</button>
-              <button className={workoutsSubTab === "bike-activities" ? "top-nav-tab active" : "top-nav-tab"} type="button" onClick={() => setWorkoutsSubTab("bike-activities")}>Велотренировки</button>
-              <button className={workoutsSubTab === "manage" ? "top-nav-tab active" : "top-nav-tab"} onClick={() => setWorkoutsSubTab("manage")}>Управление тренировкой</button>
+              <button type="button" className={workoutTabClass("bike", workoutsSubTab === "bike-activities")} onClick={() => setWorkoutsSubTab("bike-activities")}>Велотренировки</button>
             </div>
+
+            {workoutsSubTab === "strength" && (
+              <div className="workouts-subtabs workouts-subtabs-nested">
+                <button
+                  type="button"
+                  className={workoutTabClass("my-workout", strengthSubTab === "my-workout")}
+                  onClick={() => setStrengthSubTab("my-workout")}
+                >
+                  Моя тренировка
+                </button>
+                <button
+                  type="button"
+                  className={workoutTabClass("history", strengthSubTab === "history")}
+                  onClick={() => setStrengthSubTab("history")}
+                >
+                  История
+                </button>
+                <button
+                  type="button"
+                  className={workoutTabClass("manage", strengthSubTab === "manage")}
+                  onClick={() => setStrengthSubTab("manage")}
+                >
+                  Управление тренировкой
+                </button>
+              </div>
+            )}
 
             {workoutsSubTab === "ai-trainer" && showWorkoutAiTrainerTab && (
               <div
@@ -2452,17 +2492,19 @@ function AppContent() {
               </div>
             )}
 
-            {workoutsSubTab === "manage" && (
+            {workoutsSubTab === "strength" && strengthSubTab === "manage" && (
               <>
                 <div className="workouts-subtabs">
                   <button
-                    className={workoutsManageSubTab === "add" ? "top-nav-tab active" : "top-nav-tab"}
+                    type="button"
+                    className={workoutTabClass("programs", workoutsManageSubTab === "add")}
                     onClick={() => setWorkoutsManageSubTab("add")}
                   >
                     Программы
                   </button>
                   <button
-                    className={workoutsManageSubTab === "exercises" ? "top-nav-tab active" : "top-nav-tab"}
+                    type="button"
+                    className={workoutTabClass("exercises", workoutsManageSubTab === "exercises")}
                     onClick={() => setWorkoutsManageSubTab("exercises")}
                   >
                     Упражнения
@@ -2471,7 +2513,7 @@ function AppContent() {
               </>
             )}
 
-            {workoutsSubTab === "manage" && workoutsManageSubTab === "add" && (
+            {workoutsSubTab === "strength" && strengthSubTab === "manage" && workoutsManageSubTab === "add" && (
               <>
                 <div className="row">
                   <button onClick={openProgramCreateModal}>Новая программа</button>
@@ -2498,7 +2540,7 @@ function AppContent() {
                       </div>
                       <div className="row">
                         <button onClick={() => openProgramEditModal(session)} title="Редактировать">✏️</button>
-                        <button className="ghost-btn" onClick={() => { setSelectedProgramCode(session.sessionCode); setWorkoutsSubTab("my-workout"); }}>Начать тренировку</button>
+                        <button className="ghost-btn" onClick={() => { setSelectedProgramCode(session.sessionCode); openStrengthSubTab("my-workout"); }}>Начать тренировку</button>
                         <button className="danger-btn" onClick={() => openProgramDeleteModal(session)} title="Удалить">🗑️</button>
                       </div>
                     </article>
@@ -2507,7 +2549,7 @@ function AppContent() {
               </>
             )}
 
-            {workoutsSubTab === "manage" && workoutsManageSubTab === "exercises" && (
+            {workoutsSubTab === "strength" && strengthSubTab === "manage" && workoutsManageSubTab === "exercises" && (
               <>
                 <p className="subtitle">Создай новое упражнение и используй его в программах и тренировках.</p>
                 <div className="row">
@@ -2556,7 +2598,7 @@ function AppContent() {
               </>
             )}
 
-            {workoutsSubTab === "my-workout" && (
+            {workoutsSubTab === "strength" && strengthSubTab === "my-workout" && (
               <>
                 <label>Выбери программу</label>
                 <select value={selectedProgramCode} onChange={(e) => setSelectedProgramCode(e.target.value)}>
@@ -2586,7 +2628,7 @@ function AppContent() {
                 )}
               </>
             )}
-            {workoutsSubTab === "history" && (
+            {workoutsSubTab === "strength" && strengthSubTab === "history" && (
               <>
                 <h4>История моих тренировок</h4>
                 <div className="row">
@@ -3516,7 +3558,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "manage" && workoutsManageSubTab === "add" && isProgramModalOpen && (
+        {tab === "workouts" && workoutsSubTab === "strength" && strengthSubTab === "manage" && workoutsManageSubTab === "add" && isProgramModalOpen && (
           <div className="modal-backdrop">
             <div className="modal-card modal-card--wide modal-card--scroll">
               <h3>{editingProgramId ? "Редактирование программы" : "Новая программа"}</h3>
@@ -3579,7 +3621,7 @@ function AppContent() {
           </div>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "manage" && workoutsManageSubTab === "add" && isProgramDeleteModalOpen && pendingDeleteProgram && (
+        {tab === "workouts" && workoutsSubTab === "strength" && strengthSubTab === "manage" && workoutsManageSubTab === "add" && isProgramDeleteModalOpen && pendingDeleteProgram && (
           <div className="modal-backdrop">
             <div className="modal-card">
               <h3>Удалить программу</h3>
@@ -3857,7 +3899,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "my-workout" && isActiveWorkoutModalOpen && currentWorkout && (
+        {tab === "workouts" && workoutsSubTab === "strength" && strengthSubTab === "my-workout" && isActiveWorkoutModalOpen && currentWorkout && (
           <ModalShell open={isActiveWorkoutModalOpen} onClose={hideActiveWorkoutModal} wide scroll>
               <h3>Активная тренировка: {currentWorkout.day}</h3>
               <p className="subtitle">
@@ -4037,7 +4079,7 @@ function AppContent() {
               </div>
           </ModalShell>
         )}
-        {tab === "workouts" && workoutsSubTab === "history" && selectedWorkoutHistorySession && (
+        {tab === "workouts" && workoutsSubTab === "strength" && strengthSubTab === "history" && selectedWorkoutHistorySession && (
           <ModalShell open={Boolean(selectedWorkoutHistorySession)} onClose={closeWorkoutHistoryModal} wide scroll>
               <h3>{selectedWorkoutHistorySession.day || "Тренировка"}</h3>
               <p className="subtitle">
@@ -4133,7 +4175,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "manage" && workoutsManageSubTab === "exercises" && pendingDeleteCatalogExerciseId && (
+        {tab === "workouts" && workoutsSubTab === "strength" && strengthSubTab === "manage" && workoutsManageSubTab === "exercises" && pendingDeleteCatalogExerciseId && (
           <ModalShell open={Boolean(pendingDeleteCatalogExerciseId)} onClose={() => setPendingDeleteCatalogExerciseId(null)}>
               <h3>Удалить упражнение</h3>
               <p className="subtitle">
@@ -4146,7 +4188,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "history" && pendingDeleteWorkoutSessionId && (
+        {tab === "workouts" && workoutsSubTab === "strength" && strengthSubTab === "history" && pendingDeleteWorkoutSessionId && (
           <ModalShell open={Boolean(pendingDeleteWorkoutSessionId)} onClose={() => setPendingDeleteWorkoutSessionId(null)}>
               <h3>Удалить тренировку</h3>
               <p className="subtitle">
@@ -4217,7 +4259,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "my-workout" && pendingDeleteCurrentWorkoutExerciseId && currentWorkout && (
+        {tab === "workouts" && workoutsSubTab === "strength" && strengthSubTab === "my-workout" && pendingDeleteCurrentWorkoutExerciseId && currentWorkout && (
           <ModalShell open={Boolean(pendingDeleteCurrentWorkoutExerciseId)} onClose={() => setPendingDeleteCurrentWorkoutExerciseId(null)}>
               <h3>Удалить упражнение</h3>
               <p className="subtitle">
@@ -4230,7 +4272,7 @@ function AppContent() {
           </ModalShell>
         )}
 
-        {tab === "workouts" && workoutsSubTab === "manage" && workoutsManageSubTab === "exercises" && isCreateExerciseModalOpen && (
+        {tab === "workouts" && workoutsSubTab === "strength" && strengthSubTab === "manage" && workoutsManageSubTab === "exercises" && isCreateExerciseModalOpen && (
           <ModalShell open={isCreateExerciseModalOpen} onClose={() => setIsCreateExerciseModalOpen(false)}>
               <h3>Создать упражнение</h3>
               <label>Название упражнения</label>
