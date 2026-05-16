@@ -685,6 +685,73 @@ button:active {
   overflow-y: auto;
 }
 
+.bike-track-map-block {
+  margin-bottom: 14px;
+}
+
+.bike-track-map-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 8px;
+}
+
+.bike-track-map-legend {
+  display: inline-flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.bike-track-map-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.bike-track-map-legend-item::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+}
+
+.bike-track-map-legend-start {
+  color: #22c55e;
+}
+
+.bike-track-map-legend-start::before {
+  background: #22c55e;
+}
+
+.bike-track-map-legend-finish {
+  color: #ef4444;
+}
+
+.bike-track-map-legend-finish::before {
+  background: #ef4444;
+}
+
+.bike-track-map {
+  height: min(520px, calc(100vh - 220px));
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: #0f172a;
+}
+
+.bike-track-map-container {
+  height: 100%;
+  width: 100%;
+  z-index: 0;
+}
+
+.bike-track-map-empty {
+  margin-bottom: 12px;
+}
+
 .confirm-modal {
   max-width: 440px;
   margin: 0 auto;

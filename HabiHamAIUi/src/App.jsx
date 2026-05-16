@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import TopNav from "./TopNav";
 import ModalShell from "./shared/ui/ModalShell";
+import BikeTrackMap from "./shared/ui/BikeTrackMap";
 
 function AppContent() {
   const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
@@ -2704,7 +2705,7 @@ function AppContent() {
                           <td>{formatUtcDateTime(row.importedAtUtc)}</td>
                           <td>
                             <button type="button" className="ghost-btn" onClick={() => openBikeActivityDetail(row.id)}>
-                              Точки трека
+                              Маршрут
                             </button>{" "}
                             <button type="button" className="danger-btn" onClick={() => setPendingDeleteBikeActivityId(row.id)} title="Удалить">
                               🗑️
@@ -4177,14 +4178,13 @@ function AppContent() {
           <ModalShell
             open
             wide
-            scroll
             titleId="bike-detail-title"
             onClose={() => {
               setBikeDetailOpen(false);
               setBikeDetail(null);
             }}
           >
-            <h3 id="bike-detail-title">Точки трека</h3>
+            <h3 id="bike-detail-title">Маршрут</h3>
             {bikeDetailLoading ? (
               <p className="subtitle">Загрузка…</p>
             ) : bikeDetail ? (
@@ -4192,37 +4192,12 @@ function AppContent() {
                 <p className="subtitle">
                   {bikeDetail.notes || bikeDetail.sport} · {formatUtcDateTime(bikeDetail.startTimeUtc)}
                   {bikeDetail.trackpointCount > (bikeDetail.trackpoints?.length || 0)
-                    ? ` · показано ${bikeDetail.trackpoints?.length || 0} из ${bikeDetail.trackpointCount}`
-                    : null}
+                    ? ` · на карте ${bikeDetail.trackpoints?.length || 0} из ${bikeDetail.trackpointCount} точек`
+                    : bikeDetail.trackpointCount > 0
+                      ? ` · ${bikeDetail.trackpointCount} точек`
+                      : null}
                 </p>
-                <div className="users-table-wrap" style={{ maxHeight: 440, overflow: "auto" }}>
-                  <table className="users-table">
-                    <thead>
-                      <tr>
-                        <th>Время</th>
-                        <th>Широта</th>
-                        <th>Долгота</th>
-                        <th>Высота, м</th>
-                        <th>ЧСС</th>
-                        <th>Каденс</th>
-                        <th>Скорость, м/с</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(bikeDetail.trackpoints || []).map((p, i) => (
-                        <tr key={`${p.timeUtc}-${i}`}>
-                          <td>{formatUtcDateTime(p.timeUtc)}</td>
-                          <td>{p.latitude != null ? Number(p.latitude).toFixed(6) : "—"}</td>
-                          <td>{p.longitude != null ? Number(p.longitude).toFixed(6) : "—"}</td>
-                          <td>{p.altitudeMeters != null ? Number(p.altitudeMeters).toFixed(1) : "—"}</td>
-                          <td>{p.heartRateBpm ?? "—"}</td>
-                          <td>{p.cadence ?? "—"}</td>
-                          <td>{p.speedMetersPerSecond != null ? Number(p.speedMetersPerSecond).toFixed(2) : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <BikeTrackMap trackpoints={bikeDetail.trackpoints} active={bikeDetailOpen && !bikeDetailLoading} />
               </>
             ) : (
               <p className="subtitle">Нет данных.</p>
