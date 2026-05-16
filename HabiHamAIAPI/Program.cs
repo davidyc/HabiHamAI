@@ -10,7 +10,9 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using HabiHamAIAPI.Services;
 using HabiHamAIAPI.Services.Ai;
+using HabiHamAIAPI.Services.Mcp;
 using HabiHamAIAPI.Services.Telegram;
+using ModelContextProtocol.AspNetCore;
 using Telegram.Bot;
 
 LoadDotEnv();
@@ -25,6 +27,7 @@ var telegramBotToken = (Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.Configure<KernestalOptions>(builder.Configuration.GetSection("Kernestal"));
+builder.Services.Configure<TrainerMcpOptions>(builder.Configuration.GetSection("TrainerMcp"));
 builder.Services.Configure<TelegramBotOptions>(builder.Configuration.GetSection("Telegram"));
 builder.Services.PostConfigure<TelegramBotOptions>(options =>
 {
@@ -54,6 +57,19 @@ builder.Services.PostConfigure<KernestalOptions>(options =>
 });
 builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddHttpClient<IKernestalAiService, KernestalAiService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<TrainerToolExecutionContext>();
+builder.Services.AddScoped<TrainerDataQueryService>();
+builder.Services.AddScoped<ITrainerToolInvoker, TrainerToolInvoker>();
+builder.Services.AddScoped<ITrainerAgentService, TrainerAgentService>();
+var trainerMcpEnabled = builder.Configuration.GetValue("TrainerMcp:Enabled", true);
+if (trainerMcpEnabled)
+{
+    builder.Services.AddMcpServer()
+        .WithHttpTransport(transport => transport.Stateless = true)
+        .WithTools<TrainerMcpTools>();
+}
+
 builder.Services.AddScoped<IAiUserService, AiUserService>();
 builder.Services.AddScoped<IAdminAiAssistantsService, AdminAiAssistantsService>();
 builder.Services.AddScoped<IAdminAiAssistantExtraFieldsService, AdminAiAssistantExtraFieldsService>();
@@ -196,6 +212,13 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+var trainerMcpHttpEnabled = app.Configuration.GetValue("TrainerMcp:HttpEndpointEnabled", true);
+var trainerMcpPath = app.Configuration.GetValue("TrainerMcp:HttpPath", "/api/mcp/trainer") ?? "/api/mcp/trainer";
+if (trainerMcpEnabled && trainerMcpHttpEnabled)
+{
+    app.MapMcp(trainerMcpPath).RequireAuthorization();
+}
 
 app.Run();
 

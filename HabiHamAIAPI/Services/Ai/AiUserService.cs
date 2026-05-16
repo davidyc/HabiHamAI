@@ -4,23 +4,41 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using HabiHamAIAPI.Data;
 using HabiHamAIAPI.Models;
+using HabiHamAIAPI.Options;
+using HabiHamAIAPI.Services.Mcp;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace HabiHamAIAPI.Services.Ai;
 
 public sealed class AiUserService : IAiUserService
 {
+    private const string TrainerToolsSystemAppendix = """
+
+        ### ИНСТРУМЕНТЫ (MCP):
+        У тебя есть tools для чтения реальных данных пользователя: силовые тренировки, программы, активная тренировка, велозаезды, дневник веса, профиль.
+        Если вопрос про факты, цифры, прогресс или историю — сначала вызови нужные tools, затем отвечай. Не выдумывай веса, подходы и заезды.
+        """;
+
     private static readonly Regex UserFieldPlaceholderRegex = new(@"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", RegexOptions.Compiled);
 
     private readonly IKernestalAiService _kernestalAiService;
+    private readonly ITrainerAgentService _trainerAgentService;
     private readonly AppDbContext _dbContext;
+    private readonly TrainerMcpOptions _trainerMcpOptions;
 
-    public AiUserService(IKernestalAiService kernestalAiService, AppDbContext dbContext)
+    public AiUserService(
+        IKernestalAiService kernestalAiService,
+        ITrainerAgentService trainerAgentService,
+        AppDbContext dbContext,
+        IOptions<TrainerMcpOptions> trainerMcpOptions)
     {
         _kernestalAiService = kernestalAiService;
+        _trainerAgentService = trainerAgentService;
         _dbContext = dbContext;
+        _trainerMcpOptions = trainerMcpOptions.Value;
     }
 
     public async Task<IActionResult> ChatAsync(ClaimsPrincipal principal, AiChatRequest request, CancellationToken cancellationToken)
@@ -74,11 +92,15 @@ public sealed class AiUserService : IAiUserService
             assistantForChat = currentUser.SelectedAiAssistantId;
         }
 
-        var allMessages = await _dbContext.ChatMessages
+        var dialogRows = await _dbContext.ChatMessages
             .Where(x => x.DialogId == dialog.Id)
             .OrderBy(x => x.CreatedAtUtc)
-            .Select(x => new KernestalAiService.AiChatMessage(x.Role, x.Content))
+            .Select(x => new { x.Role, x.Content })
             .ToListAsync(cancellationToken);
+
+        var allMessages = dialogRows
+            .Select(x => new KernestalAiService.AiChatMessage(x.Role, x.Content))
+            .ToList();
 
         var messagesForLlm = await BuildMessagesWithSystemPromptAsync(
             currentUser.Id,
@@ -88,7 +110,27 @@ public sealed class AiUserService : IAiUserService
 
         try
         {
-            var response = await _kernestalAiService.GetCompletionAsync(messagesForLlm, cancellationToken);
+            var useTrainerTools = await ShouldUseTrainerToolsAsync(assistantForChat, cancellationToken);
+            string response;
+            if (useTrainerTools)
+            {
+                try
+                {
+                    response = await _trainerAgentService.CompleteWithToolsAsync(
+                        currentUser.Id,
+                        assistantForChat!.Value,
+                        messagesForLlm,
+                        cancellationToken);
+                }
+                catch (InvalidOperationException ex) when (LooksLikeToolsUnsupportedByLlm(ex.Message))
+                {
+                    response = await _kernestalAiService.GetCompletionAsync(messagesForLlm, cancellationToken);
+                }
+            }
+            else
+            {
+                response = await _kernestalAiService.GetCompletionAsync(messagesForLlm, cancellationToken);
+            }
 
             var assistantMessage = new ChatMessage
             {
@@ -498,6 +540,11 @@ public sealed class AiUserService : IAiUserService
             }
         }
 
+        if (_trainerMcpOptions.Enabled && await IsTrainerAssistantAsync(assistantId, cancellationToken))
+        {
+            fullSystem += TrainerToolsSystemAppendix;
+        }
+
         var list = new List<KernestalAiService.AiChatMessage> { new("system", fullSystem) };
         list.AddRange(dialogMessages);
         return list;
@@ -595,6 +642,38 @@ public sealed class AiUserService : IAiUserService
 
         return lines.Count == 0 ? null : "Дополнительные данные пользователя:\n" + string.Join("\n", lines);
     }
+
+    private static bool LooksLikeToolsUnsupportedByLlm(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        var m = message.ToLowerInvariant();
+        return m.Contains("tool", StringComparison.Ordinal)
+            || m.Contains("function", StringComparison.Ordinal)
+            || m.Contains("unsupported", StringComparison.Ordinal)
+            || m.Contains("not allowed", StringComparison.Ordinal)
+            || m.Contains("invalid parameter", StringComparison.Ordinal);
+    }
+
+    private async Task<bool> ShouldUseTrainerToolsAsync(Guid? assistantId, CancellationToken cancellationToken)
+    {
+        if (!_trainerMcpOptions.Enabled || assistantId is null || assistantId == Guid.Empty)
+        {
+            return false;
+        }
+
+        return await IsTrainerAssistantAsync(assistantId.Value, cancellationToken);
+    }
+
+    private Task<bool> IsTrainerAssistantAsync(Guid assistantId, CancellationToken cancellationToken) =>
+        _dbContext.AiAssistants
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.Id == assistantId && x.IsActive && x.AssistantCode == "trainer",
+                cancellationToken);
 
     private async Task<AppUser?> ResolveCurrentUserAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
     {

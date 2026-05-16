@@ -366,7 +366,11 @@ function AppContent() {
     );
     handleResult(result);
     if (!result.ok) {
-      setChatMessages((prev) => [...prev, { role: "assistant", content: "AI request failed." }]);
+      const errText = result.data?.message
+        || (result.status === 502
+          ? "Сервис ИИ недоступен (502). Проверьте OPENAI_API_KEY, модель и что API запущен."
+          : `Ошибка запроса (${result.status}).`);
+      setChatMessages((prev) => [...prev, { role: "assistant", content: errText }]);
       return;
     }
 
