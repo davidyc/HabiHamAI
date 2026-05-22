@@ -23,5 +23,8 @@ public sealed class UserBikeActivity
     public DateTime ImportedAtUtc { get; set; }
     public int TrackpointCount { get; set; }
 
+    public string? SourceFileKey { get; set; }
+    public string? SourceFileName { get; set; }
+
     public List<UserBikeActivityTrackPoint> TrackPoints { get; set; } = [];
 }

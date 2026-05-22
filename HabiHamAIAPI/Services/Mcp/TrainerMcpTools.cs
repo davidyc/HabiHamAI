@@ -81,6 +81,14 @@ public sealed class TrainerMcpTools
         CancellationToken cancellationToken = default) =>
         _data.GetWeightEntriesAsync(ResolveUserId(), from, to, limit, cancellationToken);
 
+    [McpServerTool(Name = "get_weekly_training_summary")]
+    [Description("Сводка тренировок за период (по умолчанию 7 дней): силовые, вело, вес; сравнение с предыдущим таким же периодом. Для недельного обзора вызывай в первую очередь.")]
+    public Task<string> GetWeeklyTrainingSummary(
+        [Description("Число дней в периоде (1–14). По умолчанию 7.")] int? days = null,
+        [Description("Последний день периода YYYY-MM-DD. По умолчанию — сегодня (UTC).")] string? endingOn = null,
+        CancellationToken cancellationToken = default) =>
+        _data.GetWeeklyTrainingSummaryAsync(ResolveUserId(), days, endingOn, cancellationToken);
+
     [McpServerTool(Name = "get_trainer_profile")]
     [Description("Профиль для тренера: рост, вес, дата рождения, AI summary, доп. поля ассистента (цель, опыт, оборудование).")]
     public Task<string> GetTrainerProfile(CancellationToken cancellationToken = default) =>

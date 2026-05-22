@@ -22,6 +22,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
     public DbSet<UserBikeActivity> UserBikeActivities => Set<UserBikeActivity>();
     public DbSet<UserBikeActivityTrackPoint> UserBikeActivityTrackPoints => Set<UserBikeActivityTrackPoint>();
+    public DbSet<UserWeeklyTrainingReview> UserWeeklyTrainingReviews => Set<UserWeeklyTrainingReview>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -118,6 +119,30 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.AiAssistantId).HasColumnName("ai_assistant_id");
             entity.Property(x => x.ValuesJson).HasColumnName("values_json").IsRequired();
             entity.HasIndex(x => new { x.UserId, x.AiAssistantId }).IsUnique();
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.AiAssistant)
+                .WithMany()
+                .HasForeignKey(x => x.AiAssistantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserWeeklyTrainingReview>(entity =>
+        {
+            entity.ToTable("user_weekly_training_reviews");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("user_id");
+            entity.Property(x => x.AiAssistantId).HasColumnName("ai_assistant_id");
+            entity.Property(x => x.PeriodFrom).HasColumnName("period_from").HasColumnType("date");
+            entity.Property(x => x.PeriodTo).HasColumnName("period_to").HasColumnType("date");
+            entity.Property(x => x.DataFingerprint).HasColumnName("data_fingerprint").HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Content).HasColumnName("content").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.PeriodFrom, x.PeriodTo }).IsUnique();
             entity.HasOne(x => x.User)
                 .WithMany()
                 .HasForeignKey(x => x.UserId)
@@ -264,6 +289,8 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.TriggerMethod).HasColumnName("trigger_method").HasMaxLength(40);
             entity.Property(x => x.ImportedAtUtc).HasColumnName("imported_at_utc").IsRequired();
             entity.Property(x => x.TrackpointCount).HasColumnName("trackpoint_count").IsRequired();
+            entity.Property(x => x.SourceFileKey).HasColumnName("source_file_key").HasMaxLength(500);
+            entity.Property(x => x.SourceFileName).HasColumnName("source_file_name").HasMaxLength(260);
             entity.HasIndex(x => new { x.UserId, x.StartTimeUtc });
             entity.HasMany(x => x.TrackPoints)
                 .WithOne(x => x.Activity)

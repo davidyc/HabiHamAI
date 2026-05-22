@@ -68,15 +68,15 @@
 
 ### 4.2. Текущий пользователь (`/users`, JWT)
 
-| Метод  | Путь                                 | Назначение                                                            |
-| ------ | ------------------------------------ | --------------------------------------------------------------------- |
-| GET    | `/users/me`                          | Профиль (в т.ч. `telegramLinked`).                                    |
-| PUT    | `/users/me`                          | Обновление профиля (в т.ч. рост/вес/дата рождения, AI summary и др.). |
+| Метод  | Путь                                 | Назначение                                                                    |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------- |
+| GET    | `/users/me`                          | Профиль (в т.ч. `telegramLinked`).                                            |
+| PUT    | `/users/me`                          | Обновление профиля (в т.ч. рост/вес/дата рождения, AI summary и др.).         |
 | POST   | `/users/me/telegram/link`            | Создать одноразовую ссылку привязки Telegram (`deepLinkUrl`, `expiresAtUtc`). |
-| DELETE | `/users/me/telegram`                 | Отвязать Telegram (`telegram_chat_id` сбрасывается).                  |
-| GET    | `/users/me/weight-tracker`           | Список записей веса.                                                  |
-| POST   | `/users/me/weight-tracker`           | Добавить/обновить запись (дата + вес).                                |
-| DELETE | `/users/me/weight-tracker/{entryId}` | Удалить запись.                                                       |
+| DELETE | `/users/me/telegram`                 | Отвязать Telegram (`telegram_chat_id` сбрасывается).                          |
+| GET    | `/users/me/weight-tracker`           | Список записей веса.                                                          |
+| POST   | `/users/me/weight-tracker`           | Добавить/обновить запись (дата + вес).                                        |
+| DELETE | `/users/me/weight-tracker/{entryId}` | Удалить запись.                                                               |
 
 ### 4.3. Тренировки (`/users/me/workouts`, JWT)
 
@@ -111,6 +111,9 @@
 | Метод  | Путь                                      | Назначение                                                                                             |
 | ------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | POST   | `/ai/chat`                                | Отправка сообщения: `prompt`, `dialogId`, `assistantId` (опционально — иначе выбранный/тренер/превью). |
+| POST   | `/ai/trainer/weekly-review`               | Обзор тренировок за период (`days`, `endingOn`, `dialogId`, `assistantId`). Сохраняется в БД; повторный запрос с тем же периодом и без изменений в журнале возвращает кэш (`cached: true`). |
+| GET    | `/ai/trainer/weekly-reviews`              | Список сохранённых обзоров пользователя (период, превью текста). |
+| GET    | `/ai/trainer/weekly-reviews/{reviewId}`   | Полный текст обзора по id. |
 | GET    | `/ai/dialogs`                             | Список диалогов.                                                                                       |
 | GET    | `/ai/dialogs/{dialogId}/messages`         | Сообщения диалога.                                                                                     |
 | POST   | `/ai/dialogs`                             | Создать диалог.                                                                                        |
@@ -171,9 +174,9 @@
 
 ### 4.10. Telegram (webhook)
 
-| Метод | Путь                       | Доступ   | Назначение                                                                 |
-| ----- | -------------------------- | -------- | -------------------------------------------------------------------------- |
-| POST  | `/api/telegram/webhook`    | Анонимно | Приём обновлений от Telegram Bot API (тело — JSON объекта `Update`).     |
+| Метод | Путь                    | Доступ   | Назначение                                                           |
+| ----- | ----------------------- | -------- | -------------------------------------------------------------------- |
+| POST  | `/api/telegram/webhook` | Анонимно | Приём обновлений от Telegram Bot API (тело — JSON объекта `Update`). |
 
 Регистрация webhook и список команд бота выполняются при старте API, если задан токен бота и (для webhook) публичный URL; см. раздел 9.
 
@@ -214,7 +217,7 @@
 | `manage` + `add`       | Программы      | Список программ (`program::`), создание/редактирование в модалке, удаление, импорт планирования JSON, шаблоны.                                                                                       |
 | `manage` + `exercises` | Упражнения     | Каталог, создание упражнения (через POST тренировки-служебной записи), импорт/экспорт JSON, удаление.                                                                                                |
 | `my-workout`           | Моя тренировка | Выбор программы, старт тренировки, черновик, модалка активной тренировки: поля дня/даты/заметок, упражнения, подходы, сворачивание блоков подходов, смена порядка упражнений, сохранение/завершение. |
-| `ai-trainer`           | ИИ тренер      | Показывается, если у пользователя **выбран** ассистент с `assistantCode === "trainer"`. Чат и диалоги как в разделе AI.                                                                              |
+| `ai-trainer`           | ИИ тренер      | Показывается, если у пользователя **выбран** ассистент с `assistantCode === "trainer"`. Чат и диалоги как в разделе AI; кнопка **«Обзор за неделю»**; блок **«Сохранённые обзоры»** — список всех обзоров из БД с просмотром в модалке. |
 | `history`              | История        | Фильтр по датам, список завершённых тренировок, просмотр в модалке, удаление, экспорт JSON сессии.                                                                                                   |
 
 ### 6.4. Вкладка «Мой прогресс»
@@ -243,14 +246,14 @@
 
 ## 7. Конфигурация и окружение (API)
 
-| Переменная / настройка                                                             | Назначение                                     |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `DB_CONNECTION_STRING` или `ConnectionStrings:DefaultConnection`                   | PostgreSQL.                                    |
-| `JWT_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE` или `Jwt` в конфиге                        | Подпись JWT.                                   |
-| `OPENAI_*` / `Kernestal`                                                           | LLM endpoint, ключ, модель.                    |
-| `ADMIN_BOOTSTRAP_USERNAME`, `ADMIN_BOOTSTRAP_PASSWORD` или секция `AdminBootstrap` | Создание/обновление администратора при старте. |
-| `TELEGRAM_BOT_TOKEN` или `Telegram:BotToken`                                       | Токен Telegram-бота; без него интеграция с Telegram не подключается.       |
-| `TELEGRAM_BOT_USERNAME` или `Telegram:BotUsername`                                 | Имя бота **без @** (например `MyHabiBot`); нужно для ссылок `t.me/...?start=` из приложения. |
+| Переменная / настройка                                                             | Назначение                                                                                           |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `DB_CONNECTION_STRING` или `ConnectionStrings:DefaultConnection`                   | PostgreSQL.                                                                                          |
+| `JWT_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE` или `Jwt` в конфиге                        | Подпись JWT.                                                                                         |
+| `OPENAI_*` / `Kernestal`                                                           | LLM endpoint, ключ, модель.                                                                          |
+| `ADMIN_BOOTSTRAP_USERNAME`, `ADMIN_BOOTSTRAP_PASSWORD` или секция `AdminBootstrap` | Создание/обновление администратора при старте.                                                       |
+| `TELEGRAM_BOT_TOKEN` или `Telegram:BotToken`                                       | Токен Telegram-бота; без него интеграция с Telegram не подключается.                                 |
+| `TELEGRAM_BOT_USERNAME` или `Telegram:BotUsername`                                 | Имя бота **без @** (например `MyHabiBot`); нужно для ссылок `t.me/...?start=` из приложения.         |
 | `TELEGRAM_PUBLIC_BASE_URL` или `Telegram:PublicBaseUrl`                            | Публичный HTTPS-origin API без завершающего слеша; для `setWebhook` на `{url}/api/telegram/webhook`. |
 
 ---
@@ -287,15 +290,15 @@
 
 ## 10. Связанные файлы для навигации по коду
 
-| Область            | Файлы                                                                              |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| API вход           | `HabiHamAIAPI/Program.cs`, `Controllers/*.cs`                                      |
-| Тренировки         | `Services/WorkoutsService.cs`, `Models/Workout*.cs`                                |
-| Пользователь и вес | `Services/UsersService.cs`                                                         |
-| AI пользователя    | `Services/Ai/AiUserService.cs`, `Controllers/AiController.cs`                      |
-| AI админка         | `Services/Ai/AdminAiAssistantsService.cs`, `AdminAiAssistantExtraFieldsService.cs` |
+| Область            | Файлы                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| API вход           | `HabiHamAIAPI/Program.cs`, `Controllers/*.cs`                                                      |
+| Тренировки         | `Services/WorkoutsService.cs`, `Models/Workout*.cs`                                                |
+| Пользователь и вес | `Services/UsersService.cs`                                                                         |
+| AI пользователя    | `Services/Ai/AiUserService.cs`, `Controllers/AiController.cs`                                      |
+| AI админка         | `Services/Ai/AdminAiAssistantsService.cs`, `AdminAiAssistantExtraFieldsService.cs`                 |
 | Telegram           | `Controllers/TelegramWebhookController.cs`, `Services/Telegram/*`, `Options/TelegramBotOptions.cs` |
-| Клиент             | `HabiHamAIUi/src/App.jsx`, `TopNav.jsx`, `shared/ui/ModalShell.jsx`                |
-| Стили экрана       | `HabiHamAIUi/src/styles.css` + `shared/styles/*`                                   |
+| Клиент             | `HabiHamAIUi/src/App.jsx`, `TopNav.jsx`, `shared/ui/ModalShell.jsx`                                |
+| Стили экрана       | `HabiHamAIUi/src/styles.css` + `shared/styles/*`                                                   |
 
 README можно дополнять по мере появления новых endpoint и экранов.

@@ -21,6 +21,22 @@ public sealed class AiController : ControllerBase
     public Task<IActionResult> Chat([FromBody] AiChatRequest request, CancellationToken cancellationToken) =>
         _service.ChatAsync(User, request, cancellationToken);
 
+    [HttpPost("trainer/weekly-review")]
+    public Task<IActionResult> WeeklyReview([FromBody] WeeklyTrainingReviewRequest request, CancellationToken cancellationToken) =>
+        _service.WeeklyReviewAsync(User, request, cancellationToken);
+
+    [HttpGet("trainer/weekly-reviews")]
+    public Task<IActionResult> GetWeeklyReviews(CancellationToken cancellationToken) =>
+        _service.GetWeeklyReviewsAsync(User, cancellationToken);
+
+    [HttpGet("trainer/weekly-reviews/{reviewId:guid}")]
+    public Task<IActionResult> GetWeeklyReview(Guid reviewId, CancellationToken cancellationToken) =>
+        _service.GetWeeklyReviewAsync(User, reviewId, cancellationToken);
+
+    [HttpPost("trainer/weekly-reviews/import")]
+    public Task<IActionResult> ImportWeeklyReview([FromBody] ImportWeeklyTrainingReviewRequest request, CancellationToken cancellationToken) =>
+        _service.ImportWeeklyReviewAsync(User, request, cancellationToken);
+
     [HttpGet("dialogs")]
     public Task<IActionResult> GetDialogs(CancellationToken cancellationToken) =>
         _service.GetDialogsAsync(User, cancellationToken);

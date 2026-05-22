@@ -18,25 +18,49 @@ public sealed class AiUserService : IAiUserService
     private const string TrainerToolsSystemAppendix = """
 
         ### ИНСТРУМЕНТЫ (MCP):
-        У тебя есть tools для чтения реальных данных пользователя: силовые тренировки, программы, активная тренировка, велозаезды, дневник веса, профиль.
+        У тебя есть tools для чтения реальных данных пользователя: силовые тренировки, программы, активная тренировка, велозаезды, дневник веса, профиль, сводка за период (get_weekly_training_summary).
         Если вопрос про факты, цифры, прогресс или историю — сначала вызови нужные tools, затем отвечай. Не выдумывай веса, подходы и заезды.
+
+        ### ОБЗОР ЗА НЕДЕЛЮ:
+        По запросу обзора/итогов за неделю (или последние N дней) сначала вызови get_weekly_training_summary, затем при необходимости get_strength_workout_history или get_bike_activities для деталей.
+        Ответ: резюме регулярности и объёма, силовые (прогресс/застой по ключевым упражнениям), вело и вес если есть данные, 2–3 рекомендации на следующую неделю. Сравнивай с previousPeriod в сводке, если она есть.
+        """;
+
+    private const string WeeklyReviewChatUserLabel = "Обзор тренировок за неделю";
+
+    private const string WeeklyReviewLlmPrompt = """
+        Сделай обзор моих тренировок за период {0} — {1} ({2} дн.).
+
+        Обязательно вызови tool get_weekly_training_summary (days={2}, endingOn={1}), при необходимости — get_strength_workout_history или get_bike_activities.
+
+        Структура ответа:
+        1. Краткое резюме недели (регулярность, объём, баланс силовые/вело).
+        2. Силовые: что сделано, прогресс или застой по ключевым упражнениям (сравни с previousPeriod в сводке).
+        3. Велозаезды (если были): дистанция и нагрузка.
+        4. Вес (если есть записи): динамика.
+        5. Две–три конкретные рекомендации на следующую неделю.
+
+        Пиши по-русски, только на основе данных из tools.
         """;
 
     private static readonly Regex UserFieldPlaceholderRegex = new(@"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", RegexOptions.Compiled);
 
     private readonly IKernestalAiService _kernestalAiService;
     private readonly ITrainerAgentService _trainerAgentService;
+    private readonly TrainerDataQueryService _trainerDataQuery;
     private readonly AppDbContext _dbContext;
     private readonly TrainerMcpOptions _trainerMcpOptions;
 
     public AiUserService(
         IKernestalAiService kernestalAiService,
         ITrainerAgentService trainerAgentService,
+        TrainerDataQueryService trainerDataQuery,
         AppDbContext dbContext,
         IOptions<TrainerMcpOptions> trainerMcpOptions)
     {
         _kernestalAiService = kernestalAiService;
         _trainerAgentService = trainerAgentService;
+        _trainerDataQuery = trainerDataQuery;
         _dbContext = dbContext;
         _trainerMcpOptions = trainerMcpOptions.Value;
     }
@@ -157,6 +181,287 @@ public sealed class AiUserService : IAiUserService
         {
             return new ObjectResult(new { message = ex.Message }) { StatusCode = StatusCodes.Status502BadGateway };
         }
+    }
+
+    public async Task<IActionResult> WeeklyReviewAsync(
+        ClaimsPrincipal principal,
+        WeeklyTrainingReviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await ResolveCurrentUserAsync(principal, cancellationToken);
+        if (currentUser is null)
+        {
+            return new UnauthorizedObjectResult(new { message = "User not found." });
+        }
+
+        var trainerAssistantId = await ResolveTrainerAssistantIdAsync(request.AssistantId, cancellationToken);
+        if (trainerAssistantId is null)
+        {
+            return new BadRequestObjectResult(new { message = "Trainer assistant not found or inactive." });
+        }
+
+        if (!_trainerMcpOptions.Enabled)
+        {
+            return new BadRequestObjectResult(new { message = "Trainer tools are disabled." });
+        }
+
+        var (periodFrom, periodTo, dayCount) = _trainerDataQuery.ResolveWeeklyPeriod(request.Days, request.EndingOn);
+        var fingerprint = await _trainerDataQuery.ComputeTrainingDataFingerprintAsync(
+            currentUser.Id,
+            periodFrom,
+            periodTo,
+            cancellationToken);
+
+        var existing = await _dbContext.UserWeeklyTrainingReviews
+            .FirstOrDefaultAsync(
+                x => x.UserId == currentUser.Id && x.PeriodFrom == periodFrom && x.PeriodTo == periodTo,
+                cancellationToken);
+
+        string responseText;
+        var fromIso = periodFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var toIso = periodTo.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var cached = existing is not null && existing.DataFingerprint == fingerprint;
+        var generated = false;
+
+        if (cached)
+        {
+            responseText = existing!.Content;
+        }
+        else
+        {
+            var hasData = await _trainerDataQuery.HasAnyTrainingDataInPeriodAsync(
+                currentUser.Id,
+                periodFrom,
+                periodTo,
+                cancellationToken);
+
+            if (!hasData)
+            {
+                responseText =
+                    $"За период {fromIso} — {toIso} в журнале нет завершённых силовых тренировок, велозаездов и записей веса. " +
+                    "Добавьте тренировки или заезды — после этого можно снова запросить обзор.";
+            }
+            else
+            {
+                try
+                {
+                    responseText = await GenerateWeeklyReviewContentAsync(
+                        currentUser.Id,
+                        trainerAssistantId.Value,
+                        periodFrom,
+                        periodTo,
+                        dayCount,
+                        cancellationToken);
+                    generated = true;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return new ObjectResult(new { message = ex.Message }) { StatusCode = StatusCodes.Status502BadGateway };
+                }
+            }
+
+            var now = DateTime.UtcNow;
+            if (existing is null)
+            {
+                _dbContext.UserWeeklyTrainingReviews.Add(new UserWeeklyTrainingReview
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = currentUser.Id,
+                    AiAssistantId = trainerAssistantId.Value,
+                    PeriodFrom = periodFrom,
+                    PeriodTo = periodTo,
+                    DataFingerprint = fingerprint,
+                    Content = responseText,
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now
+                });
+            }
+            else
+            {
+                existing.DataFingerprint = fingerprint;
+                existing.Content = responseText;
+                existing.AiAssistantId = trainerAssistantId.Value;
+                existing.UpdatedAtUtc = now;
+            }
+        }
+
+        var dialog = await ResolveOrCreateDialogAsync(currentUser.Id, request.DialogId, cancellationToken);
+        if (dialog is null)
+        {
+            return new NotFoundObjectResult(new { message = "Dialog not found." });
+        }
+
+        var userLabel = dayCount == 7
+            ? WeeklyReviewChatUserLabel
+            : $"{WeeklyReviewChatUserLabel} ({dayCount} дн.)";
+        var nowUtc = DateTime.UtcNow;
+        _dbContext.ChatMessages.Add(new ChatMessage
+        {
+            Id = Guid.NewGuid(),
+            DialogId = dialog.Id,
+            Role = "user",
+            Content = userLabel,
+            CreatedAtUtc = nowUtc
+        });
+        _dbContext.ChatMessages.Add(new ChatMessage
+        {
+            Id = Guid.NewGuid(),
+            DialogId = dialog.Id,
+            Role = "assistant",
+            Content = responseText,
+            CreatedAtUtc = nowUtc
+        });
+        dialog.AiAssistantId = trainerAssistantId;
+        dialog.UpdatedAtUtc = nowUtc;
+        if (generated)
+        {
+            currentUser.AiSummary = TruncateForSummary(responseText, 8000);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new OkObjectResult(new
+        {
+            dialogId = dialog.Id,
+            dialogTitle = dialog.Title,
+            response = responseText,
+            cached,
+            generated,
+            period = new { from = fromIso, to = toIso, days = dayCount }
+        });
+    }
+
+    public async Task<IActionResult> GetWeeklyReviewsAsync(
+        ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await ResolveCurrentUserAsync(principal, cancellationToken);
+        if (currentUser is null)
+        {
+            return new UnauthorizedObjectResult(new { message = "User not found." });
+        }
+
+        var rows = await _dbContext.UserWeeklyTrainingReviews
+            .AsNoTracking()
+            .Where(x => x.UserId == currentUser.Id)
+            .OrderByDescending(x => x.PeriodTo)
+            .ThenByDescending(x => x.UpdatedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        var reviews = rows.Select(x => new
+        {
+            id = x.Id,
+            periodFrom = x.PeriodFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            periodTo = x.PeriodTo.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            days = x.PeriodTo.DayNumber - x.PeriodFrom.DayNumber + 1,
+            updatedAtUtc = x.UpdatedAtUtc,
+            createdAtUtc = x.CreatedAtUtc,
+            preview = x.Content.Length > 280 ? x.Content.Substring(0, 280) + "…" : x.Content
+        }).ToList();
+
+        return new OkObjectResult(new { reviews });
+    }
+
+    public async Task<IActionResult> GetWeeklyReviewAsync(
+        ClaimsPrincipal principal,
+        Guid reviewId,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await ResolveCurrentUserAsync(principal, cancellationToken);
+        if (currentUser is null)
+        {
+            return new UnauthorizedObjectResult(new { message = "User not found." });
+        }
+
+        var row = await _dbContext.UserWeeklyTrainingReviews
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == reviewId && x.UserId == currentUser.Id, cancellationToken);
+
+        if (row is null)
+        {
+            return new NotFoundObjectResult(new { message = "Review not found." });
+        }
+
+        return new OkObjectResult(new
+        {
+            id = row.Id,
+            periodFrom = row.PeriodFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            periodTo = row.PeriodTo.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            days = row.PeriodTo.DayNumber - row.PeriodFrom.DayNumber + 1,
+            content = row.Content,
+            updatedAtUtc = row.UpdatedAtUtc,
+            createdAtUtc = row.CreatedAtUtc
+        });
+    }
+
+    public async Task<IActionResult> ImportWeeklyReviewAsync(
+        ClaimsPrincipal principal,
+        ImportWeeklyTrainingReviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        var content = (request.Content ?? string.Empty).Trim();
+        if (content.Length < 80)
+        {
+            return new BadRequestObjectResult(new { message = "Content is too short to save as a review." });
+        }
+
+        var currentUser = await ResolveCurrentUserAsync(principal, cancellationToken);
+        if (currentUser is null)
+        {
+            return new UnauthorizedObjectResult(new { message = "User not found." });
+        }
+
+        var trainerAssistantId = await ResolveTrainerAssistantIdAsync(null, cancellationToken);
+        if (trainerAssistantId is null)
+        {
+            return new BadRequestObjectResult(new { message = "Trainer assistant not found or inactive." });
+        }
+
+        var (periodFrom, periodTo, dayCount) = _trainerDataQuery.ResolveWeeklyPeriod(request.Days, request.EndingOn);
+        var fingerprint = await _trainerDataQuery.ComputeTrainingDataFingerprintAsync(
+            currentUser.Id,
+            periodFrom,
+            periodTo,
+            cancellationToken);
+
+        var existing = await _dbContext.UserWeeklyTrainingReviews
+            .FirstOrDefaultAsync(
+                x => x.UserId == currentUser.Id && x.PeriodFrom == periodFrom && x.PeriodTo == periodTo,
+                cancellationToken);
+
+        var now = DateTime.UtcNow;
+        if (existing is null)
+        {
+            _dbContext.UserWeeklyTrainingReviews.Add(new UserWeeklyTrainingReview
+            {
+                Id = Guid.NewGuid(),
+                UserId = currentUser.Id,
+                AiAssistantId = trainerAssistantId.Value,
+                PeriodFrom = periodFrom,
+                PeriodTo = periodTo,
+                DataFingerprint = fingerprint,
+                Content = content,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            });
+        }
+        else
+        {
+            existing.Content = content;
+            existing.DataFingerprint = fingerprint;
+            existing.AiAssistantId = trainerAssistantId.Value;
+            existing.UpdatedAtUtc = now;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var fromIso = periodFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var toIso = periodTo.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return new OkObjectResult(new
+        {
+            message = "Review saved.",
+            period = new { from = fromIso, to = toIso, days = dayCount }
+        });
     }
 
     public async Task<IActionResult> GetDialogsAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
@@ -684,6 +989,59 @@ public sealed class AiUserService : IAiUserService
         }
 
         return await _dbContext.Users.FirstOrDefaultAsync(x => x.Username == username, cancellationToken);
+    }
+
+    private async Task<Guid?> ResolveTrainerAssistantIdAsync(Guid? requestedId, CancellationToken cancellationToken)
+    {
+        if (requestedId is { } id && id != Guid.Empty)
+        {
+            var ok = await _dbContext.AiAssistants.AsNoTracking().AnyAsync(
+                x => x.Id == id && x.IsActive && x.AssistantCode == "trainer",
+                cancellationToken);
+            return ok ? id : null;
+        }
+
+        return await _dbContext.AiAssistants.AsNoTracking()
+            .Where(x => x.IsActive && x.AssistantCode == "trainer")
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<string> GenerateWeeklyReviewContentAsync(
+        Guid userId,
+        Guid trainerAssistantId,
+        DateOnly periodFrom,
+        DateOnly periodTo,
+        int dayCount,
+        CancellationToken cancellationToken)
+    {
+        var fromIso = periodFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var toIso = periodTo.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var userPrompt = string.Format(
+            CultureInfo.InvariantCulture,
+            WeeklyReviewLlmPrompt,
+            fromIso,
+            toIso,
+            dayCount);
+
+        var messages = await BuildMessagesWithSystemPromptAsync(
+            userId,
+            trainerAssistantId,
+            [new KernestalAiService.AiChatMessage("user", userPrompt)],
+            cancellationToken);
+
+        try
+        {
+            return await _trainerAgentService.CompleteWithToolsAsync(
+                userId,
+                trainerAssistantId,
+                messages,
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (LooksLikeToolsUnsupportedByLlm(ex.Message))
+        {
+            return await _kernestalAiService.GetCompletionAsync(messages, cancellationToken);
+        }
     }
 
     private async Task<ChatDialog?> ResolveOrCreateDialogAsync(Guid userId, Guid? dialogId, CancellationToken cancellationToken)

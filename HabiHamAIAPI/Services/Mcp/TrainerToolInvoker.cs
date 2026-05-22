@@ -87,6 +87,18 @@ public sealed class TrainerToolInvoker : ITrainerToolInvoker
                 }
             }),
         Tool(
+            "get_weekly_training_summary",
+            "Сводка за период (по умолчанию 7 дней): силовые, вело, вес; сравнение с предыдущим периодом. Для недельного обзора — первым.",
+            new
+            {
+                type = "object",
+                properties = new
+                {
+                    days = new { type = "integer", minimum = 1, maximum = 14, description = "Дней в периоде (по умолчанию 7)" },
+                    endingOn = new { type = "string", description = "Последний день YYYY-MM-DD" }
+                }
+            }),
+        Tool(
             "get_trainer_profile",
             "Профиль: рост, вес, цель, опыт, оборудование, AI summary.",
             new { type = "object", properties = new { } })
@@ -130,6 +142,11 @@ public sealed class TrainerToolInvoker : ITrainerToolInvoker
                 GetString(root, "from"),
                 GetString(root, "to"),
                 GetInt(root, "limit"),
+                cancellationToken),
+            "get_weekly_training_summary" => await _data.GetWeeklyTrainingSummaryAsync(
+                userId,
+                GetInt(root, "days"),
+                GetString(root, "endingOn"),
                 cancellationToken),
             "get_trainer_profile" => await _data.GetTrainerProfileAsync(
                 userId,

@@ -7,6 +7,10 @@ namespace HabiHamAIAPI.Services.Ai;
 public interface IAiUserService
 {
     Task<IActionResult> ChatAsync(ClaimsPrincipal principal, AiChatRequest request, CancellationToken cancellationToken);
+    Task<IActionResult> WeeklyReviewAsync(ClaimsPrincipal principal, WeeklyTrainingReviewRequest request, CancellationToken cancellationToken);
+    Task<IActionResult> GetWeeklyReviewsAsync(ClaimsPrincipal principal, CancellationToken cancellationToken);
+    Task<IActionResult> GetWeeklyReviewAsync(ClaimsPrincipal principal, Guid reviewId, CancellationToken cancellationToken);
+    Task<IActionResult> ImportWeeklyReviewAsync(ClaimsPrincipal principal, ImportWeeklyTrainingReviewRequest request, CancellationToken cancellationToken);
     Task<IActionResult> GetDialogsAsync(ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<IActionResult> GetDialogMessagesAsync(ClaimsPrincipal principal, Guid dialogId, CancellationToken cancellationToken);
     Task<IActionResult> CreateDialogAsync(ClaimsPrincipal principal, CreateDialogRequest request, CancellationToken cancellationToken);

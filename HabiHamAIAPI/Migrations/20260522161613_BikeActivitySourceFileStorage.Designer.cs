@@ -3,6 +3,7 @@ using System;
 using HabiHamAIAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace HabiHamAIAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260522161613_BikeActivitySourceFileStorage")]
+    partial class BikeActivitySourceFileStorage
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -525,58 +528,6 @@ namespace HabiHamAIAPI.Migrations
                     b.ToTable("user_weight_entries", (string)null);
                 });
 
-            modelBuilder.Entity("HabiHamAIAPI.Models.UserWeeklyTrainingReview", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("AiAssistantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("ai_assistant_id");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<string>("DataFingerprint")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
-                        .HasColumnName("data_fingerprint");
-
-                    b.Property<DateOnly>("PeriodFrom")
-                        .HasColumnType("date")
-                        .HasColumnName("period_from");
-
-                    b.Property<DateOnly>("PeriodTo")
-                        .HasColumnType("date")
-                        .HasColumnName("period_to");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at_utc");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AiAssistantId");
-
-                    b.HasIndex("UserId", "PeriodFrom", "PeriodTo")
-                        .IsUnique();
-
-                    b.ToTable("user_weekly_training_reviews", (string)null);
-                });
-
             modelBuilder.Entity("HabiHamAIAPI.Models.WorkoutExercise", b =>
                 {
                     b.Property<Guid>("Id")
@@ -817,25 +768,6 @@ namespace HabiHamAIAPI.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("HabiHamAIAPI.Models.UserWeeklyTrainingReview", b =>
-                {
-                    b.HasOne("HabiHamAIAPI.Models.AiAssistant", "AiAssistant")
-                        .WithMany()
-                        .HasForeignKey("AiAssistantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("HabiHamAIAPI.Models.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("AiAssistant");
 
                     b.Navigation("User");
                 });

@@ -22,4 +22,9 @@ public sealed class TrainerMcpOptions
     public int MaxWeightEntries { get; set; } = 60;
 
     public int MaxPrograms { get; set; } = 10;
+
+    /// <summary>Дней в периоде «недельного обзора» по умолчанию (как пресет «Неделя» в UI: сегодня и 6 дней назад).</summary>
+    public int DefaultWeeklyReviewDays { get; set; } = 7;
+
+    public int MaxWeeklyReviewDays { get; set; } = 14;
 }
