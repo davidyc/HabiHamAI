@@ -18,6 +18,26 @@ function AppContent() {
     date.setDate(date.getDate() - daysAgo);
     return date.toISOString().slice(0, 10);
   };
+  /** Прошлая календарная неделя (пн–вс) в UTC — как на сервере для endingOn. */
+  const getPreviousCalendarWeekUtc = () => {
+    const now = new Date();
+    const today = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const dow = today.getUTCDay();
+    const daysSinceMonday = (dow + 6) % 7;
+    const prevSunday = new Date(today);
+    prevSunday.setUTCDate(today.getUTCDate() - daysSinceMonday - 1);
+    const prevMonday = new Date(prevSunday);
+    prevMonday.setUTCDate(prevSunday.getUTCDate() - 6);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    return {
+      periodFrom: fmt(prevMonday),
+      periodTo: fmt(prevSunday),
+      endingOn: fmt(prevSunday),
+      days: 7,
+    };
+  };
 
   const navigate = useNavigate();
   const [tab, setTab] = useState('workouts');
@@ -55,6 +75,7 @@ function AppContent() {
   const [selectedWeeklyReview, setSelectedWeeklyReview] = useState(null);
   const [weeklyReviewModalLoading, setWeeklyReviewModalLoading] =
     useState(false);
+  const [weeklyReviewGenerating, setWeeklyReviewGenerating] = useState(false);
   const [workoutSessions, setWorkoutSessions] = useState([]);
   const [workoutsSubTab, setWorkoutsSubTab] = useState('strength');
   const [strengthSubTab, setStrengthSubTab] = useState('manage');
@@ -425,31 +446,6 @@ function AppContent() {
     }
   }
 
-  function isWeeklyReviewRequest(text) {
-    const t = (text || '').trim().toLowerCase();
-    if (!t) return false;
-    return (
-      /обзор/.test(t) &&
-      (/недел|7\s*дн|за\s+период|тренировок\s+за/.test(t) ||
-        /резюме\s+недели/.test(t))
-    );
-  }
-
-  function getLastAssistantReviewFromChat() {
-    const assistants = chatMessages.filter((m) => m.role === 'assistant');
-    const last = assistants[assistants.length - 1];
-    const content = (last?.content || '').trim();
-    if (content.length < 80) return null;
-    if (
-      /###\s*резюме/i.test(content) ||
-      /обзор\s+за\s+неделю/i.test(content) ||
-      content.length > 400
-    ) {
-      return content.replace(/^_\([^)]+\)_\n\n/, '');
-    }
-    return null;
-  }
-
   function formatReviewDateUtc(iso) {
     if (!iso) return '—';
     try {
@@ -534,74 +530,41 @@ function AppContent() {
     );
   }
 
-  async function importWeeklyReviewFromChat() {
-    const content = getLastAssistantReviewFromChat();
-    if (!content) {
-      return setErrorView(
-        'В чате нет подходящего ответа ассистента для сохранения.',
-      );
-    }
-    if (!aiToken) return setErrorView('Нет AI-токена.');
-    const result = await request(
-      'POST',
-      '/ai/trainer/weekly-reviews/import',
-      { content, days: 7 },
-      aiToken,
-    );
-    handleResult(result);
-    if (result.ok) {
-      await loadWeeklyTrainingReviews(aiToken);
-    }
-  }
-
-  async function sendWeeklyTrainingReview() {
+  async function requestPreviousWeekWeeklyReview() {
     if (!aiToken)
       return setErrorView(
         'Сначала войдите в систему или вставьте JWT-токен в поле AI-токена.',
       );
+    if (weeklyReviewGenerating) return;
 
-    const userLabel = 'Обзор тренировок за неделю';
-    setChatMessages((prev) => [...prev, { role: 'user', content: userLabel }]);
+    const { endingOn } = getPreviousCalendarWeekUtc();
+    const trainerAssistant = aiAssistants.find(
+      (x) => x.assistantCode === 'trainer',
+    );
 
-    const assistantIdForChat = resolveAssistantIdForTrainerChat();
+    setWeeklyReviewGenerating(true);
     const result = await request(
       'POST',
       '/ai/trainer/weekly-review',
       {
-        dialogId: currentDialogId || null,
-        assistantId: assistantIdForChat ?? null,
         days: 7,
+        endingOn,
+        writeToDialog: false,
+        assistantId: trainerAssistant?.id ?? null,
       },
       aiToken,
     );
+    setWeeklyReviewGenerating(false);
     handleResult(result);
-    if (!result.ok) {
-      const errText =
-        result.data?.message ||
-        (result.status === 502
-          ? 'Сервис ИИ недоступен (502). Проверьте OPENAI_API_KEY, модель и что API запущен.'
-          : `Ошибка запроса (${result.status}).`);
-      setChatMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: errText },
-      ]);
-      return;
-    }
+    if (!result.ok) return;
 
-    const dialogId = result.data?.dialogId || currentDialogId;
-    setCurrentDialogId(dialogId);
-    const responseText = result.data?.response || 'Нет текста ответа.';
-    const cachedPrefix = result.data?.cached
-      ? '_(сохранённый обзор; данные за период не менялись)_\n\n'
-      : '';
-    setChatMessages((prev) => [
-      ...prev,
-      { role: 'assistant', content: cachedPrefix + responseText },
-    ]);
-    await loadDialogs(aiToken, dialogId);
     await loadWeeklyTrainingReviews(aiToken);
     if (result.data?.generated) {
       await loadMyProfile(aiToken);
+    }
+    const reviewId = result.data?.reviewId;
+    if (reviewId) {
+      await openWeeklyReviewModal(reviewId);
     }
   }
 
@@ -612,15 +575,6 @@ function AppContent() {
       return setErrorView(
         'Сначала войдите в систему или вставьте JWT-токен в поле AI-токена.',
       );
-
-    if (
-      tab === 'workouts' &&
-      workoutsSubTab === 'ai-trainer' &&
-      isWeeklyReviewRequest(prompt)
-    ) {
-      setChatPrompt('');
-      return sendWeeklyTrainingReview();
-    }
 
     setChatMessages((prev) => [...prev, { role: 'user', content: prompt }]);
     setChatPrompt('');
@@ -2648,12 +2602,26 @@ function AppContent() {
     if (tab !== 'workouts' || workoutsSubTab !== 'ai-trainer') return;
     if (!aiToken) return;
     loadDialogs(aiToken);
+  }, [tab, workoutsSubTab, aiToken]);
+  useEffect(() => {
+    if (tab !== 'workouts' || workoutsSubTab !== 'weekly-reviews') return;
+    if (!aiToken) return;
     loadWeeklyTrainingReviews(aiToken);
   }, [tab, workoutsSubTab, aiToken]);
   useEffect(() => {
-    if (tab !== 'workouts' || workoutsSubTab !== 'ai-trainer') return;
-    if (showWorkoutAiTrainerTab) return;
-    openStrengthSubTab('my-workout');
+    if (tab !== 'workouts') return;
+    if (
+      (workoutsSubTab === 'ai-trainer' || workoutsSubTab === 'weekly-reviews') &&
+      showWorkoutAiTrainerTab
+    ) {
+      return;
+    }
+    if (
+      workoutsSubTab === 'ai-trainer' ||
+      workoutsSubTab === 'weekly-reviews'
+    ) {
+      openStrengthSubTab('my-workout');
+    }
   }, [tab, workoutsSubTab, showWorkoutAiTrainerTab]);
   const selectedProgram = useMemo(
     () =>
@@ -3090,18 +3058,6 @@ function AppContent() {
                               </div>
                             ))}
                           </div>
-                          {aiAssistants.find((x) => x.selected)?.assistantCode ===
-                          'trainer' ? (
-                            <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                onClick={sendWeeklyTrainingReview}
-                              >
-                                Обзор за неделю
-                              </button>
-                            </div>
-                          ) : null}
                           <div className="row">
                             <input
                               value={chatPrompt}
@@ -3151,16 +3107,28 @@ function AppContent() {
                           Силовые тренировки
                         </button>
                         {showWorkoutAiTrainerTab ? (
-                          <button
-                            type="button"
-                            className={workoutTabClass(
-                              'ai-trainer',
-                              workoutsSubTab === 'ai-trainer',
-                            )}
-                            onClick={() => setWorkoutsSubTab('ai-trainer')}
-                          >
-                            ИИ тренер
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className={workoutTabClass(
+                                'weekly-reviews',
+                                workoutsSubTab === 'weekly-reviews',
+                              )}
+                              onClick={() => setWorkoutsSubTab('weekly-reviews')}
+                            >
+                              Недельные обзоры
+                            </button>
+                            <button
+                              type="button"
+                              className={workoutTabClass(
+                                'ai-trainer',
+                                workoutsSubTab === 'ai-trainer',
+                              )}
+                              onClick={() => setWorkoutsSubTab('ai-trainer')}
+                            >
+                              ИИ тренер
+                            </button>
+                          </>
                         ) : null}
                         <button
                           type="button"
@@ -3209,10 +3177,10 @@ function AppContent() {
                         </div>
                       )}
 
-                      {workoutsSubTab === 'ai-trainer' &&
+                      {workoutsSubTab === 'weekly-reviews' &&
                         showWorkoutAiTrainerTab && (
                           <div
-                            className="ai-assistant-chat-panel"
+                            className="weekly-reviews-panel"
                             style={{
                               marginTop: 16,
                               paddingTop: 16,
@@ -3220,13 +3188,22 @@ function AppContent() {
                                 '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
                             }}
                           >
-                            <h4 style={{ marginTop: 0 }}>ИИ тренер</h4>
+                            <h4 style={{ marginTop: 0 }}>Недельные обзоры</h4>
                             <p className="subtitle">
-                              Ответы строятся активным помощником «Тренер»:
-                              системный промпт и ваши доп. поля из вкладки «ИИ».
-                              Те же диалоги, что и в разделе «ИИ».
+                              ИИ анализирует прошлую календарную неделю (пн–вс,
+                              UTC), сохраняет текст в журнал. Чат не используется.
                             </p>
-
+                            {(() => {
+                              const period = getPreviousCalendarWeekUtc();
+                              return (
+                                <p className="subtitle" style={{ marginTop: 8 }}>
+                                  Следующий обзор:{' '}
+                                  <strong>
+                                    {period.periodFrom} — {period.periodTo}
+                                  </strong>
+                                </p>
+                              );
+                            })()}
                             <div
                               className="row"
                               style={{
@@ -3237,14 +3214,18 @@ function AppContent() {
                             >
                               <button
                                 type="button"
-                                onClick={sendWeeklyTrainingReview}
-                                title="Создать или открыть обзор за 7 дней (сохраняется в список)"
+                                disabled={weeklyReviewGenerating}
+                                onClick={requestPreviousWeekWeeklyReview}
+                                title="Сформировать или открыть сохранённый обзор за прошлую неделю"
                               >
-                                Обзор за неделю
+                                {weeklyReviewGenerating
+                                  ? 'Формируем обзор…'
+                                  : 'Обзор за прошлую неделю'}
                               </button>
                               <button
                                 type="button"
                                 className="ghost-btn"
+                                disabled={weeklyReviewGenerating}
                                 onClick={() =>
                                   loadWeeklyTrainingReviews(aiToken)
                                 }
@@ -3254,32 +3235,11 @@ function AppContent() {
                             </div>
 
                             <h4 style={{ marginTop: 20 }}>Сохранённые обзоры</h4>
-                            <p className="subtitle" style={{ marginTop: 0 }}>
-                              Сюда попадают только обзоры через кнопку «Обзор за
-                              неделю» (не обычные сообщения в чате).
-                            </p>
                             <div className="workout-list">
                               {weeklyTrainingReviews.length === 0 && (
                                 <div className="workout-empty">
-                                  {getLastAssistantReviewFromChat() ? (
-                                    <>
-                                      В чате есть ответ с обзором, но он ещё не в
-                                      списке.{' '}
-                                      <button
-                                        type="button"
-                                        className="ghost-btn"
-                                        style={{ marginTop: 8 }}
-                                        onClick={importWeeklyReviewFromChat}
-                                      >
-                                        Сохранить обзор из чата
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      Пока нет сохранённых обзоров. Нажмите «Обзор
-                                      за неделю» выше.
-                                    </>
-                                  )}
+                                  Пока нет обзоров. Нажмите «Обзор за прошлую
+                                  неделю».
                                 </div>
                               )}
                               {weeklyTrainingReviews.map((review) => (
@@ -3324,7 +3284,71 @@ function AppContent() {
                               ))}
                             </div>
 
-                            <h4 style={{ marginTop: 24 }}>Чат</h4>
+                            <ModalShell
+                              open={isWeeklyReviewModalOpen}
+                              onClose={closeWeeklyReviewModal}
+                              scroll
+                              wide
+                            >
+                              {weeklyReviewModalLoading ? (
+                                <p className="subtitle">Загрузка обзора…</p>
+                              ) : selectedWeeklyReview ? (
+                                <>
+                                  <h3 style={{ marginTop: 0 }}>
+                                    Обзор {selectedWeeklyReview.periodFrom} —{' '}
+                                    {selectedWeeklyReview.periodTo}
+                                  </h3>
+                                  <p className="subtitle">
+                                    {selectedWeeklyReview.days === 7
+                                      ? 'Период: 7 дней'
+                                      : `Период: ${selectedWeeklyReview.days} дн.`}
+                                    {' · '}
+                                    Обновл.:{' '}
+                                    {formatReviewDateUtc(
+                                      selectedWeeklyReview.updatedAtUtc,
+                                    )}
+                                  </p>
+                                  <div
+                                    className="chat-msg assistant"
+                                    style={{
+                                      marginTop: 16,
+                                      maxHeight: 'none',
+                                      whiteSpace: 'pre-wrap',
+                                    }}
+                                  >
+                                    {selectedWeeklyReview.content}
+                                  </div>
+                                  <div className="row" style={{ marginTop: 16 }}>
+                                    <button
+                                      type="button"
+                                      className="ghost-btn"
+                                      onClick={closeWeeklyReviewModal}
+                                    >
+                                      Закрыть
+                                    </button>
+                                  </div>
+                                </>
+                              ) : null}
+                            </ModalShell>
+                          </div>
+                        )}
+
+                      {workoutsSubTab === 'ai-trainer' &&
+                        showWorkoutAiTrainerTab && (
+                          <div
+                            className="ai-assistant-chat-panel"
+                            style={{
+                              marginTop: 16,
+                              paddingTop: 16,
+                              borderTop:
+                                '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
+                            }}
+                          >
+                            <h4 style={{ marginTop: 0 }}>ИИ тренер — чат</h4>
+                            <p className="subtitle">
+                              Свободный диалог с помощником «Тренер». Недельные
+                              обзоры — во вкладке «Недельные обзоры».
+                            </p>
                             <div className="row">
                               <select
                                 value={currentDialogId}
@@ -3393,53 +3417,6 @@ function AppContent() {
                                 Отправить
                               </button>
                             </div>
-
-                            <ModalShell
-                              open={isWeeklyReviewModalOpen}
-                              onClose={closeWeeklyReviewModal}
-                              scroll
-                              wide
-                            >
-                              {weeklyReviewModalLoading ? (
-                                <p className="subtitle">Загрузка обзора…</p>
-                              ) : selectedWeeklyReview ? (
-                                <>
-                                  <h3 style={{ marginTop: 0 }}>
-                                    Обзор {selectedWeeklyReview.periodFrom} —{' '}
-                                    {selectedWeeklyReview.periodTo}
-                                  </h3>
-                                  <p className="subtitle">
-                                    {selectedWeeklyReview.days === 7
-                                      ? 'Период: 7 дней'
-                                      : `Период: ${selectedWeeklyReview.days} дн.`}
-                                    {' · '}
-                                    Обновл.:{' '}
-                                    {formatReviewDateUtc(
-                                      selectedWeeklyReview.updatedAtUtc,
-                                    )}
-                                  </p>
-                                  <div
-                                    className="chat-msg assistant"
-                                    style={{
-                                      marginTop: 16,
-                                      maxHeight: 'none',
-                                      whiteSpace: 'pre-wrap',
-                                    }}
-                                  >
-                                    {selectedWeeklyReview.content}
-                                  </div>
-                                  <div className="row" style={{ marginTop: 16 }}>
-                                    <button
-                                      type="button"
-                                      className="ghost-btn"
-                                      onClick={closeWeeklyReviewModal}
-                                    >
-                                      Закрыть
-                                    </button>
-                                  </div>
-                                </>
-                              ) : null}
-                            </ModalShell>
                           </div>
                         )}
 

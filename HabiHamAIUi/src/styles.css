@@ -147,6 +147,18 @@ h1 {
   border-color: #6a6ab0;
 }
 
+.top-nav-tab--weekly-reviews {
+  border-color: #5a4a3d;
+  background: #2a221c;
+  color: #f0e6dc;
+}
+
+.top-nav-tab--weekly-reviews.active {
+  background: linear-gradient(180deg, #9a7a4a, #7a6038);
+  color: #fffaf3;
+  border-color: #b8925a;
+}
+
 .top-nav-tab--bike {
   border-color: #3d5f6a;
   background: #1b262b;

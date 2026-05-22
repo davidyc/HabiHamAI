@@ -222,6 +222,7 @@ public sealed class AiUserService : IAiUserService
         var toIso = periodTo.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var cached = existing is not null && existing.DataFingerprint == fingerprint;
         var generated = false;
+        UserWeeklyTrainingReview? reviewRow = existing;
 
         if (cached)
         {
@@ -263,7 +264,7 @@ public sealed class AiUserService : IAiUserService
             var now = DateTime.UtcNow;
             if (existing is null)
             {
-                _dbContext.UserWeeklyTrainingReviews.Add(new UserWeeklyTrainingReview
+                reviewRow = new UserWeeklyTrainingReview
                 {
                     Id = Guid.NewGuid(),
                     UserId = currentUser.Id,
@@ -274,7 +275,8 @@ public sealed class AiUserService : IAiUserService
                     Content = responseText,
                     CreatedAtUtc = now,
                     UpdatedAtUtc = now
-                });
+                };
+                _dbContext.UserWeeklyTrainingReviews.Add(reviewRow);
             }
             else
             {
@@ -282,37 +284,48 @@ public sealed class AiUserService : IAiUserService
                 existing.Content = responseText;
                 existing.AiAssistantId = trainerAssistantId.Value;
                 existing.UpdatedAtUtc = now;
+                reviewRow = existing;
             }
         }
 
-        var dialog = await ResolveOrCreateDialogAsync(currentUser.Id, request.DialogId, cancellationToken);
-        if (dialog is null)
+        var reviewId = reviewRow!.Id;
+        var nowUtc = DateTime.UtcNow;
+
+        Guid? dialogId = null;
+        string? dialogTitle = null;
+        if (request.WriteToDialog)
         {
-            return new NotFoundObjectResult(new { message = "Dialog not found." });
+            var dialog = await ResolveOrCreateDialogAsync(currentUser.Id, request.DialogId, cancellationToken);
+            if (dialog is null)
+            {
+                return new NotFoundObjectResult(new { message = "Dialog not found." });
+            }
+
+            var userLabel = dayCount == 7
+                ? WeeklyReviewChatUserLabel
+                : $"{WeeklyReviewChatUserLabel} ({dayCount} дн.)";
+            _dbContext.ChatMessages.Add(new ChatMessage
+            {
+                Id = Guid.NewGuid(),
+                DialogId = dialog.Id,
+                Role = "user",
+                Content = userLabel,
+                CreatedAtUtc = nowUtc
+            });
+            _dbContext.ChatMessages.Add(new ChatMessage
+            {
+                Id = Guid.NewGuid(),
+                DialogId = dialog.Id,
+                Role = "assistant",
+                Content = responseText,
+                CreatedAtUtc = nowUtc
+            });
+            dialog.AiAssistantId = trainerAssistantId;
+            dialog.UpdatedAtUtc = nowUtc;
+            dialogId = dialog.Id;
+            dialogTitle = dialog.Title;
         }
 
-        var userLabel = dayCount == 7
-            ? WeeklyReviewChatUserLabel
-            : $"{WeeklyReviewChatUserLabel} ({dayCount} дн.)";
-        var nowUtc = DateTime.UtcNow;
-        _dbContext.ChatMessages.Add(new ChatMessage
-        {
-            Id = Guid.NewGuid(),
-            DialogId = dialog.Id,
-            Role = "user",
-            Content = userLabel,
-            CreatedAtUtc = nowUtc
-        });
-        _dbContext.ChatMessages.Add(new ChatMessage
-        {
-            Id = Guid.NewGuid(),
-            DialogId = dialog.Id,
-            Role = "assistant",
-            Content = responseText,
-            CreatedAtUtc = nowUtc
-        });
-        dialog.AiAssistantId = trainerAssistantId;
-        dialog.UpdatedAtUtc = nowUtc;
         if (generated)
         {
             currentUser.AiSummary = TruncateForSummary(responseText, 8000);
@@ -322,8 +335,9 @@ public sealed class AiUserService : IAiUserService
 
         return new OkObjectResult(new
         {
-            dialogId = dialog.Id,
-            dialogTitle = dialog.Title,
+            reviewId,
+            dialogId,
+            dialogTitle,
             response = responseText,
             cached,
             generated,
