@@ -33,3 +33,12 @@ HabiHamAIUi/npm-debug.log*
 HabiHamAIUi/yarn-debug.log*
 HabiHamAIUi/yarn-error.log*
 HabiHamAIUi/pnpm-debug.log*
+
+# Android (HabiHamAIMobile)
+HabiHamAIMobile/.gradle/
+HabiHamAIMobile/**/build/
+HabiHamAIMobile/local.properties
+HabiHamAIMobile/.idea/
+HabiHamAIMobile/*.iml
+HabiHamAIMobile/app/*.iml
+HabiHamAIMobile/captures/

@@ -1,6 +1,6 @@
 ﻿# HabiHamAI
 
-Веб-приложение: **тренировки** (программы, каталог упражнений, запись подходов, история), **дневник веса**, **профиль**, **AI-чат** с настраиваемыми ассистентами и **админка**; опционально — **Telegram-бот** (webhook, привязка аккаунта, запись веса в дневник). Репозиторий: **HabiHamAIAPI** (ASP.NET Core, PostgreSQL, JWT) и **HabiHamAIUi** (React, Vite).
+Веб-приложение: **тренировки** (программы, каталог упражнений, запись подходов, история), **дневник веса**, **профиль**, **AI-чат** с настраиваемыми ассистентами и **админка**; опционально — **Telegram-бот** (webhook, привязка аккаунта, запись веса в дневник). Репозиторий: **HabiHamAIAPI** (ASP.NET Core, PostgreSQL, JWT), **HabiHamAIUi** (React, Vite) и **HabiHamAIMobile** (Kotlin, Compose — вход и история тренировок).
 
 ## Репозиторий и локальный запуск
 
@@ -8,6 +8,7 @@
 | --------------- | -------------------------------------------- |
 | `HabiHamAIAPI/` | REST API, EF Core, миграции в `Migrations/`. |
 | `HabiHamAIUi/`  | SPA, основной код экранов в `src/App.jsx`.   |
+| `HabiHamAIMobile/` | Android: авторизация и история тренировок. См. `HabiHamAIMobile/README.md`. |
 
 **Backend:** в каталоге `HabiHamAIAPI` выполните `dotnet run` (профиль `http` в `Properties/launchSettings.json` — по умолчанию **http://localhost:5193**). Нужны PostgreSQL и параметры JWT; при старте применяются миграции. LLM: переменные `OPENAI_*` / секция Kernestal (см. раздел 7 ниже).
 
