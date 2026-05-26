@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.habiham.mobile.data.model.WorkoutExerciseDto
 import com.habiham.mobile.data.model.WorkoutSessionDto
+import com.habiham.mobile.ui.components.scrollWithIme
 import com.habiham.mobile.util.formatWorkoutDateLabel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -53,7 +55,14 @@ fun WorkoutsTab(
     val state by viewModel.uiState.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    Column(modifier = modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .scrollWithIme(),
+        contentPadding = PaddingValues(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
             FiltersSection(
                 state = state,
                 onDateFromChange = viewModel::onDateFromChange,
@@ -62,43 +71,51 @@ fun WorkoutsTab(
                 onApplyPreset = viewModel::applyDatePreset,
                 onApplyFilters = viewModel::loadHistory,
             )
+        }
 
-            if (!state.error.isNullOrBlank()) {
+        if (!state.error.isNullOrBlank()) {
+            item {
                 Text(
                     text = state.error!!,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+        }
 
-            if (state.isLoading && state.sessions.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (state.sessions.isEmpty()) {
-                Text(
-                    "Нет тренировок по выбранному фильтру.",
-                    modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(state.sessions, key = { it.id }) { session ->
-                        WorkoutSessionCard(
-                            session = session,
-                            onClick = { viewModel.openSession(session) },
-                        )
+        when {
+            state.isLoading && state.sessions.isEmpty() -> {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
                     }
                 }
             }
+            state.sessions.isEmpty() -> {
+                item {
+                    Text(
+                        "Нет тренировок по выбранному фильтру.",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            else -> {
+                items(state.sessions, key = { it.id }) { session ->
+                    WorkoutSessionCard(
+                        session = session,
+                        onClick = { viewModel.openSession(session) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+            }
+        }
     }
 
     state.selectedSession?.let { session ->
@@ -225,9 +242,10 @@ private fun FiltersSection(
 private fun WorkoutSessionCard(
     session: WorkoutSessionDto,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),

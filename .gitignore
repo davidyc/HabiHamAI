@@ -38,6 +38,7 @@ HabiHamAIUi/pnpm-debug.log*
 HabiHamAIMobile/.gradle/
 HabiHamAIMobile/**/build/
 HabiHamAIMobile/local.properties
+HabiHamAIMobile/api-config.properties
 HabiHamAIMobile/.idea/
 HabiHamAIMobile/*.iml
 HabiHamAIMobile/app/*.iml

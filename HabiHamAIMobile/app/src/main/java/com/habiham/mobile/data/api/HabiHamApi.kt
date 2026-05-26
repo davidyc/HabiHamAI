@@ -5,6 +5,8 @@ import com.habiham.mobile.data.model.BikeActivitySummaryDto
 import com.habiham.mobile.data.model.HistoryProgramOption
 import com.habiham.mobile.data.model.LoginRequest
 import com.habiham.mobile.data.model.LoginResponse
+import com.habiham.mobile.data.model.RegisterRequest
+import com.habiham.mobile.data.model.RegisterResponse
 import com.habiham.mobile.data.model.UpsertWorkoutSessionRequest
 import com.habiham.mobile.data.model.WorkoutSessionDto
 import okhttp3.MultipartBody
@@ -21,6 +23,9 @@ import retrofit2.http.Query
 interface HabiHamApi {
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): LoginResponse
+
+    @POST("auth/register")
+    suspend fun register(@Body body: RegisterRequest): RegisterResponse
 
     @GET("users/me/workouts")
     suspend fun getMyWorkouts(

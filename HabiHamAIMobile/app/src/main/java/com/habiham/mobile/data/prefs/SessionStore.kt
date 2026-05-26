@@ -7,41 +7,48 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "habiham_session")
 
 class SessionStore(private val context: Context) {
-    val sessionFlow: Flow<StoredSession?> = context.dataStore.data.map { prefs ->
-        val token = prefs[Keys.ACCESS_TOKEN]
-        val baseUrl = prefs[Keys.API_BASE_URL]
-        if (token.isNullOrBlank() || baseUrl.isNullOrBlank()) {
-            null
-        } else {
-            StoredSession(accessToken = token, apiBaseUrl = baseUrl)
-        }
+    val accessTokenFlow: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[Keys.ACCESS_TOKEN]?.takeIf { it.isNotBlank() }
     }
 
-    suspend fun save(accessToken: String, apiBaseUrl: String) {
+    suspend fun saveToken(accessToken: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.ACCESS_TOKEN] = accessToken
-            prefs[Keys.API_BASE_URL] = apiBaseUrl.trim().trimEnd('/')
+            prefs[Keys.ACCESS_TOKEN] = accessToken.trim()
         }
     }
 
-    suspend fun updateApiBaseUrl(apiBaseUrl: String) {
+    suspend fun clearToken() {
         context.dataStore.edit { prefs ->
-            prefs[Keys.API_BASE_URL] = apiBaseUrl.trim().trimEnd('/')
+            prefs.remove(Keys.ACCESS_TOKEN)
         }
     }
 
-    suspend fun clear() {
-        context.dataStore.edit { it.clear() }
+    /** Однократная миграция URL из старой версии приложения. */
+    suspend fun consumeLegacyApiBaseUrl(): String? {
+        var legacy: String? = null
+        context.dataStore.edit { prefs ->
+            legacy = prefs[Keys.LEGACY_API_BASE_URL]?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+            if (legacy != null) {
+                prefs.remove(Keys.LEGACY_API_BASE_URL)
+            }
+        }
+        return legacy
+    }
+
+    suspend fun hasLegacyApiBaseUrl(): Boolean {
+        val prefs = context.dataStore.data.first()
+        return !prefs[Keys.LEGACY_API_BASE_URL].isNullOrBlank()
     }
 
     private object Keys {
         val ACCESS_TOKEN = stringPreferencesKey("access_token")
-        val API_BASE_URL = stringPreferencesKey("api_base_url")
+        val LEGACY_API_BASE_URL = stringPreferencesKey("api_base_url")
     }
 }
 

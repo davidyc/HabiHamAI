@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,9 +53,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.habiham.mobile.domain.CurrentWorkout
 import com.habiham.mobile.domain.CurrentWorkoutExercise
+import com.habiham.mobile.ui.components.DialogImeAdjustResize
 import com.habiham.mobile.ui.components.HabiHamBottomBar
 import com.habiham.mobile.ui.components.HabiHamContentCard
+import com.habiham.mobile.ui.components.HabiHamKeyboardInsets
 import com.habiham.mobile.ui.components.SectionTitle
+import com.habiham.mobile.ui.components.scrollWithIme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,12 +91,14 @@ fun ActiveWorkoutEditor(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        DialogImeAdjustResize()
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
+                contentWindowInsets = HabiHamKeyboardInsets.scaffoldContent,
                 topBar = {
                     TopAppBar(
                         title = {
@@ -146,7 +152,9 @@ fun ActiveWorkoutEditor(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
+                        .scrollWithIme()
                         .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     item {

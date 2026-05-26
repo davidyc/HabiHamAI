@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -100,6 +101,7 @@ fun HabiHamBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
+                .imePadding()
                 .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 56.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             content = content,

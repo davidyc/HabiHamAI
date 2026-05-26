@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -43,6 +44,7 @@ import com.habiham.mobile.util.formatBikeDurationSeconds
 import com.habiham.mobile.util.formatCalories
 import com.habiham.mobile.util.formatDistanceKm
 import com.habiham.mobile.util.formatHeartRate
+import com.habiham.mobile.ui.components.scrollWithIme
 import com.habiham.mobile.util.formatUtcDateTime
 
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -64,112 +66,64 @@ fun BikeTab(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text(
-                "Велотренировки (TCX)",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .scrollWithIme(),
+        contentPadding = PaddingValues(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            BikeTabHeader(
+                state = state,
+                onImportTcx = { tcxPicker.launch(arrayOf("application/xml", "text/xml", "*/*")) },
+                onDateFromChange = viewModel::onDateFromChange,
+                onDateToChange = viewModel::onDateToChange,
+                onApplyPreset = viewModel::applyDatePreset,
+                onApplyFilters = viewModel::loadActivities,
             )
-            Text(
-                "Импорт TCX (Zepp и др.). На сервере сохраняются только разобранные данные, спорт Biking.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = { tcxPicker.launch(arrayOf("application/xml", "text/xml", "*/*")) },
-                enabled = !state.isImporting,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (state.isImporting) {
-                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.height(18.dp))
-                } else {
-                    Text("Загрузить TCX")
-                }
-            }
-            state.importMessage?.let { msg ->
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    msg,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (msg.contains("успешно", ignoreCase = true)) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = state.dateFrom,
-                    onValueChange = viewModel::onDateFromChange,
-                    label = { Text("С") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = state.dateTo,
-                    onValueChange = viewModel::onDateToChange,
-                    label = { Text("По") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Неделя" to 7L, "Месяц" to 30L, "90 дн." to 90L).forEach { (label, days) ->
-                    FilterChip(
-                        selected = false,
-                        onClick = { viewModel.applyDatePreset(days) },
-                        label = { Text(label) },
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = viewModel::loadActivities,
-                enabled = !state.isLoading,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Применить фильтры")
-            }
         }
 
         if (!state.error.isNullOrBlank()) {
-            Text(
-                state.error!!,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 16.dp),
-                style = MaterialTheme.typography.bodySmall,
-            )
+            item {
+                Text(
+                    state.error!!,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
 
-        if (state.isLoading && state.activities.isEmpty()) {
-            Column(
-                Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                CircularProgressIndicator()
+        when {
+            state.isLoading && state.activities.isEmpty() -> {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
             }
-        } else if (state.activities.isEmpty()) {
-            Text(
-                "Нет записей по выбранному периоду.",
-                modifier = Modifier.padding(16.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
+            state.activities.isEmpty() -> {
+                item {
+                    Text(
+                        "Нет записей по выбранному периоду.",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            else -> {
                 items(state.activities, key = { it.id }) { row ->
                     BikeActivityCard(
                         row = row,
                         onOpen = { viewModel.openDetail(row.id) },
                         onDelete = { viewModel.requestDelete(row.id) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
             }
@@ -202,14 +156,98 @@ fun BikeTab(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BikeTabHeader(
+    state: BikeUiState,
+    onImportTcx: () -> Unit,
+    onDateFromChange: (String) -> Unit,
+    onDateToChange: (String) -> Unit,
+    onApplyPreset: (Long) -> Unit,
+    onApplyFilters: () -> Unit,
+) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            "Велотренировки (TCX)",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "Импорт TCX (Zepp и др.). На сервере сохраняются только разобранные данные, спорт Biking.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = onImportTcx,
+            enabled = !state.isImporting,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (state.isImporting) {
+                CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.height(18.dp))
+            } else {
+                Text("Загрузить TCX")
+            }
+        }
+        state.importMessage?.let { msg ->
+            Spacer(Modifier.height(6.dp))
+            Text(
+                msg,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (msg.contains("успешно", ignoreCase = true)) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = state.dateFrom,
+                onValueChange = onDateFromChange,
+                label = { Text("С") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = state.dateTo,
+                onValueChange = onDateToChange,
+                label = { Text("По") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Неделя" to 7L, "Месяц" to 30L, "90 дн." to 90L).forEach { (label, days) ->
+                FilterChip(
+                    selected = false,
+                    onClick = { onApplyPreset(days) },
+                    label = { Text(label) },
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = onApplyFilters,
+            enabled = !state.isLoading,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Применить фильтры")
+        }
+    }
+}
+
 @Composable
 private fun BikeActivityCard(
     row: BikeActivitySummaryDto,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
     ) {

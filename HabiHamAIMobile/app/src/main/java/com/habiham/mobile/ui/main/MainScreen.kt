@@ -1,13 +1,16 @@
 package com.habiham.mobile.ui.main
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -23,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.habiham.mobile.ui.components.HabiHamKeyboardInsets
 import com.habiham.mobile.ui.bike.BikeTab
 import com.habiham.mobile.ui.bike.BikeViewModel
 import com.habiham.mobile.ui.workouts.ActiveWorkoutViewModel
@@ -40,12 +44,14 @@ fun MainScreen(
     workoutsViewModel: WorkoutsViewModel,
     activeWorkoutViewModel: ActiveWorkoutViewModel,
     bikeViewModel: BikeViewModel,
+    onOpenApiSettings: () -> Unit,
     onLogout: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val tab = HomeTab.entries[selectedTab]
 
     Scaffold(
+        contentWindowInsets = HabiHamKeyboardInsets.scaffoldContent,
         topBar = {
             Column {
                 TopAppBar(
@@ -63,6 +69,9 @@ fun MainScreen(
                             },
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                        }
+                        IconButton(onClick = onOpenApiSettings) {
+                            Icon(Icons.Default.Settings, contentDescription = "Настройки API")
                         }
                         IconButton(onClick = onLogout) {
                             Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Выйти")
@@ -82,20 +91,23 @@ fun MainScreen(
             }
         },
     ) { padding ->
-        when (tab) {
-            HomeTab.Strength -> WorkoutsRootTab(
-                activeViewModel = activeWorkoutViewModel,
-                historyViewModel = workoutsViewModel,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            )
-            HomeTab.Bike -> BikeTab(
-                viewModel = bikeViewModel,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding(),
+        ) {
+            when (tab) {
+                HomeTab.Strength -> WorkoutsRootTab(
+                    activeViewModel = activeWorkoutViewModel,
+                    historyViewModel = workoutsViewModel,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                HomeTab.Bike -> BikeTab(
+                    viewModel = bikeViewModel,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }

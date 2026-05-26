@@ -1,7 +1,8 @@
 package com.habiham.mobile.ui.workouts
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.habiham.mobile.ui.components.HabiHamAccentCard
 import com.habiham.mobile.ui.components.SectionTitle
+import com.habiham.mobile.ui.components.scrollWithIme
 import com.habiham.mobile.util.formatWorkoutDateLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,6 +66,8 @@ fun ActiveWorkoutTab(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .scrollWithIme()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
         SectionTitle(

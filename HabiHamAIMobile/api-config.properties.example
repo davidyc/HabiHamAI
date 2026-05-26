@@ -1,0 +1,4 @@
+# Опционально: скопируйте в api-config.properties (в .gitignore).
+# По умолчанию release-сборка использует https://habihamai.onrender.com
+# Переопределение только если нужен другой продакшен-URL:
+# releaseApiBaseUrl=https://habihamai.onrender.com

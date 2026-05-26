@@ -1,9 +1,29 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+fun loadProperties(fileName: String): Properties = Properties().apply {
+    val file = rootProject.file(fileName)
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
+fun quoteBuildConfigUrl(url: String): String =
+    "\"${url.trim().replace("\"", "\\\"")}\""
+
+val productionApiBaseUrl = "https://habihamai.onrender.com"
+
+val localProperties = loadProperties("local.properties")
+val apiConfigProperties = loadProperties("api-config.properties")
+
+fun firstNonBlankUrl(vararg candidates: String?): String =
+    candidates.firstOrNull { !it.isNullOrBlank() }?.trim() ?: productionApiBaseUrl
 
 android {
     namespace = "com.habiham.mobile"
@@ -15,9 +35,33 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+    }
 
-        // Эмулятор → хост ПК; на реальном устройстве укажите URL в экране входа.
-        buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:5193\"")
+    buildTypes {
+        debug {
+            isDebuggable = true
+            val debugUrl = firstNonBlankUrl(localProperties.getProperty("habiHam.apiBaseUrl"))
+            buildConfigField(
+                "String",
+                "DEFAULT_API_BASE_URL",
+                quoteBuildConfigUrl(debugUrl),
+            )
+        }
+        release {
+            val releaseUrl = firstNonBlankUrl(
+                apiConfigProperties.getProperty("releaseApiBaseUrl"),
+                project.findProperty("habiHam.releaseApiBaseUrl")?.toString(),
+                localProperties.getProperty("habiHam.releaseApiBaseUrl"),
+            )
+            buildConfigField(
+                "String",
+                "DEFAULT_API_BASE_URL",
+                quoteBuildConfigUrl(releaseUrl),
+            )
+            // Подпись debug-ключом — чтобы APK ставился с телефона при sideload.
+            // Для Google Play: Generate Signed Bundle в Studio или свой keystore в local.properties.
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     buildFeatures {

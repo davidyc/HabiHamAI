@@ -7,7 +7,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -16,11 +18,14 @@ import com.habiham.mobile.ui.login.LoginScreen
 import com.habiham.mobile.ui.login.LoginViewModel
 import com.habiham.mobile.ui.main.MainScreen
 import com.habiham.mobile.ui.main.MainViewModelFactory
+import com.habiham.mobile.ui.settings.ApiSettingsDialog
+import com.habiham.mobile.ui.settings.ApiSettingsViewModel
+import com.habiham.mobile.ui.settings.ApiSettingsViewModelFactory
 import com.habiham.mobile.ui.theme.HabiHamTheme
 import com.habiham.mobile.ui.workouts.ActiveWorkoutViewModel
 import com.habiham.mobile.ui.workouts.WorkoutsViewModel
-import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,11 +43,23 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun HabiHamRoot(app: HabiHamApplication) {
-    val sessionNullable by app.sessionStore.sessionFlow.collectAsStateWithLifecycle(initialValue = null)
+    val sessionNullable by app.userSessionManager.sessionFlow.collectAsStateWithLifecycle(initialValue = null)
     val scope = rememberCoroutineScope()
 
     var sessionKey by remember { mutableIntStateOf(0) }
+    var showApiSettings by remember { mutableStateOf(false) }
     val session = sessionNullable
+
+    val apiSettingsViewModel: ApiSettingsViewModel = viewModel(
+        factory = ApiSettingsViewModelFactory(app.apiSettingsStore),
+    )
+
+    if (showApiSettings) {
+        ApiSettingsDialog(
+            viewModel = apiSettingsViewModel,
+            onDismiss = { showApiSettings = false },
+        )
+    }
 
     if (session == null) {
         val loginViewModel: LoginViewModel = viewModel(
@@ -52,29 +69,34 @@ private fun HabiHamRoot(app: HabiHamApplication) {
                 onLoggedIn = { sessionKey += 1 },
             ),
         )
-        LoginScreen(viewModel = loginViewModel)
+        LoginScreen(
+            viewModel = loginViewModel,
+            onOpenApiSettings = { showApiSettings = true },
+        )
     } else {
         val factory = MainViewModelFactory(
             session = session,
             workoutsRepository = app.workoutsRepository,
             bikeRepository = app.bikeRepository,
         )
+        val sessionVmKey = "${session.accessToken.hashCode()}-${session.apiBaseUrl.hashCode()}"
         val workoutsViewModel: WorkoutsViewModel = viewModel(
-            key = "workouts-${session.accessToken.hashCode()}",
+            key = "workouts-$sessionVmKey",
             factory = factory,
         )
         val activeWorkoutViewModel: ActiveWorkoutViewModel = viewModel(
-            key = "active-${session.accessToken.hashCode()}",
+            key = "active-$sessionVmKey",
             factory = factory,
         )
         val bikeViewModel: BikeViewModel = viewModel(
-            key = "bike-${session.accessToken.hashCode()}",
+            key = "bike-$sessionVmKey",
             factory = factory,
         )
         MainScreen(
             workoutsViewModel = workoutsViewModel,
             activeWorkoutViewModel = activeWorkoutViewModel,
             bikeViewModel = bikeViewModel,
+            onOpenApiSettings = { showApiSettings = true },
             onLogout = {
                 scope.launch {
                     app.authRepository.logout()
