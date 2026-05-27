@@ -79,6 +79,7 @@ builder.Services.AddScoped<IUserWeightRecordingService>(static sp => (IUserWeigh
 builder.Services.AddScoped<ITelegramUserLinkService, TelegramUserLinkService>();
 builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();
 builder.Services.AddScoped<IAdminDialogsService, AdminDialogsService>();
+builder.Services.AddScoped<IAdminCategoriesService, AdminCategoriesService>();
 builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
 builder.Services.AddScoped<IBikeActivitiesService, BikeActivitiesService>();
 builder.Services.AddSingleton<IPingService, PingService>();
@@ -224,31 +225,72 @@ app.Run();
 
 static async Task BaselineExistingDatabaseForMigrationsAsync(AppDbContext dbContext)
 {
-    const string initialMigrationId = "20260507174221_InitialSchema";
     const string efProductVersion = "9.0.9";
 
-    // Legacy databases created with EnsureCreated have tables but no migrations history.
-    // This baseline marks the initial migration as applied to avoid recreating existing tables.
-    await dbContext.Database.ExecuteSqlRawAsync($"""
+    // Migrations that must not be re-applied when the schema already exists (legacy / EnsureCreated DBs).
+    string[] legacyMigrations =
+    [
+        "20260507174221_InitialSchema",
+        "20260509171949_AiAssistantsAndUserSelection",
+        "20260509174148_AiAssistantExtraFields",
+        "20260510152123_UserWeightTracker",
+        "20260510173000_ChatDialogAiAssistant",
+        "20260511120000_TrainerAssistantCodeAndSeed",
+        "20260513152104_TelegramUserLink",
+        "20260513173402_UserBikeActivityImport2",
+        "20260515120000_TrainerAssistantFieldDefinitionsSeed",
+        "20260516120000_TrainerHeightField",
+        "20260518120000_SystemAiFlagsAndTrainerHeightEnsure",
+        "20260522161613_BikeActivitySourceFileStorage",
+        "20260522180000_UserWeeklyTrainingReviews",
+    ];
+
+    await dbContext.Database.ExecuteSqlRawAsync("""
         CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
             "MigrationId" character varying(150) NOT NULL,
             "ProductVersion" character varying(32) NOT NULL,
             CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
         );
-
-        INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-        SELECT '{initialMigrationId}', '{efProductVersion}'
-        WHERE EXISTS (
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_name = 'users'
-        )
-        AND NOT EXISTS (
-            SELECT 1
-            FROM "__EFMigrationsHistory"
-            WHERE "MigrationId" = '{initialMigrationId}'
-        );
         """);
+
+    // Full legacy schema: users + ai_assistants already present but history incomplete.
+    var hasUsers = await TableExistsAsync(dbContext, "users");
+    var hasAiAssistants = await TableExistsAsync(dbContext, "ai_assistants");
+    var hasLegacySchema = hasUsers && hasAiAssistants;
+
+    if (!hasLegacySchema)
+    {
+        return;
+    }
+
+    foreach (var migrationId in legacyMigrations)
+    {
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            SELECT {0}, {1}
+            WHERE NOT EXISTS (
+                SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = {0}
+            )
+            """,
+            migrationId,
+            efProductVersion);
+    }
+}
+
+static async Task<bool> TableExistsAsync(AppDbContext dbContext, string tableName)
+{
+    // No trailing semicolon: SqlQueryRaw wraps the SQL and ";" breaks Npgsql parsing.
+    return await dbContext.Database
+        .SqlQueryRaw<bool>(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = {0}
+            ) AS "Value"
+            """,
+            tableName)
+        .SingleAsync();
 }
 
 static void LoadDotEnv()

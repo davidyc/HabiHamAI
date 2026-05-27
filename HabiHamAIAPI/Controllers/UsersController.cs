@@ -40,6 +40,52 @@ public sealed class UsersController : ControllerBase
     public Task<IActionResult> DeleteMyWeightTrackerEntry(Guid entryId, CancellationToken cancellationToken) =>
         _service.DeleteMyWeightTrackerEntryAsync(User, entryId, cancellationToken);
 
+    [HttpGet("me/categories")]
+    public Task<IActionResult> GetMyCategories(CancellationToken cancellationToken) =>
+        _service.GetMyCategoriesAsync(User, cancellationToken);
+
+    // Habits
+    [HttpGet("me/habits/overview")]
+    public Task<IActionResult> GetMyHabitsOverview([FromQuery] DateOnly? asOfDate, CancellationToken cancellationToken) =>
+        _service.GetMyHabitsOverviewAsync(User, asOfDate, cancellationToken);
+
+    [HttpPost("me/habits")]
+    public Task<IActionResult> CreateMyHabit([FromBody] CreateUserHabitRequest request, CancellationToken cancellationToken) =>
+        _service.CreateMyHabitAsync(User, request, cancellationToken);
+
+    [HttpDelete("me/habits/{habitId:guid}")]
+    public Task<IActionResult> DeleteMyHabit(Guid habitId, CancellationToken cancellationToken) =>
+        _service.DeleteMyHabitAsync(User, habitId, cancellationToken);
+
+    [HttpGet("me/habits/{habitId:guid}/checkins")]
+    public Task<IActionResult> GetMyHabitCheckins(Guid habitId, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken cancellationToken) =>
+        _service.GetMyHabitCheckinsAsync(User, habitId, from, to, cancellationToken);
+
+    [HttpPost("me/habits/{habitId:guid}/checkins")]
+    public Task<IActionResult> UpsertMyHabitCheckin(Guid habitId, [FromBody] UpsertUserHabitCheckinRequest request, CancellationToken cancellationToken) =>
+        _service.UpsertMyHabitCheckinAsync(User, habitId, request, cancellationToken);
+
+    [HttpDelete("me/habits/{habitId:guid}/checkins")]
+    public Task<IActionResult> DeleteMyHabitCheckin(Guid habitId, [FromQuery] DateOnly date, CancellationToken cancellationToken) =>
+        _service.DeleteMyHabitCheckinAsync(User, habitId, date, cancellationToken);
+
+    // Todos
+    [HttpGet("me/todos")]
+    public Task<IActionResult> GetMyTodos([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken cancellationToken) =>
+        _service.GetMyTodosAsync(User, from, to, cancellationToken);
+
+    [HttpPost("me/todos")]
+    public Task<IActionResult> CreateMyTodo([FromBody] CreateUserTodoItemRequest request, CancellationToken cancellationToken) =>
+        _service.CreateMyTodoAsync(User, request, cancellationToken);
+
+    [HttpDelete("me/todos/{todoId:guid}")]
+    public Task<IActionResult> DeleteMyTodo(Guid todoId, CancellationToken cancellationToken) =>
+        _service.DeleteMyTodoAsync(User, todoId, cancellationToken);
+
+    [HttpPut("me/todos/{todoId:guid}/done")]
+    public Task<IActionResult> UpsertMyTodoDone(Guid todoId, [FromBody] UpsertUserTodoDoneRequest request, CancellationToken cancellationToken) =>
+        _service.UpsertMyTodoDoneAsync(User, todoId, request, cancellationToken);
+
     [HttpPost("me/telegram/link")]
     public Task<IActionResult> CreateTelegramLink(CancellationToken cancellationToken) =>
         _telegramLinkService.CreateLinkAsync(User, cancellationToken);

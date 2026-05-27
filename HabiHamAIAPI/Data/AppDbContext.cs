@@ -16,6 +16,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<ChatDialog> ChatDialogs => Set<ChatDialog>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<UserWeightEntry> UserWeightEntries => Set<UserWeightEntry>();
+    public DbSet<UserHabit> UserHabits => Set<UserHabit>();
+    public DbSet<UserHabitCheckin> UserHabitCheckins => Set<UserHabitCheckin>();
+    public DbSet<UserTodoItem> UserTodoItems => Set<UserTodoItem>();
+    public DbSet<UserCategory> UserCategories => Set<UserCategory>();
     public DbSet<TelegramLinkToken> TelegramLinkTokens => Set<TelegramLinkToken>();
     public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
     public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
@@ -240,6 +244,110 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
             entity.HasIndex(x => new { x.UserId, x.Date }).IsUnique();
             entity.HasIndex(x => new { x.UserId, x.UpdatedAtUtc });
+        });
+
+        modelBuilder.Entity<UserHabit>(entity =>
+        {
+            entity.ToTable("user_habits");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
+            entity.Property(x => x.CategoryId).HasColumnName("category_id");
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true).IsRequired();
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+
+            entity.HasIndex(x => new { x.UserId, x.SortOrder });
+            entity.HasIndex(x => new { x.UserId, x.IsActive });
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Category)
+                .WithMany()
+                .HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasMany(x => x.Checkins)
+                .WithOne(x => x.Habit)
+                .HasForeignKey(x => x.HabitId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserHabitCheckin>(entity =>
+        {
+            entity.ToTable("user_habit_checkins");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
+            entity.Property(x => x.HabitId).HasColumnName("habit_id").IsRequired();
+            entity.Property(x => x.Date).HasColumnName("date").HasColumnType("date").IsRequired();
+            entity.Property(x => x.Status)
+                .HasColumnName("status")
+                .HasMaxLength(20)
+                .HasDefaultValue(UserHabitCheckinStatus.Done)
+                .IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+
+            entity.HasIndex(x => new { x.HabitId, x.Date }).IsUnique();
+            entity.HasIndex(x => new { x.UserId, x.Date });
+
+            entity.HasOne(x => x.Habit)
+                .WithMany(x => x.Checkins)
+                .HasForeignKey(x => x.HabitId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserTodoItem>(entity =>
+        {
+            entity.ToTable("user_todo_items");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
+            entity.Property(x => x.CategoryId).HasColumnName("category_id");
+            entity.Property(x => x.Title).HasColumnName("title").HasMaxLength(500).IsRequired();
+            entity.Property(x => x.DueDate).HasColumnName("due_date").HasColumnType("date");
+            entity.Property(x => x.DoneDate).HasColumnName("done_date").HasColumnType("date");
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+
+            entity.HasIndex(x => new { x.UserId, x.DoneDate });
+            entity.HasIndex(x => new { x.UserId, x.DueDate });
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Category)
+                .WithMany()
+                .HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<UserCategory>(entity =>
+        {
+            entity.ToTable("user_categories");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(300);
+            entity.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true).IsRequired();
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => x.SortOrder);
         });
 
         modelBuilder.Entity<WorkoutExercise>(entity =>

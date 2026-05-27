@@ -18,6 +18,69 @@ function AppContent() {
     date.setDate(date.getDate() - daysAgo);
     return date.toISOString().slice(0, 10);
   };
+  const getIsoDateRange = (fromIso, toIso) => {
+    if (!fromIso || !toIso) return [];
+    const start = new Date(`${fromIso}T00:00:00Z`);
+    const end = new Date(`${toIso}T00:00:00Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()))
+      return [];
+    const res = [];
+    const cursor = new Date(start);
+    while (cursor.getTime() <= end.getTime()) {
+      res.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return res;
+  };
+  const habitCheckinDateKey = (entry) => {
+    if (!entry) return '';
+    const d = entry.date ?? entry.Date;
+    return typeof d === 'string' ? d.slice(0, 10) : '';
+  };
+  const habitCheckinStatusKey = (entry) =>
+    String(entry?.status ?? entry?.Status ?? '').toLowerCase();
+  const buildHabitCheckinsMap = (entries) => {
+    const map = {};
+    if (!Array.isArray(entries)) return map;
+    for (const entry of entries) {
+      const date = habitCheckinDateKey(entry);
+      const status = habitCheckinStatusKey(entry);
+      if (date && status) map[date] = status;
+    }
+    return map;
+  };
+  const HABIT_STATUS_CYCLE = [null, 'partial', 'done', 'failed'];
+  const nextHabitCheckinStatus = (current) => {
+    const normalized = current || null;
+    const idx = HABIT_STATUS_CYCLE.indexOf(normalized);
+    const nextIdx = idx < 0 ? 0 : (idx + 1) % HABIT_STATUS_CYCLE.length;
+    return HABIT_STATUS_CYCLE[nextIdx];
+  };
+  const habitStatusCellClass = (status) => {
+    if (status === 'partial') {
+      return 'habit-status-cell habit-status-cell--partial';
+    }
+    if (status === 'done') {
+      return 'habit-status-cell habit-status-cell--done';
+    }
+    if (status === 'failed') {
+      return 'habit-status-cell habit-status-cell--failed';
+    }
+    return 'habit-status-cell habit-status-cell--none';
+  };
+  const habitStatusLabel = (status) => {
+    if (status === 'partial') return 'частично';
+    if (status === 'done') return 'выполнено';
+    if (status === 'failed') return 'провалено';
+    return 'без отметки';
+  };
+  const resolveHabitTodayStatus = (statusMap, habit, today) => {
+    if (statusMap?.[today]) return statusMap[today];
+    const fromHabit = String(
+      habit?.todayStatus ?? habit?.TodayStatus ?? '',
+    ).toLowerCase();
+    return fromHabit || null;
+  };
   /** Прошлая календарная неделя (пн–вс) в UTC — как на сервере для endingOn. */
   const getPreviousCalendarWeekUtc = () => {
     const now = new Date();
@@ -138,6 +201,37 @@ function AppContent() {
   const [pendingDeleteWeightEntry, setPendingDeleteWeightEntry] =
     useState(null);
 
+  // Прогресс: привычки
+  const [userCategories, setUserCategories] = useState([]);
+  const [habitsOverview, setHabitsOverview] = useState([]);
+  const [habitsNewName, setHabitsNewName] = useState('');
+  const [habitsNewCategoryId, setHabitsNewCategoryId] = useState('');
+  const [habitFilterDateFrom, setHabitFilterDateFrom] = useState(() =>
+    getIsoDateDaysAgo(6),
+  );
+  const [habitFilterDateTo, setHabitFilterDateTo] = useState(() =>
+    getTodayIsoDate(),
+  );
+  /** habitId → Set of ISO dates with check-in */
+  const [habitsCheckinsByHabitId, setHabitsCheckinsByHabitId] = useState({});
+  const [isCreateHabitModalOpen, setIsCreateHabitModalOpen] = useState(false);
+  const [pendingDeleteHabit, setPendingDeleteHabit] = useState(null);
+  const [habitsCategoryTabKey, setHabitsCategoryTabKey] = useState('');
+
+  // Прогресс: дела/ToDo
+  const [todos, setTodos] = useState([]);
+  const [todoTitleDraft, setTodoTitleDraft] = useState('');
+  const [todoDueDateDraft, setTodoDueDateDraft] = useState('');
+  const [todoCategoryDraft, setTodoCategoryDraft] = useState('');
+  const [todoDoneDateDraft, setTodoDoneDateDraft] = useState(() =>
+    getTodayIsoDate(),
+  );
+  const [todoFilterDateFrom, setTodoFilterDateFrom] = useState(() =>
+    getIsoDateDaysAgo(30),
+  );
+  const [todoFilterDateTo, setTodoFilterDateTo] = useState(() => getTodayIsoDate());
+  const [todosCategoryTabKey, setTodosCategoryTabKey] = useState('');
+
   const [users, setUsers] = useState([]);
   const [adminCreateUsername, setAdminCreateUsername] = useState('');
   const [adminCreatePassword, setAdminCreatePassword] = useState('');
@@ -195,6 +289,16 @@ function AppContent() {
     isRequired: false,
   });
   const [pendingDeleteExtraField, setPendingDeleteExtraField] = useState(null);
+  const [adminCategories, setAdminCategories] = useState([]);
+  const [adminCategoryModalKind, setAdminCategoryModalKind] = useState(null);
+  const [adminCategoryDraft, setAdminCategoryDraft] = useState({
+    id: '',
+    name: '',
+    description: '',
+    isActive: true,
+    sortOrder: 0,
+  });
+  const [pendingDeleteCategory, setPendingDeleteCategory] = useState(null);
   const [pendingDeleteCatalogExerciseId, setPendingDeleteCatalogExerciseId] =
     useState(null);
   const [pendingDeleteWorkoutSessionId, setPendingDeleteWorkoutSessionId] =
@@ -1051,6 +1155,86 @@ function AppContent() {
     }
   }
 
+  async function loadAdminCategories() {
+    if (!adminToken) return;
+    const result = await request('GET', '/admin/categories', null, adminToken);
+    handleResult(result);
+    if (!result.ok) return;
+    setAdminCategories(Array.isArray(result.data) ? result.data : []);
+  }
+
+  function openAdminCategoryCreateModal() {
+    const nextSort = adminCategories.length
+      ? Math.max(...adminCategories.map((x) => x.sortOrder || 0)) + 1
+      : 1;
+    setAdminCategoryDraft({
+      id: '',
+      name: '',
+      description: '',
+      isActive: true,
+      sortOrder: nextSort,
+    });
+    setAdminCategoryModalKind('create');
+  }
+
+  function openAdminCategoryEditModal(category) {
+    if (!category) return;
+    setAdminCategoryDraft({
+      id: category.id,
+      name: category.name || '',
+      description: category.description || '',
+      isActive: Boolean(category.isActive),
+      sortOrder: Number(category.sortOrder) || 0,
+    });
+    setAdminCategoryModalKind('edit');
+  }
+
+  async function submitAdminCategoryModal() {
+    const name = String(adminCategoryDraft.name ?? '').trim();
+    if (!name) return setErrorView('Укажи название категории.');
+    const body = {
+      name,
+      description: String(adminCategoryDraft.description ?? '').trim() || null,
+      isActive: Boolean(adminCategoryDraft.isActive),
+      sortOrder: Number(adminCategoryDraft.sortOrder) || 0,
+    };
+    let r;
+    if (adminCategoryModalKind === 'create') {
+      r = await request('POST', '/admin/categories', body, adminToken);
+    } else if (adminCategoryModalKind === 'edit' && adminCategoryDraft.id) {
+      r = await request(
+        'PUT',
+        `/admin/categories/${adminCategoryDraft.id}`,
+        body,
+        adminToken,
+      );
+    } else {
+      return;
+    }
+    handleResult(r);
+    if (r.ok) {
+      setAdminCategoryModalKind(null);
+      await loadAdminCategories();
+      await loadUserCategories(accessToken);
+    }
+  }
+
+  async function confirmDeleteCategory() {
+    if (!pendingDeleteCategory?.id) return;
+    const r = await request(
+      'DELETE',
+      `/admin/categories/${pendingDeleteCategory.id}`,
+      null,
+      adminToken,
+    );
+    handleResult(r);
+    if (r.ok) {
+      setPendingDeleteCategory(null);
+      await loadAdminCategories();
+      await loadUserCategories(accessToken);
+    }
+  }
+
   async function loadUsers() {
     const result = await request('GET', '/admin/users', null, adminToken);
     handleResult(result);
@@ -1090,7 +1274,18 @@ function AppContent() {
     setProfileLastName(profile.lastName || '');
     setProfileAiSummary(profile.aiSummary || '');
     setProfileTelegramLinked(Boolean(profile.telegramLinked));
+    await loadUserCategories(token);
     await loadWeightTracker(token);
+    await loadHabitsOverview(token);
+    await loadTodos(token);
+  }
+
+  async function loadUserCategories(token = accessToken) {
+    if (!token) return;
+    const result = await request('GET', '/users/me/categories', null, token);
+    handleResult(result);
+    if (!result.ok) return;
+    setUserCategories(Array.isArray(result.data) ? result.data : []);
   }
 
   function openTelegramLinkModal() {
@@ -1208,6 +1403,196 @@ function AppContent() {
         weightKg: pr.data.weightKg,
       });
     }
+  }
+
+  async function loadHabitsOverview(token = accessToken) {
+    if (!token) return;
+    const result = await request(
+      'GET',
+      '/users/me/habits/overview',
+      null,
+      token,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+
+    setHabitsOverview(Array.isArray(result.data) ? result.data : []);
+  }
+
+  async function createHabit() {
+    if (!accessToken) return;
+    const name = String(habitsNewName ?? '').trim();
+    if (!name) return setErrorView('Укажи название привычки.');
+    const categoryId = habitsNewCategoryId || null;
+
+    const result = await request(
+      'POST',
+      '/users/me/habits',
+      { name, categoryId },
+      accessToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+
+    setHabitsNewName('');
+    setHabitsNewCategoryId('');
+    setIsCreateHabitModalOpen(false);
+    await loadHabitsOverview(accessToken);
+  }
+
+  async function confirmDeleteHabit() {
+    const habitId = pendingDeleteHabit?.id;
+    if (!accessToken || !habitId) return;
+
+    const result = await request(
+      'DELETE',
+      `/users/me/habits/${habitId}`,
+      null,
+      accessToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+
+    setPendingDeleteHabit(null);
+    await loadHabitsOverview(accessToken);
+  }
+
+  async function loadHabitsCategoryCheckins(habits, token = accessToken) {
+    if (!token) return;
+    if (!habits?.length) {
+      setHabitsCheckinsByHabitId({});
+      return;
+    }
+
+    const query = new URLSearchParams();
+    if (habitFilterDateFrom) query.set('from', habitFilterDateFrom);
+    if (habitFilterDateTo) query.set('to', habitFilterDateTo);
+    const suffix = query.toString() ? `?${query}` : '';
+
+    const entries = await Promise.all(
+      habits.map(async (h) => {
+        const result = await request(
+          'GET',
+          `/users/me/habits/${h.id}/checkins${suffix}`,
+          null,
+          token,
+        );
+        if (!result.ok) return [String(h.id), {}];
+        return [
+          String(h.id),
+          buildHabitCheckinsMap(
+            Array.isArray(result.data) ? result.data : [],
+          ),
+        ];
+      }),
+    );
+    setHabitsCheckinsByHabitId(Object.fromEntries(entries));
+  }
+
+  async function cycleHabitTodayStatus(habit) {
+    if (!accessToken || !habit?.id) return;
+    const today = getTodayIsoDate();
+    const habitKey = String(habit.id);
+    const statusMap = habitsCheckinsByHabitId[habitKey] ?? {};
+    const current = resolveHabitTodayStatus(statusMap, habit, today);
+    const next = nextHabitCheckinStatus(current);
+
+    const result = next
+      ? await request(
+          'POST',
+          `/users/me/habits/${habit.id}/checkins`,
+          { date: today, status: next },
+          accessToken,
+        )
+      : await request(
+          'DELETE',
+          `/users/me/habits/${habit.id}/checkins?date=${today}`,
+          null,
+          accessToken,
+        );
+    handleResult(result);
+    if (!result.ok) return;
+
+    const habitsToRefresh =
+      activeHabitsCategoryGroup?.items?.length > 0
+        ? activeHabitsCategoryGroup.items
+        : habitsOverview;
+    await loadHabitsOverview(accessToken);
+    await loadHabitsCategoryCheckins(habitsToRefresh, accessToken);
+  }
+
+  function applyHabitFilterPreset(days) {
+    setHabitFilterDateFrom(getIsoDateDaysAgo(Math.max(0, days - 1)));
+    setHabitFilterDateTo(getTodayIsoDate());
+  }
+
+  async function loadTodos(token = accessToken) {
+    if (!token) return;
+    const query = new URLSearchParams();
+    if (todoFilterDateFrom) query.set('from', todoFilterDateFrom);
+    if (todoFilterDateTo) query.set('to', todoFilterDateTo);
+    const suffix = query.toString() ? `?${query}` : '';
+
+    const result = await request('GET', `/users/me/todos${suffix}`, null, token);
+    handleResult(result);
+    if (!result.ok) return;
+    setTodos(Array.isArray(result.data) ? result.data : []);
+  }
+
+  async function createTodo() {
+    if (!accessToken) return;
+    const title = String(todoTitleDraft ?? '').trim();
+    if (!title) return setErrorView('Укажи название дела.');
+
+    const result = await request(
+      'POST',
+      '/users/me/todos',
+      {
+        title,
+        dueDate: todoDueDateDraft ? todoDueDateDraft : null,
+        categoryId: todoCategoryDraft || null,
+      },
+      accessToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+
+    setTodoTitleDraft('');
+    setTodoDueDateDraft('');
+    setTodoCategoryDraft('');
+    await loadTodos(accessToken);
+  }
+
+  async function deleteTodo(todoId) {
+    if (!accessToken || !todoId) return;
+    if (!window.confirm('Удалить дело?')) return;
+
+    const result = await request(
+      'DELETE',
+      `/users/me/todos/${todoId}`,
+      null,
+      accessToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    await loadTodos(accessToken);
+  }
+
+  async function upsertTodoDone(todoId, isDone) {
+    if (!accessToken || !todoId) return;
+    const body = isDone
+      ? { isDone: true, date: todoDoneDateDraft }
+      : { isDone: false };
+
+    const result = await request(
+      'PUT',
+      `/users/me/todos/${todoId}/done`,
+      body,
+      accessToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    await loadTodos(accessToken);
   }
 
   async function loadWorkoutSessions(token = accessToken) {
@@ -2609,6 +2994,14 @@ function AppContent() {
     loadWeeklyTrainingReviews(aiToken);
   }, [tab, workoutsSubTab, aiToken]);
   useEffect(() => {
+    if (tab !== 'tracking' || !accessToken) return;
+    if (progressSubTab === 'habits') {
+      void loadHabitsOverview(accessToken);
+    } else if (progressSubTab === 'todos') {
+      void loadTodos(accessToken);
+    }
+  }, [tab, progressSubTab, accessToken]);
+  useEffect(() => {
     if (tab !== 'workouts') return;
     if (
       (workoutsSubTab === 'ai-trainer' || workoutsSubTab === 'weekly-reviews') &&
@@ -2623,6 +3016,164 @@ function AppContent() {
       openStrengthSubTab('my-workout');
     }
   }, [tab, workoutsSubTab, showWorkoutAiTrainerTab]);
+  const habitFilterRange = useMemo(() => {
+    const from =
+      habitFilterDateFrom <= habitFilterDateTo
+        ? habitFilterDateFrom
+        : habitFilterDateTo;
+    const to =
+      habitFilterDateFrom <= habitFilterDateTo
+        ? habitFilterDateTo
+        : habitFilterDateFrom;
+    return { from, to };
+  }, [habitFilterDateFrom, habitFilterDateTo]);
+  const habitCreatedIsoDate = (habit) => {
+    const raw = habit?.createdAtUtc ?? habit?.CreatedAtUtc;
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  };
+  const getHabitDisplayDates = (habit) => {
+    const { from, to } = habitFilterRange;
+    if (!from || !to) return [];
+    const created = habitCreatedIsoDate(habit);
+    const effectiveFrom = created && created > from ? created : from;
+    if (effectiveFrom > to) return [];
+    return getIsoDateRange(effectiveFrom, to);
+  };
+
+  const habitsByCategory = useMemo(() => {
+    const groups = new Map();
+    for (const h of habitsOverview) {
+      const key = h.categoryId ? String(h.categoryId) : '__none__';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          categoryId: h.categoryId || null,
+          categoryName: h.categoryName || null,
+          items: [],
+        });
+      }
+      groups.get(key).items.push(h);
+    }
+
+    const categorySortOrder = (categoryId) => {
+      const row = userCategories.find(
+        (c) => String(c.id) === String(categoryId),
+      );
+      return row?.sortOrder ?? 9999;
+    };
+
+    return Array.from(groups.values())
+      .map((g) => {
+        const tabKey = g.categoryId ? String(g.categoryId) : '__none__';
+        return {
+          ...g,
+          tabKey,
+          showHeader: Boolean(g.categoryId && g.categoryName),
+          tabLabel: g.categoryId && g.categoryName ? g.categoryName : null,
+          doneCount: g.items.filter((x) => x.isDoneToday).length,
+          totalCount: g.items.length,
+        };
+      })
+      .sort((a, b) => {
+        if (!a.categoryId) return 1;
+        if (!b.categoryId) return -1;
+        return categorySortOrder(a.categoryId) - categorySortOrder(b.categoryId);
+      });
+  }, [habitsOverview, userCategories]);
+
+  const todosByCategory = useMemo(() => {
+    const groups = new Map();
+    for (const t of todos) {
+      const key = t.categoryId ? String(t.categoryId) : '__none__';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          categoryId: t.categoryId || null,
+          categoryName: t.categoryName || null,
+          items: [],
+        });
+      }
+      groups.get(key).items.push(t);
+    }
+
+    const categorySortOrder = (categoryId) => {
+      const row = userCategories.find(
+        (c) => String(c.id) === String(categoryId),
+      );
+      return row?.sortOrder ?? 9999;
+    };
+
+    return Array.from(groups.values())
+      .map((g) => {
+        const tabKey = g.categoryId ? String(g.categoryId) : '__none__';
+        return {
+          ...g,
+          tabKey,
+          showHeader: Boolean(g.categoryId && g.categoryName),
+          tabLabel: g.categoryId && g.categoryName ? g.categoryName : null,
+          doneCount: g.items.filter((x) => Boolean(x.doneDate)).length,
+          totalCount: g.items.length,
+        };
+      })
+      .sort((a, b) => {
+        if (!a.categoryId) return 1;
+        if (!b.categoryId) return -1;
+        return categorySortOrder(a.categoryId) - categorySortOrder(b.categoryId);
+      });
+  }, [todos, userCategories]);
+
+  const activeHabitsCategoryGroup = useMemo(() => {
+    if (habitsByCategory.length === 0) return null;
+    return (
+      habitsByCategory.find((g) => g.tabKey === habitsCategoryTabKey) ??
+      habitsByCategory[0]
+    );
+  }, [habitsByCategory, habitsCategoryTabKey]);
+
+  useEffect(() => {
+    if (tab !== 'tracking' || progressSubTab !== 'habits' || !accessToken) return;
+    const habits = activeHabitsCategoryGroup?.items ?? [];
+    void loadHabitsCategoryCheckins(habits, accessToken);
+  }, [
+    tab,
+    progressSubTab,
+    accessToken,
+    habitsCategoryTabKey,
+    habitFilterDateFrom,
+    habitFilterDateTo,
+    activeHabitsCategoryGroup,
+  ]);
+
+  const activeTodosCategoryGroup = useMemo(() => {
+    if (todosByCategory.length === 0) return null;
+    return (
+      todosByCategory.find((g) => g.tabKey === todosCategoryTabKey) ??
+      todosByCategory[0]
+    );
+  }, [todosByCategory, todosCategoryTabKey]);
+
+  useEffect(() => {
+    if (habitsByCategory.length === 0) {
+      setHabitsCategoryTabKey('');
+      return;
+    }
+    setHabitsCategoryTabKey((prev) => {
+      const keys = habitsByCategory.map((g) => g.tabKey);
+      return keys.includes(prev) ? prev : keys[0];
+    });
+  }, [habitsByCategory]);
+  useEffect(() => {
+    if (todosByCategory.length === 0) {
+      setTodosCategoryTabKey('');
+      return;
+    }
+    setTodosCategoryTabKey((prev) => {
+      const keys = todosByCategory.map((g) => g.tabKey);
+      return keys.includes(prev) ? prev : keys[0];
+    });
+  }, [todosByCategory]);
+
   const selectedProgram = useMemo(
     () =>
       workoutPrograms.find((x) => x.sessionCode === selectedProgramCode) ||
@@ -2868,6 +3419,10 @@ function AppContent() {
                       setProgressSubTab('weight-tracker');
                       loadMyProfile();
                     }
+                    if (id === 'tracking') {
+                      setProgressSubTab('habits');
+                      loadMyProfile();
+                    }
                     if (id === 'workouts') {
                       loadWorkoutSessions();
                       loadWorkoutExerciseCatalog();
@@ -2879,6 +3434,7 @@ function AppContent() {
                       loadUsers();
                       loadAdminDialogs();
                       loadAdminAiAssistants();
+                      loadAdminCategories();
                       if (hasAiAccess) loadAiAssistants(aiToken);
                     }
                   }}
@@ -4084,27 +4640,40 @@ function AppContent() {
                   </section>
                 )}
 
-                {tab === 'progress' && (
+                {(tab === 'progress' || tab === 'tracking') && (
                   <section className="card-grid">
                     <section className="card full-span">
-                      <h3>Мой прогресс</h3>
+                      <h3>{tab === 'progress' ? 'Мой прогресс' : 'Трекинг'}</h3>
                       <p className="subtitle">
-                        Здесь фиксируется история веса и синхронизируется с
-                        профилем и AI-тренером.
+                        {tab === 'progress'
+                          ? 'История веса с синхронизацией профиля и AI-тренера.'
+                          : 'Ежедневные привычки и дела с историей выполнения.'}
                       </p>
-                      <div className="row">
-                        <button
-                          className={
-                            progressSubTab === 'weight-tracker'
-                              ? 'top-nav-tab active'
-                              : 'top-nav-tab'
-                          }
-                          onClick={() => setProgressSubTab('weight-tracker')}
-                        >
-                          Треккер веса
-                        </button>
-                      </div>
-                      {progressSubTab === 'weight-tracker' && (
+                      {tab === 'tracking' && (
+                        <div className="row">
+                          <button
+                            className={
+                              progressSubTab === 'habits'
+                                ? 'top-nav-tab active'
+                                : 'top-nav-tab'
+                            }
+                            onClick={() => setProgressSubTab('habits')}
+                          >
+                            Привычки
+                          </button>
+                          <button
+                            className={
+                              progressSubTab === 'todos'
+                                ? 'top-nav-tab active'
+                                : 'top-nav-tab'
+                            }
+                            onClick={() => setProgressSubTab('todos')}
+                          >
+                            Дела
+                          </button>
+                        </div>
+                      )}
+                      {tab === 'progress' && (
                         <>
                           <div className="row profile-row">
                             <div>
@@ -4380,6 +4949,485 @@ function AppContent() {
                           </div>
                         </>
                       )}
+                      {tab === 'tracking' && progressSubTab === 'habits' && (
+                        <>
+                          <p className="subtitle" style={{ marginTop: 8 }}>
+                            Зелёный — выполнено, красный — нет. Только просмотр
+                            за выбранный период.
+                          </p>
+                          <div className="row">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setHabitsNewName('');
+                                setHabitsNewCategoryId('');
+                                setIsCreateHabitModalOpen(true);
+                              }}
+                            >
+                              Добавить привычку
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-btn"
+                              onClick={() => loadHabitsOverview()}
+                            >
+                              Обновить
+                            </button>
+                          </div>
+
+                          {habitsOverview.length === 0 ? (
+                            <div className="workout-empty" style={{ marginTop: 12 }}>
+                              Привычек пока нет. Нажмите «Добавить привычку».
+                            </div>
+                          ) : activeHabitsCategoryGroup ? (
+                            <div style={{ marginTop: 12 }}>
+                              {habitsByCategory.length > 1 ? (
+                                <div
+                                  className="category-tabs"
+                                  role="tablist"
+                                  aria-label="Категории привычек"
+                                >
+                                  {habitsByCategory.map((group) => {
+                                    const isActive =
+                                      habitsCategoryTabKey === group.tabKey;
+                                    const label =
+                                      group.tabLabel || 'Без категории';
+                                    return (
+                                      <button
+                                        key={group.tabKey}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={isActive}
+                                        className={`category-tab${isActive ? ' active' : ''}`}
+                                        onClick={() =>
+                                          setHabitsCategoryTabKey(group.tabKey)
+                                        }
+                                      >
+                                        <span className="category-tab__label">
+                                          {label}
+                                        </span>
+                                        <span
+                                          className="category-tab__count"
+                                          title="Выполнено сегодня из всего"
+                                        >
+                                          {group.doneCount} / {group.totalCount}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : activeHabitsCategoryGroup.showHeader ? (
+                                <div className="category-group__header">
+                                  <h4 className="category-group__title">
+                                    {activeHabitsCategoryGroup.categoryName}
+                                  </h4>
+                                  <span
+                                    className="category-group__count"
+                                    title="Выполнено сегодня из всего в категории"
+                                  >
+                                    {activeHabitsCategoryGroup.doneCount} /{' '}
+                                    {activeHabitsCategoryGroup.totalCount}
+                                  </span>
+                                </div>
+                              ) : null}
+
+                              <h4 style={{ margin: '12px 0 8px', fontSize: 14 }}>
+                                Период
+                              </h4>
+                              <div className="row">
+                                <label>
+                                  С{' '}
+                                  <input
+                                    type="date"
+                                    value={habitFilterDateFrom}
+                                    onChange={(e) =>
+                                      setHabitFilterDateFrom(e.target.value)
+                                    }
+                                  />
+                                </label>
+                                <label>
+                                  По{' '}
+                                  <input
+                                    type="date"
+                                    value={habitFilterDateTo}
+                                    onChange={(e) =>
+                                      setHabitFilterDateTo(e.target.value)
+                                    }
+                                  />
+                                </label>
+                              </div>
+                              <div className="history-presets">
+                                <button
+                                  type="button"
+                                  className="ghost-btn"
+                                  onClick={() => applyHabitFilterPreset(7)}
+                                >
+                                  7 дней
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-btn"
+                                  onClick={() => applyHabitFilterPreset(14)}
+                                >
+                                  14 дней
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-btn"
+                                  onClick={() => applyHabitFilterPreset(30)}
+                                >
+                                  30 дней
+                                </button>
+                              </div>
+                              <div
+                                className="habit-analytics-legend"
+                                aria-hidden="true"
+                              >
+                                <span className="habit-analytics-legend__item">
+                                  <span className="habit-status-cell habit-status-cell--none" />
+                                  без отметки
+                                </span>
+                                <span className="habit-analytics-legend__item">
+                                  <span className="habit-status-cell habit-status-cell--partial" />
+                                  частично
+                                </span>
+                                <span className="habit-analytics-legend__item">
+                                  <span className="habit-status-cell habit-status-cell--done" />
+                                  выполнено
+                                </span>
+                                <span className="habit-analytics-legend__item">
+                                  <span className="habit-status-cell habit-status-cell--failed" />
+                                  провалено
+                                </span>
+                              </div>
+
+                              <div
+                                className="users-table-wrap"
+                                role="tabpanel"
+                                aria-label={
+                                  activeHabitsCategoryGroup.tabLabel
+                                    ? `Привычки: ${activeHabitsCategoryGroup.tabLabel}`
+                                    : 'Привычки без категории'
+                                }
+                              >
+                                <table className="users-table habit-analytics-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Привычка</th>
+                                      <th>Серия</th>
+                                      <th>Сегодня</th>
+                                      <th>Период</th>
+                                      <th aria-label="Действия" />
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {activeHabitsCategoryGroup.items.map((h) => {
+                                      const statusByDate =
+                                        habitsCheckinsByHabitId[String(h.id)] ??
+                                        {};
+                                      const today = getTodayIsoDate();
+                                      const todayStatus = resolveHabitTodayStatus(
+                                        statusByDate,
+                                        h,
+                                        today,
+                                      );
+                                      const displayDates = getHabitDisplayDates(h);
+                                      return (
+                                        <tr key={h.id}>
+                                          <td style={{ minWidth: 140 }}>
+                                            {h.name}
+                                          </td>
+                                          <td style={{ width: 72 }}>
+                                            {h.currentStreakDays ?? 0} дн.
+                                          </td>
+                                          <td style={{ width: 56 }}>
+                                            <button
+                                              type="button"
+                                              className="habit-today-btn"
+                                              title={`Сегодня: ${habitStatusLabel(todayStatus)}. Нажмите для смены`}
+                                              aria-label={`${h.name}, сегодня: ${habitStatusLabel(todayStatus)}`}
+                                              onClick={() =>
+                                                cycleHabitTodayStatus(h)
+                                              }
+                                            >
+                                              <span
+                                                className={habitStatusCellClass(
+                                                  todayStatus,
+                                                )}
+                                              />
+                                            </button>
+                                          </td>
+                                          <td>
+                                            {displayDates.length === 0 ? (
+                                              <span className="subtitle">
+                                                Укажите период
+                                              </span>
+                                            ) : (
+                                              <div
+                                                className="habit-analytics-track"
+                                                role="img"
+                                                aria-label={`${h.name}: отметки за период`}
+                                              >
+                                                {displayDates.map((d) => {
+                                                  const status =
+                                                    statusByDate[d] ?? null;
+                                                  return (
+                                                    <span
+                                                      key={`${h.id}-${d}`}
+                                                      className={habitStatusCellClass(
+                                                        status,
+                                                      )}
+                                                      title={`${d}: ${habitStatusLabel(status)}`}
+                                                    />
+                                                  );
+                                                },
+                                                )}
+                                              </div>
+                                            )}
+                                          </td>
+                                          <td style={{ width: 52 }}>
+                                            <button
+                                              type="button"
+                                              className="danger-btn"
+                                              title="Удалить привычку"
+                                              onClick={() =>
+                                                setPendingDeleteHabit({
+                                                  id: h.id,
+                                                  name: h.name,
+                                                })
+                                              }
+                                            >
+                                              🗑️
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+
+                      {tab === 'tracking' && progressSubTab === 'todos' && (
+                        <>
+                          <h4 style={{ margin: '4px 0 8px', fontSize: 14 }}>
+                            Период истории
+                          </h4>
+                          <div className="row">
+                            <input
+                              type="date"
+                              value={todoFilterDateFrom}
+                              onChange={(e) =>
+                                setTodoFilterDateFrom(e.target.value)
+                              }
+                            />
+                            <input
+                              type="date"
+                              value={todoFilterDateTo}
+                              onChange={(e) =>
+                                setTodoFilterDateTo(e.target.value)
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="ghost-btn"
+                              onClick={() => loadTodos()}
+                            >
+                              Обновить
+                            </button>
+                          </div>
+
+                          <div
+                            className="row profile-row"
+                            style={{ marginTop: 12 }}
+                          >
+                            <div>
+                              <label>Название</label>
+                              <input
+                                type="text"
+                                value={todoTitleDraft}
+                                onChange={(e) =>
+                                  setTodoTitleDraft(e.target.value)
+                                }
+                                placeholder="Например: подготовить план"
+                              />
+                            </div>
+                            <div>
+                              <label>Дедлайн (опционально)</label>
+                              <input
+                                type="date"
+                                value={todoDueDateDraft}
+                                onChange={(e) =>
+                                  setTodoDueDateDraft(e.target.value)
+                                }
+                              />
+                            </div>
+                            <div>
+                              <label>Категория</label>
+                              <select
+                                value={todoCategoryDraft}
+                                onChange={(e) =>
+                                  setTodoCategoryDraft(e.target.value)
+                                }
+                              >
+                                <option value="">Без категории</option>
+                                {userCategories.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="row">
+                            <button type="button" onClick={createTodo}>
+                              Добавить
+                            </button>
+                          </div>
+
+                          <div className="row profile-row">
+                            <div>
+                              <label>Дата для отметки «готово»</label>
+                              <input
+                                type="date"
+                                value={todoDoneDateDraft}
+                                onChange={(e) =>
+                                  setTodoDoneDateDraft(e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          {todos.length === 0 ? (
+                            <div className="workout-empty" style={{ marginTop: 8 }}>
+                              Дел пока нет.
+                            </div>
+                          ) : activeTodosCategoryGroup ? (
+                            <div style={{ marginTop: 8 }}>
+                              {todosByCategory.length > 1 ? (
+                                <div
+                                  className="category-tabs"
+                                  role="tablist"
+                                  aria-label="Категории дел"
+                                >
+                                  {todosByCategory.map((group) => {
+                                    const isActive =
+                                      todosCategoryTabKey === group.tabKey;
+                                    const label =
+                                      group.tabLabel || 'Без категории';
+                                    return (
+                                      <button
+                                        key={group.tabKey}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={isActive}
+                                        className={`category-tab${isActive ? ' active' : ''}`}
+                                        onClick={() =>
+                                          setTodosCategoryTabKey(group.tabKey)
+                                        }
+                                      >
+                                        <span className="category-tab__label">
+                                          {label}
+                                        </span>
+                                        <span
+                                          className="category-tab__count"
+                                          title="Готово из всего"
+                                        >
+                                          {group.doneCount} / {group.totalCount}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : activeTodosCategoryGroup.showHeader ? (
+                                <div className="category-group__header">
+                                  <h4 className="category-group__title">
+                                    {activeTodosCategoryGroup.categoryName}
+                                  </h4>
+                                  <span
+                                    className="category-group__count"
+                                    title="Готово из всего в категории"
+                                  >
+                                    {activeTodosCategoryGroup.doneCount} /{' '}
+                                    {activeTodosCategoryGroup.totalCount}
+                                  </span>
+                                </div>
+                              ) : null}
+                              <div
+                                className="users-table-wrap"
+                                role="tabpanel"
+                                aria-label={
+                                  activeTodosCategoryGroup.tabLabel
+                                    ? `Дела: ${activeTodosCategoryGroup.tabLabel}`
+                                    : 'Дела без категории'
+                                }
+                              >
+                                <table className="users-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Дело</th>
+                                      <th>Дедлайн</th>
+                                      <th>Статус</th>
+                                      <th aria-label="Действия" />
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {activeTodosCategoryGroup.items.map((t) => {
+                                      const isDone = Boolean(t.doneDate);
+                                      return (
+                                        <tr key={t.id}>
+                                          <td style={{ minWidth: 220 }}>
+                                            {t.title}
+                                          </td>
+                                          <td>{t.dueDate || '—'}</td>
+                                          <td>
+                                            {isDone
+                                              ? `Готово: ${t.doneDate}`
+                                              : 'Открыто'}
+                                          </td>
+                                          <td style={{ width: 260 }}>
+                                            {!isDone ? (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  upsertTodoDone(t.id, true)
+                                                }
+                                              >
+                                                Готово
+                                              </button>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                className="danger-btn"
+                                                onClick={() =>
+                                                  upsertTodoDone(t.id, false)
+                                                }
+                                              >
+                                                Отменить
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              className="ghost-btn"
+                                              style={{ marginLeft: 8 }}
+                                              onClick={() => deleteTodo(t.id)}
+                                            >
+                                              🗑️
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </section>
                   </section>
                 )}
@@ -4425,6 +5473,70 @@ function AppContent() {
                                   <button
                                     className="danger-btn"
                                     onClick={() => openDeleteModal(u)}
+                                    title="Удалить"
+                                  >
+                                    🗑️
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+
+                    <section className="card full-span">
+                      <h3>Категории привычек и дел</h3>
+                      <div className="row">
+                        <button
+                          type="button"
+                          onClick={openAdminCategoryCreateModal}
+                        >
+                          Новая категория
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => loadAdminCategories()}
+                        >
+                          Обновить
+                        </button>
+                      </div>
+                      <div className="users-table-wrap">
+                        <table className="users-table">
+                          <thead>
+                            <tr>
+                              <th>Название</th>
+                              <th>Описание</th>
+                              <th>Порядок</th>
+                              <th>Активна</th>
+                              <th>Действия</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {adminCategories.length === 0 && (
+                              <tr>
+                                <td colSpan="5">Категорий пока нет.</td>
+                              </tr>
+                            )}
+                            {adminCategories.map((row) => (
+                              <tr key={row.id}>
+                                <td>{row.name}</td>
+                                <td>{row.description || '—'}</td>
+                                <td>{row.sortOrder}</td>
+                                <td>{row.isActive ? 'Да' : 'Нет'}</td>
+                                <td className="admin-actions">
+                                  <button
+                                    type="button"
+                                    onClick={() => openAdminCategoryEditModal(row)}
+                                    title="Редактировать"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="danger-btn"
+                                    onClick={() => setPendingDeleteCategory(row)}
                                     title="Удалить"
                                   >
                                     🗑️
@@ -4964,6 +6076,110 @@ function AppContent() {
                       </div>
                     </ModalShell>
                   )}
+                {tab === 'admin' &&
+                  isAdmin &&
+                  (adminCategoryModalKind === 'create' ||
+                    adminCategoryModalKind === 'edit') && (
+                    <ModalShell
+                      open={Boolean(adminCategoryModalKind)}
+                      onClose={() => setAdminCategoryModalKind(null)}
+                    >
+                      <h3>
+                        {adminCategoryModalKind === 'create'
+                          ? 'Новая категория'
+                          : 'Редактировать категорию'}
+                      </h3>
+                      <label>Название</label>
+                      <input
+                        value={adminCategoryDraft.name}
+                        onChange={(e) =>
+                          setAdminCategoryDraft((d) => ({
+                            ...d,
+                            name: e.target.value,
+                          }))
+                        }
+                        placeholder="Например: Здоровье"
+                      />
+                      <label>Описание</label>
+                      <input
+                        value={adminCategoryDraft.description}
+                        onChange={(e) =>
+                          setAdminCategoryDraft((d) => ({
+                            ...d,
+                            description: e.target.value,
+                          }))
+                        }
+                        placeholder="Необязательно"
+                      />
+                      <label>Порядок</label>
+                      <input
+                        type="number"
+                        value={adminCategoryDraft.sortOrder}
+                        onChange={(e) =>
+                          setAdminCategoryDraft((d) => ({
+                            ...d,
+                            sortOrder: Number(e.target.value),
+                          }))
+                        }
+                      />
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={adminCategoryDraft.isActive}
+                          onChange={(e) =>
+                            setAdminCategoryDraft((d) => ({
+                              ...d,
+                              isActive: e.target.checked,
+                            }))
+                          }
+                        />
+                        Активна
+                      </label>
+                      <div className="row">
+                        <button onClick={submitAdminCategoryModal}>
+                          Сохранить
+                        </button>
+                        <button
+                          className="ghost-btn"
+                          onClick={() => setAdminCategoryModalKind(null)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </ModalShell>
+                  )}
+                {tab === 'admin' && isAdmin && pendingDeleteCategory && (
+                  <ModalShell
+                    open={Boolean(pendingDeleteCategory)}
+                    onClose={() => setPendingDeleteCategory(null)}
+                  >
+                    <h3>Удалить категорию</h3>
+                    <p className="subtitle">
+                      Удалить категорию «{pendingDeleteCategory.name || '—'}»?
+                    </p>
+                    <div className="row">
+                      <button
+                        className="danger-btn"
+                        onClick={confirmDeleteCategory}
+                        title="Удалить"
+                      >
+                        🗑️
+                      </button>
+                      <button
+                        className="ghost-btn"
+                        onClick={() => setPendingDeleteCategory(null)}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </ModalShell>
+                )}
                 {tab === 'admin' &&
                   isAdmin &&
                   (assistantModalKind === 'create' ||
@@ -5694,6 +6910,94 @@ function AppContent() {
                       >
                         Закрыть
                       </button>
+                    </div>
+                  </ModalShell>
+                )}
+
+                {tab === 'tracking' && isCreateHabitModalOpen && (
+                  <ModalShell
+                    open={isCreateHabitModalOpen}
+                    onClose={() => setIsCreateHabitModalOpen(false)}
+                    titleId="habit-create-title"
+                  >
+                    <h3 id="habit-create-title">Новая привычка</h3>
+                    <label htmlFor="habit-create-name">Название</label>
+                    <input
+                      id="habit-create-name"
+                      type="text"
+                      value={habitsNewName}
+                      onChange={(e) => setHabitsNewName(e.target.value)}
+                      placeholder="Например: вода, зарядка"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void createHabit();
+                      }}
+                    />
+                    <label htmlFor="habit-create-category">Категория</label>
+                    <select
+                      id="habit-create-category"
+                      value={habitsNewCategoryId}
+                      onChange={(e) => setHabitsNewCategoryId(e.target.value)}
+                    >
+                      <option value="">Без категории</option>
+                      {userCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="row" style={{ marginTop: 16 }}>
+                      <button type="button" onClick={() => createHabit()}>
+                        Добавить
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => setIsCreateHabitModalOpen(false)}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </ModalShell>
+                )}
+
+                {tab === 'tracking' && pendingDeleteHabit && (
+                  <ModalShell
+                    open={Boolean(pendingDeleteHabit)}
+                    onClose={() => setPendingDeleteHabit(null)}
+                    titleId="habit-delete-confirm-title"
+                  >
+                    <div className="confirm-modal">
+                      <h3
+                        id="habit-delete-confirm-title"
+                        className="confirm-modal__title"
+                      >
+                        Удалить привычку?
+                      </h3>
+                      <p className="confirm-modal__detail">
+                        <span className="confirm-modal__label">Название</span>
+                        <span className="confirm-modal__value">
+                          {pendingDeleteHabit.name || '—'}
+                        </span>
+                      </p>
+                      <p className="confirm-modal__hint">
+                        История отметок по этой привычке будет удалена.
+                      </p>
+                      <div className="confirm-modal__actions">
+                        <button
+                          type="button"
+                          className="danger-btn"
+                          onClick={() => confirmDeleteHabit()}
+                        >
+                          Удалить
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setPendingDeleteHabit(null)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
                     </div>
                   </ModalShell>
                 )}
