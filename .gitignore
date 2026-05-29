@@ -43,3 +43,13 @@ HabiHamAIMobile/.idea/
 HabiHamAIMobile/*.iml
 HabiHamAIMobile/app/*.iml
 HabiHamAIMobile/captures/
+
+# Android (HabiHamAITrackingMobile)
+HabiHamAITrackingMobile/.gradle/
+HabiHamAITrackingMobile/**/build/
+HabiHamAITrackingMobile/local.properties
+HabiHamAITrackingMobile/api-config.properties
+HabiHamAITrackingMobile/.idea/
+HabiHamAITrackingMobile/*.iml
+HabiHamAITrackingMobile/app/*.iml
+HabiHamAITrackingMobile/captures/
