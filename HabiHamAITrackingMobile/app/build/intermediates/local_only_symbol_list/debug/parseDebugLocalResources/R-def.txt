@@ -1,0 +1,22 @@
+R_DEF: Internal format may change without notice
+local
+color habi_bg_end
+color habi_bg_start
+color habi_panel_border
+color habi_primary
+color habi_primary_deep
+color habi_primary_glow
+color habi_surface
+color habi_surface_soft
+color habi_text_bright
+drawable ic_launcher_background
+drawable ic_launcher_foreground
+drawable ic_launcher_monochrome
+drawable ic_splash_logo
+drawable splash_background
+mipmap ic_launcher
+mipmap ic_launcher_round
+string app_name
+style Theme.HabiHamTracking
+style Theme.HabiHamTracking.Splash
+xml network_security_config

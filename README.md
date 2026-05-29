@@ -8,7 +8,8 @@
 | --------------- | -------------------------------------------- |
 | `HabiHamAIAPI/` | REST API, EF Core, миграции в `Migrations/`. |
 | `HabiHamAIUi/`  | SPA, основной код экранов в `src/App.jsx`.   |
-| `HabiHamAIMobile/` | Android: авторизация и история тренировок. См. `HabiHamAIMobile/README.md`. |
+| `HabiHamAIMobile/` | Android: силовые тренировки и вело. См. `HabiHamAIMobile/README.md`. |
+| `HabiHamAITrackingMobile/` | Android: привычки и задачи (трекинг). См. `HabiHamAITrackingMobile/README.md`. |
 
 **Backend:** в каталоге `HabiHamAIAPI` выполните `dotnet run` (профиль `http` в `Properties/launchSettings.json` — по умолчанию **http://localhost:5193**). Нужны PostgreSQL и параметры JWT; при старте применяются миграции. LLM: переменные `OPENAI_*` / секция Kernestal (см. раздел 7 ниже).
 

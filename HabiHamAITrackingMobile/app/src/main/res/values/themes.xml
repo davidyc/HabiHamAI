@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.HabiHamTracking" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/habi_bg_end</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowBackground">@color/habi_bg_end</item>
+    </style>
+
+    <style name="Theme.HabiHamTracking.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/habi_bg_end</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/habi_surface</item>
+        <item name="postSplashScreenTheme">@style/Theme.HabiHamTracking</item>
+        <item name="android:statusBarColor">@color/habi_bg_start</item>
+        <item name="android:navigationBarColor">@color/habi_bg_end</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>
