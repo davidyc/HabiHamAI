@@ -10,6 +10,12 @@ import {
 import TopNav from './TopNav';
 import ModalShell from './shared/ui/ModalShell';
 import BikeTrackMap from './shared/ui/BikeTrackMap';
+import FilterSelect, {
+  DatePeriodFilter,
+  HABIT_DATE_PERIOD_OPTIONS,
+  STANDARD_DATE_PERIOD_OPTIONS,
+  TODO_DATE_PERIOD_OPTIONS,
+} from './shared/ui/FilterSelect';
 
 function AppContent() {
   const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
@@ -18,6 +24,11 @@ function AppContent() {
     date.setDate(date.getDate() - daysAgo);
     return date.toISOString().slice(0, 10);
   };
+  /** Последние 7 дней включая сегодня (как пресет «Неделя»). */
+  const getRollingWeekRange = () => ({
+    from: getIsoDateDaysAgo(6),
+    to: getTodayIsoDate(),
+  });
   const getIsoDateRange = (fromIso, toIso) => {
     if (!fromIso || !toIso) return [];
     const start = new Date(`${fromIso}T00:00:00Z`);
@@ -74,13 +85,17 @@ function AppContent() {
     if (status === 'failed') return 'провалено';
     return 'без отметки';
   };
-  const resolveHabitTodayStatus = (statusMap, habit, today) => {
-    if (statusMap?.[today]) return statusMap[today];
+  const resolveHabitStatusForDate = (statusMap, habit, date, habitDateField) => {
+    if (statusMap?.[date]) return statusMap[date];
+    const today = getTodayIsoDate();
+    if (date !== today || !habitDateField) return null;
     const fromHabit = String(
-      habit?.todayStatus ?? habit?.TodayStatus ?? '',
+      habit?.[habitDateField] ?? habit?.TodayStatus ?? '',
     ).toLowerCase();
     return fromHabit || null;
   };
+  const resolveHabitTodayStatus = (statusMap, habit, today) =>
+    resolveHabitStatusForDate(statusMap, habit, today, 'todayStatus');
   /** Прошлая календарная неделя (пн–вс) в UTC — как на сервере для endingOn. */
   const getPreviousCalendarWeekUtc = () => {
     const now = new Date();
@@ -100,6 +115,40 @@ function AppContent() {
       endingOn: fmt(prevSunday),
       days: 7,
     };
+  };
+  const getUtcTodayDate = () => {
+    const now = new Date();
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+  };
+  const getCurrentCalendarMonthUtc = () => {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth();
+    const first = new Date(Date.UTC(year, month, 1));
+    const last = new Date(Date.UTC(year, month + 1, 0));
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    return { from: fmt(first), to: fmt(last) };
+  };
+  /** Ближайшие предстоящие выходные (сб–вс) в UTC. */
+  const getWeekendRangeUtc = () => {
+    const today = getUtcTodayDate();
+    const dow = today.getUTCDay();
+    let daysUntilSaturday;
+    if (dow === 6) {
+      daysUntilSaturday = 0;
+    } else if (dow === 0) {
+      daysUntilSaturday = 6;
+    } else {
+      daysUntilSaturday = 6 - dow;
+    }
+    const saturday = new Date(today);
+    saturday.setUTCDate(today.getUTCDate() + daysUntilSaturday);
+    const sunday = new Date(saturday);
+    sunday.setUTCDate(saturday.getUTCDate() + 1);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    return { from: fmt(saturday), to: fmt(sunday) };
   };
 
   const navigate = useNavigate();
@@ -186,17 +235,20 @@ function AppContent() {
   const [telegramLinkExpiresAt, setTelegramLinkExpiresAt] = useState('');
   const [telegramLinkLoading, setTelegramLinkLoading] = useState(false);
   const [telegramLinkError, setTelegramLinkError] = useState('');
+  const [isTelegramUnlinkConfirmOpen, setIsTelegramUnlinkConfirmOpen] =
+    useState(false);
   const [weightTrackerEntries, setWeightTrackerEntries] = useState([]);
   const [weightTrackerDate, setWeightTrackerDate] = useState(() =>
     getTodayIsoDate(),
   );
   const [weightTrackerValue, setWeightTrackerValue] = useState('');
-  /** Фильтр периода для таблицы/графика/выгрузки (по умолчанию — последняя неделя, как в истории тренировок). */
-  const [weightFilterDateFrom, setWeightFilterDateFrom] = useState(() =>
-    getIsoDateDaysAgo(6),
+  /** Фильтр периода для таблицы/графика/выгрузки (по умолчанию — неделя). */
+  const [weightDatePeriodPreset, setWeightDatePeriodPreset] = useState('7');
+  const [weightFilterDateFrom, setWeightFilterDateFrom] = useState(
+    () => getRollingWeekRange().from,
   );
-  const [weightFilterDateTo, setWeightFilterDateTo] = useState(() =>
-    getTodayIsoDate(),
+  const [weightFilterDateTo, setWeightFilterDateTo] = useState(
+    () => getRollingWeekRange().to,
   );
   const [pendingDeleteWeightEntry, setPendingDeleteWeightEntry] =
     useState(null);
@@ -206,31 +258,36 @@ function AppContent() {
   const [habitsOverview, setHabitsOverview] = useState([]);
   const [habitsNewName, setHabitsNewName] = useState('');
   const [habitsNewCategoryId, setHabitsNewCategoryId] = useState('');
-  const [habitFilterDateFrom, setHabitFilterDateFrom] = useState(() =>
-    getIsoDateDaysAgo(6),
+  const [habitDatePeriodPreset, setHabitDatePeriodPreset] = useState('7');
+  const [habitFilterDateFrom, setHabitFilterDateFrom] = useState(
+    () => getRollingWeekRange().from,
   );
-  const [habitFilterDateTo, setHabitFilterDateTo] = useState(() =>
-    getTodayIsoDate(),
+  const [habitFilterDateTo, setHabitFilterDateTo] = useState(
+    () => getRollingWeekRange().to,
   );
   /** habitId → Set of ISO dates with check-in */
   const [habitsCheckinsByHabitId, setHabitsCheckinsByHabitId] = useState({});
   const [isCreateHabitModalOpen, setIsCreateHabitModalOpen] = useState(false);
   const [pendingDeleteHabit, setPendingDeleteHabit] = useState(null);
+  const [pendingDeleteTodo, setPendingDeleteTodo] = useState(null);
   const [habitsCategoryTabKey, setHabitsCategoryTabKey] = useState('');
 
-  // Прогресс: дела/ToDo
+  // Прогресс: задачи/ToDo
   const [todos, setTodos] = useState([]);
   const [todoTitleDraft, setTodoTitleDraft] = useState('');
   const [todoDueDateDraft, setTodoDueDateDraft] = useState('');
   const [todoCategoryDraft, setTodoCategoryDraft] = useState('');
-  const [todoDoneDateDraft, setTodoDoneDateDraft] = useState(() =>
-    getTodayIsoDate(),
+  const [isCreateTodoModalOpen, setIsCreateTodoModalOpen] = useState(false);
+  const [todoDatePeriodPreset, setTodoDatePeriodPreset] = useState('week');
+  const [todoFilterDateFrom, setTodoFilterDateFrom] = useState(
+    () => getRollingWeekRange().from,
   );
-  const [todoFilterDateFrom, setTodoFilterDateFrom] = useState(() =>
-    getIsoDateDaysAgo(30),
+  const [todoFilterDateTo, setTodoFilterDateTo] = useState(
+    () => getRollingWeekRange().to,
   );
-  const [todoFilterDateTo, setTodoFilterDateTo] = useState(() => getTodayIsoDate());
-  const [todosCategoryTabKey, setTodosCategoryTabKey] = useState('');
+  const [todosCategoryTabKey, setTodosCategoryTabKey] = useState('__all__');
+  const [todoTableSort, setTodoTableSort] = useState({ key: '', dir: 'asc' });
+  const [todoStatusFilter, setTodoStatusFilter] = useState('all');
 
   const [users, setUsers] = useState([]);
   const [adminCreateUsername, setAdminCreateUsername] = useState('');
@@ -314,14 +371,20 @@ function AppContent() {
   ] = useState({});
   const [selectedWorkoutHistorySession, setSelectedWorkoutHistorySession] =
     useState(null);
-  const [historyDateFrom, setHistoryDateFrom] = useState(() =>
-    getIsoDateDaysAgo(6),
+  const [historyDatePeriodPreset, setHistoryDatePeriodPreset] = useState('7');
+  const [historyDateFrom, setHistoryDateFrom] = useState(
+    () => getRollingWeekRange().from,
   );
-  const [historyDateTo, setHistoryDateTo] = useState(() => getTodayIsoDate());
+  const [historyDateTo, setHistoryDateTo] = useState(
+    () => getRollingWeekRange().to,
+  );
   const [historyWorkoutLogs, setHistoryWorkoutLogs] = useState([]);
   const [bikeActivities, setBikeActivities] = useState([]);
-  const [bikeDateFrom, setBikeDateFrom] = useState(() => getIsoDateDaysAgo(30));
-  const [bikeDateTo, setBikeDateTo] = useState(() => getTodayIsoDate());
+  const [bikeDatePeriodPreset, setBikeDatePeriodPreset] = useState('7');
+  const [bikeDateFrom, setBikeDateFrom] = useState(
+    () => getRollingWeekRange().from,
+  );
+  const [bikeDateTo, setBikeDateTo] = useState(() => getRollingWeekRange().to);
   const [bikeImportMessage, setBikeImportMessage] = useState('');
   const [bikeDetail, setBikeDetail] = useState(null);
   const [bikeDetailLoading, setBikeDetailLoading] = useState(false);
@@ -1322,7 +1385,6 @@ function AppContent() {
 
   async function unlinkTelegramAccount() {
     if (!accessToken) return;
-    if (!window.confirm('Отвязать Telegram от этого аккаунта?')) return;
     const result = await request(
       'DELETE',
       '/users/me/telegram',
@@ -1331,6 +1393,7 @@ function AppContent() {
     );
     handleResult(result);
     if (!result.ok) return;
+    setIsTelegramUnlinkConfirmOpen(false);
     setIsTelegramLinkModalOpen(false);
     setTelegramLinkUrl('');
     setTelegramLinkExpiresAt('');
@@ -1489,24 +1552,27 @@ function AppContent() {
     setHabitsCheckinsByHabitId(Object.fromEntries(entries));
   }
 
-  async function cycleHabitTodayStatus(habit) {
-    if (!accessToken || !habit?.id) return;
-    const today = getTodayIsoDate();
+  async function cycleHabitCheckinStatus(habit, date) {
+    if (!accessToken || !habit?.id || !date) return;
     const habitKey = String(habit.id);
     const statusMap = habitsCheckinsByHabitId[habitKey] ?? {};
-    const current = resolveHabitTodayStatus(statusMap, habit, today);
+    const today = getTodayIsoDate();
+    const current =
+      date === today
+        ? resolveHabitTodayStatus(statusMap, habit, today)
+        : resolveHabitStatusForDate(statusMap, habit, date, null);
     const next = nextHabitCheckinStatus(current);
 
     const result = next
       ? await request(
           'POST',
           `/users/me/habits/${habit.id}/checkins`,
-          { date: today, status: next },
+          { date, status: next },
           accessToken,
         )
       : await request(
           'DELETE',
-          `/users/me/habits/${habit.id}/checkins?date=${today}`,
+          `/users/me/habits/${habit.id}/checkins?date=${date}`,
           null,
           accessToken,
         );
@@ -1526,6 +1592,36 @@ function AppContent() {
     setHabitFilterDateTo(getTodayIsoDate());
   }
 
+  function applyTodoFilterPreset(preset) {
+    if (preset === 'all') {
+      setTodoFilterDateFrom('');
+      setTodoFilterDateTo('');
+      return;
+    }
+    if (preset === 'month') {
+      const { from, to } = getCurrentCalendarMonthUtc();
+      setTodoFilterDateFrom(from);
+      setTodoFilterDateTo(to);
+      return;
+    }
+    if (preset === 'week') {
+      const { from, to } = getRollingWeekRange();
+      setTodoFilterDateFrom(from);
+      setTodoFilterDateTo(to);
+      return;
+    }
+    if (preset === '3days') {
+      setTodoFilterDateFrom(getIsoDateDaysAgo(2));
+      setTodoFilterDateTo(getTodayIsoDate());
+      return;
+    }
+    if (preset === 'weekend') {
+      const { from, to } = getWeekendRangeUtc();
+      setTodoFilterDateFrom(from);
+      setTodoFilterDateTo(to);
+    }
+  }
+
   async function loadTodos(token = accessToken) {
     if (!token) return;
     const query = new URLSearchParams();
@@ -1542,7 +1638,7 @@ function AppContent() {
   async function createTodo() {
     if (!accessToken) return;
     const title = String(todoTitleDraft ?? '').trim();
-    if (!title) return setErrorView('Укажи название дела.');
+    if (!title) return setErrorView('Укажи название задачи.');
 
     const result = await request(
       'POST',
@@ -1560,12 +1656,13 @@ function AppContent() {
     setTodoTitleDraft('');
     setTodoDueDateDraft('');
     setTodoCategoryDraft('');
+    setIsCreateTodoModalOpen(false);
     await loadTodos(accessToken);
   }
 
-  async function deleteTodo(todoId) {
+  async function confirmDeleteTodo() {
+    const todoId = pendingDeleteTodo?.id;
     if (!accessToken || !todoId) return;
-    if (!window.confirm('Удалить дело?')) return;
 
     const result = await request(
       'DELETE',
@@ -1575,13 +1672,15 @@ function AppContent() {
     );
     handleResult(result);
     if (!result.ok) return;
+
+    setPendingDeleteTodo(null);
     await loadTodos(accessToken);
   }
 
   async function upsertTodoDone(todoId, isDone) {
     if (!accessToken || !todoId) return;
     const body = isDone
-      ? { isDone: true, date: todoDoneDateDraft }
+      ? { isDone: true, date: getTodayIsoDate() }
       : { isDone: false };
 
     const result = await request(
@@ -1593,6 +1692,61 @@ function AppContent() {
     handleResult(result);
     if (!result.ok) return;
     await loadTodos(accessToken);
+  }
+
+  function cycleTodoTableSort(key) {
+    setTodoTableSort((prev) => {
+      if (prev.key === key) {
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, dir: 'asc' };
+    });
+  }
+
+  function compareTodoItems(a, b, key, dir) {
+    const mult = dir === 'asc' ? 1 : -1;
+    if (key === 'title') {
+      return (
+        mult * String(a.title ?? '').localeCompare(String(b.title ?? ''), 'ru')
+      );
+    }
+    if (key === 'dueDate') {
+      const aDate = a.dueDate ? String(a.dueDate) : '';
+      const bDate = b.dueDate ? String(b.dueDate) : '';
+      if (!aDate && !bDate) return 0;
+      if (!aDate) return 1;
+      if (!bDate) return -1;
+      return mult * aDate.localeCompare(bDate);
+    }
+    if (key === 'status') {
+      const aDone = a.doneDate ? 1 : 0;
+      const bDone = b.doneDate ? 1 : 0;
+      if (aDone !== bDone) return mult * (aDone - bDone);
+      if (aDone) {
+        return (
+          mult *
+          String(a.doneDate).localeCompare(String(b.doneDate))
+        );
+      }
+      return (
+        mult * String(a.title ?? '').localeCompare(String(b.title ?? ''), 'ru')
+      );
+    }
+    if (key === 'category') {
+      return (
+        mult *
+        String(a.categoryName ?? '').localeCompare(
+          String(b.categoryName ?? ''),
+          'ru',
+        )
+      );
+    }
+    return 0;
+  }
+
+  function todoTableSortAria(key) {
+    if (todoTableSort.key !== key) return 'none';
+    return todoTableSort.dir === 'asc' ? 'ascending' : 'descending';
   }
 
   async function loadWorkoutSessions(token = accessToken) {
@@ -2542,24 +2696,32 @@ function AppContent() {
     setSelectedWorkoutHistorySession(null);
   }
 
-  function applyHistoryDatePreset(days) {
+  function applyDateRangePreset(days, setFrom, setTo) {
     if (!days || days < 1) return;
+    if (days === 7) {
+      const { from, to } = getRollingWeekRange();
+      setFrom(from);
+      setTo(to);
+      return;
+    }
     const end = new Date();
     end.setHours(0, 0, 0, 0);
     const start = new Date(end);
     start.setDate(start.getDate() - (days - 1));
-    setHistoryDateFrom(start.toISOString().slice(0, 10));
-    setHistoryDateTo(end.toISOString().slice(0, 10));
+    setFrom(start.toISOString().slice(0, 10));
+    setTo(end.toISOString().slice(0, 10));
+  }
+
+  function applyHistoryDatePreset(days) {
+    applyDateRangePreset(days, setHistoryDateFrom, setHistoryDateTo);
   }
 
   function applyWeightDatePreset(days) {
-    if (!days || days < 1) return;
-    const end = new Date();
-    end.setHours(0, 0, 0, 0);
-    const start = new Date(end);
-    start.setDate(start.getDate() - (days - 1));
-    setWeightFilterDateFrom(start.toISOString().slice(0, 10));
-    setWeightFilterDateTo(end.toISOString().slice(0, 10));
+    applyDateRangePreset(days, setWeightFilterDateFrom, setWeightFilterDateTo);
+  }
+
+  function applyBikeDatePreset(days) {
+    applyDateRangePreset(days, setBikeDateFrom, setBikeDateTo);
   }
 
   function exportHistorySessionJson(session) {
@@ -2997,10 +3159,12 @@ function AppContent() {
     if (tab !== 'tracking' || !accessToken) return;
     if (progressSubTab === 'habits') {
       void loadHabitsOverview(accessToken);
-    } else if (progressSubTab === 'todos') {
-      void loadTodos(accessToken);
     }
   }, [tab, progressSubTab, accessToken]);
+  useEffect(() => {
+    if (tab !== 'tracking' || progressSubTab !== 'todos' || !accessToken) return;
+    void loadTodos(accessToken);
+  }, [tab, progressSubTab, accessToken, todoFilterDateFrom, todoFilterDateTo]);
   useEffect(() => {
     if (tab !== 'workouts') return;
     if (
@@ -3083,9 +3247,25 @@ function AppContent() {
       });
   }, [habitsOverview, userCategories]);
 
+  const todoStatusCounts = useMemo(() => {
+    const open = todos.filter((t) => !t.doneDate).length;
+    const done = todos.filter((t) => Boolean(t.doneDate)).length;
+    return { all: todos.length, open, done };
+  }, [todos]);
+
+  const todosFilteredByStatus = useMemo(() => {
+    if (todoStatusFilter === 'open') {
+      return todos.filter((t) => !t.doneDate);
+    }
+    if (todoStatusFilter === 'done') {
+      return todos.filter((t) => Boolean(t.doneDate));
+    }
+    return todos;
+  }, [todos, todoStatusFilter]);
+
   const todosByCategory = useMemo(() => {
     const groups = new Map();
-    for (const t of todos) {
+    for (const t of todosFilteredByStatus) {
       const key = t.categoryId ? String(t.categoryId) : '__none__';
       if (!groups.has(key)) {
         groups.set(key, {
@@ -3121,7 +3301,58 @@ function AppContent() {
         if (!b.categoryId) return -1;
         return categorySortOrder(a.categoryId) - categorySortOrder(b.categoryId);
       });
-  }, [todos, userCategories]);
+  }, [todosFilteredByStatus, userCategories]);
+
+  const todosAllCategoryGroup = useMemo(() => {
+    if (todosFilteredByStatus.length === 0) return null;
+    return {
+      tabKey: '__all__',
+      categoryId: null,
+      categoryName: null,
+      tabLabel: 'Все',
+      showHeader: false,
+      showCategoryColumn: true,
+      doneCount: todosFilteredByStatus.filter((x) => Boolean(x.doneDate))
+        .length,
+      totalCount: todosFilteredByStatus.length,
+      items: todosFilteredByStatus,
+    };
+  }, [todosFilteredByStatus]);
+
+  const todoStatusFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: `Все (${todoStatusCounts.all})` },
+      { value: 'open', label: `Открытые (${todoStatusCounts.open})` },
+      { value: 'done', label: `Готово (${todoStatusCounts.done})` },
+    ],
+    [todoStatusCounts],
+  );
+
+  const habitsCategoryFilterOptions = useMemo(
+    () =>
+      habitsByCategory.map((group) => ({
+        value: group.tabKey,
+        label: `${group.tabLabel || 'Без категории'} (${group.doneCount} / ${group.totalCount})`,
+      })),
+    [habitsByCategory],
+  );
+
+  const todosCategoryFilterOptions = useMemo(() => {
+    const options = [];
+    if (todosAllCategoryGroup) {
+      options.push({
+        value: '__all__',
+        label: `Все (${todosAllCategoryGroup.doneCount} / ${todosAllCategoryGroup.totalCount})`,
+      });
+    }
+    for (const group of todosByCategory) {
+      options.push({
+        value: group.tabKey,
+        label: `${group.tabLabel || 'Без категории'} (${group.doneCount} / ${group.totalCount})`,
+      });
+    }
+    return options;
+  }, [todosAllCategoryGroup, todosByCategory]);
 
   const activeHabitsCategoryGroup = useMemo(() => {
     if (habitsByCategory.length === 0) return null;
@@ -3146,12 +3377,26 @@ function AppContent() {
   ]);
 
   const activeTodosCategoryGroup = useMemo(() => {
-    if (todosByCategory.length === 0) return null;
+    if (todosFilteredByStatus.length === 0) return null;
+    if (todosCategoryTabKey === '__all__') {
+      return todosAllCategoryGroup;
+    }
+    if (todosByCategory.length === 0) {
+      return todosAllCategoryGroup;
+    }
     return (
       todosByCategory.find((g) => g.tabKey === todosCategoryTabKey) ??
-      todosByCategory[0]
+      todosAllCategoryGroup
     );
-  }, [todosByCategory, todosCategoryTabKey]);
+  }, [todosFilteredByStatus.length, todosByCategory, todosCategoryTabKey, todosAllCategoryGroup]);
+
+  const sortedActiveTodoItems = useMemo(() => {
+    const items = activeTodosCategoryGroup?.items ?? [];
+    if (!todoTableSort.key) return items;
+    return [...items].sort((a, b) =>
+      compareTodoItems(a, b, todoTableSort.key, todoTableSort.dir),
+    );
+  }, [activeTodosCategoryGroup, todoTableSort]);
 
   useEffect(() => {
     if (habitsByCategory.length === 0) {
@@ -3164,15 +3409,16 @@ function AppContent() {
     });
   }, [habitsByCategory]);
   useEffect(() => {
-    if (todosByCategory.length === 0) {
-      setTodosCategoryTabKey('');
+    if (todosFilteredByStatus.length === 0) {
+      setTodosCategoryTabKey('__all__');
       return;
     }
     setTodosCategoryTabKey((prev) => {
+      if (prev === '__all__') return prev;
       const keys = todosByCategory.map((g) => g.tabKey);
-      return keys.includes(prev) ? prev : keys[0];
+      return keys.includes(prev) ? prev : '__all__';
     });
-  }, [todosByCategory]);
+  }, [todosByCategory, todosFilteredByStatus.length]);
 
   const selectedProgram = useMemo(
     () =>
@@ -3402,7 +3648,7 @@ function AppContent() {
             !isLoggedIn ? (
               <Navigate to="/login" replace />
             ) : (
-              <main className="app">
+              <div className="dashboard-shell">
                 <TopNav
                   tab={tab}
                   currentUserName={currentUserName || username || 'неизвестно'}
@@ -3462,6 +3708,7 @@ function AppContent() {
                   }}
                 />
 
+                <main className="app">
                 {tab === 'ai' && hasAiAccess && (
                   <section className="card-grid">
                     <section className="card full-span">
@@ -4262,22 +4509,18 @@ function AppContent() {
                         strengthSubTab === 'history' && (
                           <>
                             <h4>История моих тренировок</h4>
-                            <div className="row">
-                              <input
-                                type="date"
-                                value={historyDateFrom}
-                                onChange={(e) =>
-                                  setHistoryDateFrom(e.target.value)
-                                }
-                              />
-                              <input
-                                type="date"
-                                value={historyDateTo}
-                                onChange={(e) =>
-                                  setHistoryDateTo(e.target.value)
-                                }
-                              />
-                            </div>
+                            <DatePeriodFilter
+                              preset={historyDatePeriodPreset}
+                              onPresetChange={setHistoryDatePeriodPreset}
+                              from={historyDateFrom}
+                              to={historyDateTo}
+                              onFromChange={setHistoryDateFrom}
+                              onToChange={setHistoryDateTo}
+                              options={STANDARD_DATE_PERIOD_OPTIONS}
+                              onApplyPreset={(v) =>
+                                applyHistoryDatePreset(Number(v))
+                              }
+                            />
                             <div className="row">
                               <button
                                 type="button"
@@ -4286,43 +4529,6 @@ function AppContent() {
                                 disabled={historyWorkoutLogs.length === 0}
                               >
                                 Выгрузить JSON (вся выборка)
-                              </button>
-                            </div>
-                            <div className="history-presets">
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                onClick={() => applyHistoryDatePreset(1)}
-                              >
-                                День
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                onClick={() => applyHistoryDatePreset(7)}
-                              >
-                                Неделя
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                onClick={() => applyHistoryDatePreset(10)}
-                              >
-                                10 дней
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                onClick={() => applyHistoryDatePreset(15)}
-                              >
-                                15 дней
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                onClick={() => applyHistoryDatePreset(30)}
-                              >
-                                Месяц
                               </button>
                             </div>
                             <div className="workout-list">
@@ -4415,33 +4621,18 @@ function AppContent() {
                               {bikeImportMessage}
                             </p>
                           ) : null}
-                          <div className="row">
-                            <label>
-                              С даты{' '}
-                              <input
-                                type="date"
-                                value={bikeDateFrom}
-                                onChange={(e) =>
-                                  setBikeDateFrom(e.target.value)
-                                }
-                              />
-                            </label>
-                            <label>
-                              По дату{' '}
-                              <input
-                                type="date"
-                                value={bikeDateTo}
-                                onChange={(e) => setBikeDateTo(e.target.value)}
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => loadBikeActivities()}
-                            >
-                              Обновить
-                            </button>
-                          </div>
+                          <DatePeriodFilter
+                            preset={bikeDatePeriodPreset}
+                            onPresetChange={setBikeDatePeriodPreset}
+                            from={bikeDateFrom}
+                            to={bikeDateTo}
+                            onFromChange={setBikeDateFrom}
+                            onToChange={setBikeDateTo}
+                            options={STANDARD_DATE_PERIOD_OPTIONS}
+                            onApplyPreset={(v) =>
+                              applyBikeDatePreset(Number(v))
+                            }
+                          />
                           <div className="users-table-wrap">
                             <table className="users-table">
                               <thead>
@@ -4647,29 +4838,31 @@ function AppContent() {
                       <p className="subtitle">
                         {tab === 'progress'
                           ? 'История веса с синхронизацией профиля и AI-тренера.'
-                          : 'Ежедневные привычки и дела с историей выполнения.'}
+                          : 'Ежедневные привычки и задачи с историей выполнения.'}
                       </p>
                       {tab === 'tracking' && (
-                        <div className="row">
+                        <div
+                          className="tracking-tabs"
+                          role="tablist"
+                          aria-label="Раздел трекинга"
+                        >
                           <button
-                            className={
-                              progressSubTab === 'habits'
-                                ? 'top-nav-tab active'
-                                : 'top-nav-tab'
-                            }
+                            type="button"
+                            role="tab"
+                            aria-selected={progressSubTab === 'habits'}
+                            className={`tracking-tab${progressSubTab === 'habits' ? ' active' : ''}`}
                             onClick={() => setProgressSubTab('habits')}
                           >
                             Привычки
                           </button>
                           <button
-                            className={
-                              progressSubTab === 'todos'
-                                ? 'top-nav-tab active'
-                                : 'top-nav-tab'
-                            }
+                            type="button"
+                            role="tab"
+                            aria-selected={progressSubTab === 'todos'}
+                            className={`tracking-tab${progressSubTab === 'todos' ? ' active' : ''}`}
                             onClick={() => setProgressSubTab('todos')}
                           >
-                            Дела
+                            Задачи
                           </button>
                         </div>
                       )}
@@ -4707,33 +4900,22 @@ function AppContent() {
                             >
                               Сохранить вес
                             </button>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => loadWeightTracker()}
-                            >
-                              Обновить
-                            </button>
                           </div>
                           <h4 style={{ margin: '12px 0 8px', fontSize: 14 }}>
                             Период на графике и в таблице
                           </h4>
-                          <div className="row">
-                            <input
-                              type="date"
-                              value={weightFilterDateFrom}
-                              onChange={(e) =>
-                                setWeightFilterDateFrom(e.target.value)
-                              }
-                            />
-                            <input
-                              type="date"
-                              value={weightFilterDateTo}
-                              onChange={(e) =>
-                                setWeightFilterDateTo(e.target.value)
-                              }
-                            />
-                          </div>
+                          <DatePeriodFilter
+                            preset={weightDatePeriodPreset}
+                            onPresetChange={setWeightDatePeriodPreset}
+                            from={weightFilterDateFrom}
+                            to={weightFilterDateTo}
+                            onFromChange={setWeightFilterDateFrom}
+                            onToChange={setWeightFilterDateTo}
+                            options={STANDARD_DATE_PERIOD_OPTIONS}
+                            onApplyPreset={(v) =>
+                              applyWeightDatePreset(Number(v))
+                            }
+                          />
                           <div className="row">
                             <button
                               type="button"
@@ -4744,43 +4926,6 @@ function AppContent() {
                               }
                             >
                               Выгрузить JSON (вся выборка)
-                            </button>
-                          </div>
-                          <div className="history-presets">
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => applyWeightDatePreset(1)}
-                            >
-                              День
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => applyWeightDatePreset(7)}
-                            >
-                              Неделя
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => applyWeightDatePreset(10)}
-                            >
-                              10 дней
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => applyWeightDatePreset(15)}
-                            >
-                              15 дней
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => applyWeightDatePreset(30)}
-                            >
-                              Месяц
                             </button>
                           </div>
                           <div
@@ -4952,8 +5097,8 @@ function AppContent() {
                       {tab === 'tracking' && progressSubTab === 'habits' && (
                         <>
                           <p className="subtitle" style={{ marginTop: 8 }}>
-                            Зелёный — выполнено, красный — нет. Только просмотр
-                            за выбранный период.
+                            Отмечайте сегодня и вчера по клику. Остальной период
+                            — только просмотр.
                           </p>
                           <div className="row">
                             <button
@@ -4966,13 +5111,6 @@ function AppContent() {
                             >
                               Добавить привычку
                             </button>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => loadHabitsOverview()}
-                            >
-                              Обновить
-                            </button>
                           </div>
 
                           {habitsOverview.length === 0 ? (
@@ -4982,40 +5120,17 @@ function AppContent() {
                           ) : activeHabitsCategoryGroup ? (
                             <div style={{ marginTop: 12 }}>
                               {habitsByCategory.length > 1 ? (
-                                <div
-                                  className="category-tabs"
-                                  role="tablist"
-                                  aria-label="Категории привычек"
-                                >
-                                  {habitsByCategory.map((group) => {
-                                    const isActive =
-                                      habitsCategoryTabKey === group.tabKey;
-                                    const label =
-                                      group.tabLabel || 'Без категории';
-                                    return (
-                                      <button
-                                        key={group.tabKey}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={isActive}
-                                        className={`category-tab${isActive ? ' active' : ''}`}
-                                        onClick={() =>
-                                          setHabitsCategoryTabKey(group.tabKey)
-                                        }
-                                      >
-                                        <span className="category-tab__label">
-                                          {label}
-                                        </span>
-                                        <span
-                                          className="category-tab__count"
-                                          title="Выполнено сегодня из всего"
-                                        >
-                                          {group.doneCount} / {group.totalCount}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                <FilterSelect
+                                  className="filter-field--category"
+                                  label="Категория"
+                                  value={
+                                    habitsCategoryTabKey ||
+                                    habitsByCategory[0]?.tabKey ||
+                                    ''
+                                  }
+                                  onChange={setHabitsCategoryTabKey}
+                                  options={habitsCategoryFilterOptions}
+                                />
                               ) : activeHabitsCategoryGroup.showHeader ? (
                                 <div className="category-group__header">
                                   <h4 className="category-group__title">
@@ -5034,51 +5149,18 @@ function AppContent() {
                               <h4 style={{ margin: '12px 0 8px', fontSize: 14 }}>
                                 Период
                               </h4>
-                              <div className="row">
-                                <label>
-                                  С{' '}
-                                  <input
-                                    type="date"
-                                    value={habitFilterDateFrom}
-                                    onChange={(e) =>
-                                      setHabitFilterDateFrom(e.target.value)
-                                    }
-                                  />
-                                </label>
-                                <label>
-                                  По{' '}
-                                  <input
-                                    type="date"
-                                    value={habitFilterDateTo}
-                                    onChange={(e) =>
-                                      setHabitFilterDateTo(e.target.value)
-                                    }
-                                  />
-                                </label>
-                              </div>
-                              <div className="history-presets">
-                                <button
-                                  type="button"
-                                  className="ghost-btn"
-                                  onClick={() => applyHabitFilterPreset(7)}
-                                >
-                                  7 дней
-                                </button>
-                                <button
-                                  type="button"
-                                  className="ghost-btn"
-                                  onClick={() => applyHabitFilterPreset(14)}
-                                >
-                                  14 дней
-                                </button>
-                                <button
-                                  type="button"
-                                  className="ghost-btn"
-                                  onClick={() => applyHabitFilterPreset(30)}
-                                >
-                                  30 дней
-                                </button>
-                              </div>
+                              <DatePeriodFilter
+                                preset={habitDatePeriodPreset}
+                                onPresetChange={setHabitDatePeriodPreset}
+                                from={habitFilterDateFrom}
+                                to={habitFilterDateTo}
+                                onFromChange={setHabitFilterDateFrom}
+                                onToChange={setHabitFilterDateTo}
+                                options={HABIT_DATE_PERIOD_OPTIONS}
+                                onApplyPreset={(v) =>
+                                  applyHabitFilterPreset(Number(v))
+                                }
+                              />
                               <div
                                 className="habit-analytics-legend"
                                 aria-hidden="true"
@@ -5115,6 +5197,7 @@ function AppContent() {
                                     <tr>
                                       <th>Привычка</th>
                                       <th>Серия</th>
+                                      <th>Вчера</th>
                                       <th>Сегодня</th>
                                       <th>Период</th>
                                       <th aria-label="Действия" />
@@ -5126,6 +5209,18 @@ function AppContent() {
                                         habitsCheckinsByHabitId[String(h.id)] ??
                                         {};
                                       const today = getTodayIsoDate();
+                                      const yesterday = getIsoDateDaysAgo(1);
+                                      const created = habitCreatedIsoDate(h);
+                                      const canMarkYesterday =
+                                        !created || created <= yesterday;
+                                      const yesterdayStatus = canMarkYesterday
+                                        ? resolveHabitStatusForDate(
+                                            statusByDate,
+                                            h,
+                                            yesterday,
+                                            null,
+                                          )
+                                        : null;
                                       const todayStatus = resolveHabitTodayStatus(
                                         statusByDate,
                                         h,
@@ -5141,13 +5236,41 @@ function AppContent() {
                                             {h.currentStreakDays ?? 0} дн.
                                           </td>
                                           <td style={{ width: 56 }}>
+                                            {canMarkYesterday ? (
+                                              <button
+                                                type="button"
+                                                className="habit-today-btn"
+                                                title={`Вчера: ${habitStatusLabel(yesterdayStatus)}. Нажмите для смены`}
+                                                aria-label={`${h.name}, вчера: ${habitStatusLabel(yesterdayStatus)}`}
+                                                onClick={() =>
+                                                  cycleHabitCheckinStatus(
+                                                    h,
+                                                    yesterday,
+                                                  )
+                                                }
+                                              >
+                                                <span
+                                                  className={habitStatusCellClass(
+                                                    yesterdayStatus,
+                                                  )}
+                                                />
+                                              </button>
+                                            ) : (
+                                              <span
+                                                className="habit-status-cell habit-status-cell--none habit-status-cell--readonly"
+                                                title="Привычка создана сегодня"
+                                                aria-hidden="true"
+                                              />
+                                            )}
+                                          </td>
+                                          <td style={{ width: 56 }}>
                                             <button
                                               type="button"
                                               className="habit-today-btn"
                                               title={`Сегодня: ${habitStatusLabel(todayStatus)}. Нажмите для смены`}
                                               aria-label={`${h.name}, сегодня: ${habitStatusLabel(todayStatus)}`}
                                               onClick={() =>
-                                                cycleHabitTodayStatus(h)
+                                                cycleHabitCheckinStatus(h, today)
                                               }
                                             >
                                               <span
@@ -5212,137 +5335,63 @@ function AppContent() {
                       )}
 
                       {tab === 'tracking' && progressSubTab === 'todos' && (
-                        <>
-                          <h4 style={{ margin: '4px 0 8px', fontSize: 14 }}>
-                            Период истории
-                          </h4>
-                          <div className="row">
-                            <input
-                              type="date"
-                              value={todoFilterDateFrom}
-                              onChange={(e) =>
-                                setTodoFilterDateFrom(e.target.value)
-                              }
-                            />
-                            <input
-                              type="date"
-                              value={todoFilterDateTo}
-                              onChange={(e) =>
-                                setTodoFilterDateTo(e.target.value)
-                              }
-                            />
+                        <div className="todos-panel">
+                          <div className="row todos-panel__toolbar">
                             <button
                               type="button"
-                              className="ghost-btn"
-                              onClick={() => loadTodos()}
+                              onClick={() => {
+                                setTodoTitleDraft('');
+                                setTodoDueDateDraft('');
+                                setTodoCategoryDraft('');
+                                setIsCreateTodoModalOpen(true);
+                              }}
                             >
-                              Обновить
+                              Добавить задачу
                             </button>
                           </div>
 
-                          <div
-                            className="row profile-row"
-                            style={{ marginTop: 12 }}
+                          <h4 className="todos-panel__heading">Период задач</h4>
+                          <DatePeriodFilter
+                            className="todos-panel__date-row row--inline"
+                            preset={todoDatePeriodPreset}
+                            onPresetChange={setTodoDatePeriodPreset}
+                            from={todoFilterDateFrom}
+                            to={todoFilterDateTo}
+                            onFromChange={setTodoFilterDateFrom}
+                            onToChange={setTodoFilterDateTo}
+                            options={TODO_DATE_PERIOD_OPTIONS}
+                            onApplyPreset={applyTodoFilterPreset}
                           >
-                            <div>
-                              <label>Название</label>
-                              <input
-                                type="text"
-                                value={todoTitleDraft}
-                                onChange={(e) =>
-                                  setTodoTitleDraft(e.target.value)
-                                }
-                                placeholder="Например: подготовить план"
-                              />
-                            </div>
-                            <div>
-                              <label>Дедлайн (опционально)</label>
-                              <input
-                                type="date"
-                                value={todoDueDateDraft}
-                                onChange={(e) =>
-                                  setTodoDueDateDraft(e.target.value)
-                                }
-                              />
-                            </div>
-                            <div>
-                              <label>Категория</label>
-                              <select
-                                value={todoCategoryDraft}
-                                onChange={(e) =>
-                                  setTodoCategoryDraft(e.target.value)
-                                }
-                              >
-                                <option value="">Без категории</option>
-                                {userCategories.map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                          <div className="row">
-                            <button type="button" onClick={createTodo}>
-                              Добавить
-                            </button>
-                          </div>
-
-                          <div className="row profile-row">
-                            <div>
-                              <label>Дата для отметки «готово»</label>
-                              <input
-                                type="date"
-                                value={todoDoneDateDraft}
-                                onChange={(e) =>
-                                  setTodoDoneDateDraft(e.target.value)
-                                }
-                              />
-                            </div>
-                          </div>
+                            <FilterSelect
+                              label="Статус"
+                              value={todoStatusFilter}
+                              onChange={setTodoStatusFilter}
+                              options={todoStatusFilterOptions}
+                            />
+                          </DatePeriodFilter>
 
                           {todos.length === 0 ? (
                             <div className="workout-empty" style={{ marginTop: 8 }}>
-                              Дел пока нет.
+                              Задач пока нет. Нажмите «Добавить задачу».
+                            </div>
+                          ) : todosFilteredByStatus.length === 0 ? (
+                            <div className="workout-empty" style={{ marginTop: 8 }}>
+                              {todoStatusFilter === 'open'
+                                ? 'Нет открытых задач за выбранный период.'
+                                : 'Нет выполненных задач за выбранный период.'}
                             </div>
                           ) : activeTodosCategoryGroup ? (
-                            <div style={{ marginTop: 8 }}>
-                              {todosByCategory.length > 1 ? (
-                                <div
-                                  className="category-tabs"
-                                  role="tablist"
-                                  aria-label="Категории дел"
-                                >
-                                  {todosByCategory.map((group) => {
-                                    const isActive =
-                                      todosCategoryTabKey === group.tabKey;
-                                    const label =
-                                      group.tabLabel || 'Без категории';
-                                    return (
-                                      <button
-                                        key={group.tabKey}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={isActive}
-                                        className={`category-tab${isActive ? ' active' : ''}`}
-                                        onClick={() =>
-                                          setTodosCategoryTabKey(group.tabKey)
-                                        }
-                                      >
-                                        <span className="category-tab__label">
-                                          {label}
-                                        </span>
-                                        <span
-                                          className="category-tab__count"
-                                          title="Готово из всего"
-                                        >
-                                          {group.doneCount} / {group.totalCount}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              ) : activeTodosCategoryGroup.showHeader ? (
+                            <div className="todos-panel__list">
+                              {todosCategoryFilterOptions.length > 1 ? (
+                                <FilterSelect
+                                  className="filter-field--category todos-panel__category-filter"
+                                  label="Категория"
+                                  value={todosCategoryTabKey}
+                                  onChange={setTodosCategoryTabKey}
+                                  options={todosCategoryFilterOptions}
+                                />
+                              ) : null}
+                              {activeTodosCategoryGroup.showHeader ? (
                                 <div className="category-group__header">
                                   <h4 className="category-group__title">
                                     {activeTodosCategoryGroup.categoryName}
@@ -5357,66 +5406,194 @@ function AppContent() {
                                 </div>
                               ) : null}
                               <div
-                                className="users-table-wrap"
+                                className="users-table-wrap users-table-wrap--todos"
                                 role="tabpanel"
                                 aria-label={
-                                  activeTodosCategoryGroup.tabLabel
-                                    ? `Дела: ${activeTodosCategoryGroup.tabLabel}`
-                                    : 'Дела без категории'
+                                  activeTodosCategoryGroup.tabKey === '__all__'
+                                    ? 'Задачи: все категории'
+                                    : activeTodosCategoryGroup.tabLabel
+                                      ? `Задачи: ${activeTodosCategoryGroup.tabLabel}`
+                                      : 'Задачи без категории'
                                 }
                               >
-                                <table className="users-table">
+                                <table className="users-table todos-table">
                                   <thead>
                                     <tr>
-                                      <th>Дело</th>
-                                      <th>Дедлайн</th>
-                                      <th>Статус</th>
+                                      <th aria-sort={todoTableSortAria('title')}>
+                                        <button
+                                          type="button"
+                                          className="table-sort-btn"
+                                          onClick={() =>
+                                            cycleTodoTableSort('title')
+                                          }
+                                        >
+                                          Задача
+                                          <span
+                                            className="table-sort-btn__icon"
+                                            aria-hidden="true"
+                                          >
+                                            {todoTableSort.key === 'title'
+                                              ? todoTableSort.dir === 'asc'
+                                                ? '↑'
+                                                : '↓'
+                                              : '↕'}
+                                          </span>
+                                        </button>
+                                      </th>
+                                      {activeTodosCategoryGroup.showCategoryColumn ? (
+                                        <th
+                                          aria-sort={todoTableSortAria(
+                                            'category',
+                                          )}
+                                        >
+                                          <button
+                                            type="button"
+                                            className="table-sort-btn"
+                                            onClick={() =>
+                                              cycleTodoTableSort('category')
+                                            }
+                                          >
+                                            Категория
+                                            <span
+                                              className="table-sort-btn__icon"
+                                              aria-hidden="true"
+                                            >
+                                              {todoTableSort.key === 'category'
+                                                ? todoTableSort.dir === 'asc'
+                                                  ? '↑'
+                                                  : '↓'
+                                                : '↕'}
+                                            </span>
+                                          </button>
+                                        </th>
+                                      ) : null}
+                                      <th
+                                        aria-sort={todoTableSortAria('dueDate')}
+                                      >
+                                        <button
+                                          type="button"
+                                          className="table-sort-btn"
+                                          onClick={() =>
+                                            cycleTodoTableSort('dueDate')
+                                          }
+                                        >
+                                          Дедлайн
+                                          <span
+                                            className="table-sort-btn__icon"
+                                            aria-hidden="true"
+                                          >
+                                            {todoTableSort.key === 'dueDate'
+                                              ? todoTableSort.dir === 'asc'
+                                                ? '↑'
+                                                : '↓'
+                                              : '↕'}
+                                          </span>
+                                        </button>
+                                      </th>
+                                      <th
+                                        aria-sort={todoTableSortAria('status')}
+                                      >
+                                        <button
+                                          type="button"
+                                          className="table-sort-btn"
+                                          onClick={() =>
+                                            cycleTodoTableSort('status')
+                                          }
+                                        >
+                                          Статус
+                                          <span
+                                            className="table-sort-btn__icon"
+                                            aria-hidden="true"
+                                          >
+                                            {todoTableSort.key === 'status'
+                                              ? todoTableSort.dir === 'asc'
+                                                ? '↑'
+                                                : '↓'
+                                              : '↕'}
+                                          </span>
+                                        </button>
+                                      </th>
                                       <th aria-label="Действия" />
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {activeTodosCategoryGroup.items.map((t) => {
+                                    {sortedActiveTodoItems.map((t) => {
                                       const isDone = Boolean(t.doneDate);
                                       return (
                                         <tr key={t.id}>
-                                          <td style={{ minWidth: 220 }}>
+                                          <td
+                                            className="todos-table__title"
+                                            data-label="Задача"
+                                          >
                                             {t.title}
                                           </td>
-                                          <td>{t.dueDate || '—'}</td>
-                                          <td>
+                                          {activeTodosCategoryGroup.showCategoryColumn ? (
+                                            <td
+                                              className="todos-table__category"
+                                              data-label="Категория"
+                                            >
+                                              {t.categoryName || '—'}
+                                            </td>
+                                          ) : null}
+                                          <td
+                                            className="todos-table__due"
+                                            data-label="Дедлайн"
+                                          >
+                                            {t.dueDate || '—'}
+                                          </td>
+                                          <td
+                                            className="todos-table__status"
+                                            data-label="Статус"
+                                          >
                                             {isDone
                                               ? `Готово: ${t.doneDate}`
                                               : 'Открыто'}
                                           </td>
-                                          <td style={{ width: 260 }}>
-                                            {!isDone ? (
+                                          <td className="todos-table__actions">
+                                            <div className="todo-row-actions">
+                                              {!isDone ? (
+                                                <button
+                                                  type="button"
+                                                  className="icon-action-btn icon-action-btn--done"
+                                                  title="Отметить выполненным"
+                                                  aria-label="Отметить выполненным"
+                                                  onClick={() =>
+                                                    upsertTodoDone(t.id, true)
+                                                  }
+                                                >
+                                                  ✓
+                                                </button>
+                                              ) : (
+                                                <button
+                                                  type="button"
+                                                  className="icon-action-btn icon-action-btn--undo"
+                                                  title="Отменить выполнение"
+                                                  aria-label="Отменить выполнение"
+                                                  onClick={() =>
+                                                    upsertTodoDone(t.id, false)
+                                                  }
+                                                >
+                                                  <span
+                                                    className="icon-action-btn__slash-circle"
+                                                    aria-hidden="true"
+                                                  />
+                                                </button>
+                                              )}
                                               <button
                                                 type="button"
+                                                className="icon-action-btn icon-action-btn--delete"
+                                                title="Удалить"
+                                                aria-label="Удалить задачу"
                                                 onClick={() =>
-                                                  upsertTodoDone(t.id, true)
+                                                  setPendingDeleteTodo({
+                                                    id: t.id,
+                                                    title: t.title,
+                                                  })
                                                 }
                                               >
-                                                Готово
+                                                ×
                                               </button>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                className="danger-btn"
-                                                onClick={() =>
-                                                  upsertTodoDone(t.id, false)
-                                                }
-                                              >
-                                                Отменить
-                                              </button>
-                                            )}
-                                            <button
-                                              type="button"
-                                              className="ghost-btn"
-                                              style={{ marginLeft: 8 }}
-                                              onClick={() => deleteTodo(t.id)}
-                                            >
-                                              🗑️
-                                            </button>
+                                            </div>
                                           </td>
                                         </tr>
                                       );
@@ -5426,7 +5603,7 @@ function AppContent() {
                               </div>
                             </div>
                           ) : null}
-                        </>
+                        </div>
                       )}
                     </section>
                   </section>
@@ -5486,20 +5663,13 @@ function AppContent() {
                     </section>
 
                     <section className="card full-span">
-                      <h3>Категории привычек и дел</h3>
+                      <h3>Категории привычек и задач</h3>
                       <div className="row">
                         <button
                           type="button"
                           onClick={openAdminCategoryCreateModal}
                         >
                           Новая категория
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => loadAdminCategories()}
-                        >
-                          Обновить
                         </button>
                       </div>
                       <div className="users-table-wrap">
@@ -5618,13 +5788,6 @@ function AppContent() {
                           onClick={openAssistantCreateModal}
                         >
                           Новый помощник
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => loadAdminAiAssistants()}
-                        >
-                          Обновить
                         </button>
                       </div>
                       <div className="users-table-wrap">
@@ -6818,6 +6981,43 @@ function AppContent() {
                   </ModalShell>
                 )}
 
+                {isTelegramUnlinkConfirmOpen && (
+                  <ModalShell
+                    open={isTelegramUnlinkConfirmOpen}
+                    onClose={() => setIsTelegramUnlinkConfirmOpen(false)}
+                    titleId="telegram-unlink-confirm-title"
+                  >
+                    <div className="confirm-modal">
+                      <h3
+                        id="telegram-unlink-confirm-title"
+                        className="confirm-modal__title"
+                      >
+                        Отвязать Telegram?
+                      </h3>
+                      <p className="confirm-modal__hint">
+                        Бот перестанет записывать вес в ваш дневник. Привязку
+                        можно будет настроить снова.
+                      </p>
+                      <div className="confirm-modal__actions">
+                        <button
+                          type="button"
+                          className="danger-btn"
+                          onClick={() => void unlinkTelegramAccount()}
+                        >
+                          Отвязать
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setIsTelegramUnlinkConfirmOpen(false)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  </ModalShell>
+                )}
+
                 {tab === 'profile' && isTelegramLinkModalOpen && (
                   <ModalShell
                     open={isTelegramLinkModalOpen}
@@ -6835,7 +7035,7 @@ function AppContent() {
                         <button
                           type="button"
                           className="danger-btn"
-                          onClick={() => void unlinkTelegramAccount()}
+                          onClick={() => setIsTelegramUnlinkConfirmOpen(true)}
                         >
                           Отвязать
                         </button>
@@ -6956,6 +7156,100 @@ function AppContent() {
                       >
                         Отмена
                       </button>
+                    </div>
+                  </ModalShell>
+                )}
+
+                {tab === 'tracking' && isCreateTodoModalOpen && (
+                  <ModalShell
+                    open={isCreateTodoModalOpen}
+                    onClose={() => setIsCreateTodoModalOpen(false)}
+                    titleId="todo-create-title"
+                  >
+                    <h3 id="todo-create-title">Новая задача</h3>
+                    <label htmlFor="todo-create-title-input">Название</label>
+                    <input
+                      id="todo-create-title-input"
+                      type="text"
+                      value={todoTitleDraft}
+                      onChange={(e) => setTodoTitleDraft(e.target.value)}
+                      placeholder="Например: подготовить план"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void createTodo();
+                      }}
+                    />
+                    <label htmlFor="todo-create-due-date">
+                      Дедлайн (опционально)
+                    </label>
+                    <input
+                      id="todo-create-due-date"
+                      type="date"
+                      value={todoDueDateDraft}
+                      onChange={(e) => setTodoDueDateDraft(e.target.value)}
+                    />
+                    <label htmlFor="todo-create-category">Категория</label>
+                    <select
+                      id="todo-create-category"
+                      value={todoCategoryDraft}
+                      onChange={(e) => setTodoCategoryDraft(e.target.value)}
+                    >
+                      <option value="">Без категории</option>
+                      {userCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="row" style={{ marginTop: 16 }}>
+                      <button type="button" onClick={() => createTodo()}>
+                        Добавить
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => setIsCreateTodoModalOpen(false)}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </ModalShell>
+                )}
+
+                {tab === 'tracking' && pendingDeleteTodo && (
+                  <ModalShell
+                    open={Boolean(pendingDeleteTodo)}
+                    onClose={() => setPendingDeleteTodo(null)}
+                    titleId="todo-delete-confirm-title"
+                  >
+                    <div className="confirm-modal">
+                      <h3
+                        id="todo-delete-confirm-title"
+                        className="confirm-modal__title"
+                      >
+                        Удалить задачу?
+                      </h3>
+                      <p className="confirm-modal__detail">
+                        <span className="confirm-modal__label">Название</span>
+                        <span className="confirm-modal__value">
+                          {pendingDeleteTodo.title || '—'}
+                        </span>
+                      </p>
+                      <div className="confirm-modal__actions">
+                        <button
+                          type="button"
+                          className="danger-btn"
+                          onClick={() => confirmDeleteTodo()}
+                        >
+                          Удалить
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setPendingDeleteTodo(null)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
                     </div>
                   </ModalShell>
                 )}
@@ -8102,7 +8396,8 @@ function AppContent() {
                       </div>
                     </ModalShell>
                   )}
-              </main>
+                </main>
+              </div>
             )
           }
         />

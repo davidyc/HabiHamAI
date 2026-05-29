@@ -522,18 +522,23 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
             (start, end) = (end, start);
         }
 
-        var startUtc = DateTime.SpecifyKind(start.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-        var endExclusiveUtc = DateTime.SpecifyKind(end.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-
-        // Minimal history: "relevant" items are those touched by date (created/due/done).
-        var rows = await _dbContext.UserTodoItems
+        var query = _dbContext.UserTodoItems
             .AsNoTracking()
-            .Where(x => x.UserId == user.Id)
-            .Where(x =>
-                // created is tracked as UTC timestamp; convert to DateOnly range.
+            .Where(x => x.UserId == user.Id);
+
+        if (from.HasValue || to.HasValue)
+        {
+            var startUtc = DateTime.SpecifyKind(start.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+            var endExclusiveUtc = DateTime.SpecifyKind(end.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+
+            // Minimal history: "relevant" items are those touched by date (created/due/done).
+            query = query.Where(x =>
                 (x.CreatedAtUtc >= startUtc && x.CreatedAtUtc < endExclusiveUtc)
                 || (x.DueDate.HasValue && x.DueDate.Value >= start && x.DueDate.Value <= end)
-                || (x.DoneDate.HasValue && x.DoneDate.Value >= start && x.DoneDate.Value <= end))
+                || (x.DoneDate.HasValue && x.DoneDate.Value >= start && x.DoneDate.Value <= end));
+        }
+
+        var rows = await query
             .OrderByDescending(x => x.DoneDate.HasValue)
             .ThenByDescending(x => x.DoneDate)
             .ThenByDescending(x => x.CreatedAtUtc)
