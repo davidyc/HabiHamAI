@@ -83,14 +83,14 @@ function BikeTrackMap({ trackpoints, active = true }) {
           />
           <Polyline
             positions={path}
-            pathOptions={{ color: "#3ecf8e", weight: 4, opacity: 0.92 }}
+            pathOptions={{ color: "#3fb950", weight: 4, opacity: 0.92 }}
           />
           <CircleMarker
             center={path[0]}
             radius={7}
             pathOptions={{
-              color: "#16a34a",
-              fillColor: "#22c55e",
+              color: "#238636",
+              fillColor: "#3fb950",
               fillOpacity: 1,
               weight: 2
             }}

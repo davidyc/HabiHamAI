@@ -273,7 +273,7 @@ function AppContent() {
   const [isCreateHabitModalOpen, setIsCreateHabitModalOpen] = useState(false);
   const [pendingDeleteHabit, setPendingDeleteHabit] = useState(null);
   const [pendingDeleteTodo, setPendingDeleteTodo] = useState(null);
-  const [habitsCategoryTabKey, setHabitsCategoryTabKey] = useState('');
+  const [habitsCategoryTabKey, setHabitsCategoryTabKey] = useState('__all__');
 
   // Прогресс: задачи/ToDo
   const [todos, setTodos] = useState([]);
@@ -3331,14 +3331,37 @@ function AppContent() {
     [todoStatusCounts],
   );
 
-  const habitsCategoryFilterOptions = useMemo(
-    () =>
-      habitsByCategory.map((group) => ({
+  const habitsAllCategoryGroup = useMemo(() => {
+    if (habitsOverview.length === 0) return null;
+    return {
+      tabKey: '__all__',
+      categoryId: null,
+      categoryName: null,
+      tabLabel: 'Все',
+      showHeader: false,
+      showCategoryColumn: true,
+      doneCount: habitsOverview.filter((x) => x.isDoneToday).length,
+      totalCount: habitsOverview.length,
+      items: habitsOverview,
+    };
+  }, [habitsOverview]);
+
+  const habitsCategoryFilterOptions = useMemo(() => {
+    const options = [];
+    if (habitsAllCategoryGroup) {
+      options.push({
+        value: '__all__',
+        label: `Все (${habitsAllCategoryGroup.doneCount} / ${habitsAllCategoryGroup.totalCount})`,
+      });
+    }
+    for (const group of habitsByCategory) {
+      options.push({
         value: group.tabKey,
         label: `${group.tabLabel || 'Без категории'} (${group.doneCount} / ${group.totalCount})`,
-      })),
-    [habitsByCategory],
-  );
+      });
+    }
+    return options;
+  }, [habitsAllCategoryGroup, habitsByCategory]);
 
   const todosCategoryFilterOptions = useMemo(() => {
     const options = [];
@@ -3358,12 +3381,23 @@ function AppContent() {
   }, [todosAllCategoryGroup, todosByCategory]);
 
   const activeHabitsCategoryGroup = useMemo(() => {
-    if (habitsByCategory.length === 0) return null;
+    if (habitsOverview.length === 0) return null;
+    if (habitsCategoryTabKey === '__all__') {
+      return habitsAllCategoryGroup;
+    }
+    if (habitsByCategory.length === 0) {
+      return habitsAllCategoryGroup;
+    }
     return (
       habitsByCategory.find((g) => g.tabKey === habitsCategoryTabKey) ??
-      habitsByCategory[0]
+      habitsAllCategoryGroup
     );
-  }, [habitsByCategory, habitsCategoryTabKey]);
+  }, [
+    habitsOverview.length,
+    habitsByCategory,
+    habitsCategoryTabKey,
+    habitsAllCategoryGroup,
+  ]);
 
   useEffect(() => {
     if (tab !== 'tracking' || progressSubTab !== 'habits' || !accessToken) return;
@@ -3402,15 +3436,16 @@ function AppContent() {
   }, [activeTodosCategoryGroup, todoTableSort]);
 
   useEffect(() => {
-    if (habitsByCategory.length === 0) {
-      setHabitsCategoryTabKey('');
+    if (habitsOverview.length === 0) {
+      setHabitsCategoryTabKey('__all__');
       return;
     }
     setHabitsCategoryTabKey((prev) => {
+      if (prev === '__all__') return prev;
       const keys = habitsByCategory.map((g) => g.tabKey);
-      return keys.includes(prev) ? prev : keys[0];
+      return keys.includes(prev) ? prev : '__all__';
     });
-  }, [habitsByCategory]);
+  }, [habitsByCategory, habitsOverview.length]);
   useEffect(() => {
     if (todosFilteredByStatus.length === 0) {
       setTodosCategoryTabKey('__all__');
@@ -3844,14 +3879,14 @@ function AppContent() {
                             </button>
                             <button
                               type="button"
-                              className="danger-btn"
+                              className="danger-btn danger-btn--icon"
                               onClick={() => {
                                 if (!currentDialogId) return;
                                 setAiDialogModalKind('delete');
                               }}
                               title="Удалить"
                             >
-                              🗑️
+                              ×
                             </button>
                           </div>
                           <div className="chat-messages">
@@ -4176,14 +4211,14 @@ function AppContent() {
                               </button>
                               <button
                                 type="button"
-                                className="danger-btn"
+                                className="danger-btn danger-btn--icon"
                                 onClick={() => {
                                   if (!currentDialogId) return;
                                   setAiDialogModalKind('delete');
                                 }}
                                 title="Удалить"
                               >
-                                🗑️
+                                ×
                               </button>
                             </div>
                             <div className="chat-messages">
@@ -4305,13 +4340,13 @@ function AppContent() {
                                       Начать тренировку
                                     </button>
                                     <button
-                                      className="danger-btn"
+                                      className="danger-btn danger-btn--icon"
                                       onClick={() =>
                                         openProgramDeleteModal(session)
                                       }
                                       title="Удалить"
                                     >
-                                      🗑️
+                                      ×
                                     </button>
                                   </div>
                                 </article>
@@ -4393,7 +4428,7 @@ function AppContent() {
                                         </td>
                                         <td>
                                           <button
-                                            className="danger-btn"
+                                            className="danger-btn danger-btn--icon"
                                             onClick={() =>
                                               openDeleteCatalogExerciseModal(
                                                 exercise.id,
@@ -4401,7 +4436,7 @@ function AppContent() {
                                             }
                                             title="Удалить"
                                           >
-                                            🗑️
+                                            ×
                                           </button>
                                         </td>
                                       </tr>
@@ -4555,13 +4590,13 @@ function AppContent() {
                                       JSON
                                     </button>
                                     <button
-                                      className="danger-btn"
+                                      className="danger-btn danger-btn--icon"
                                       onClick={() =>
                                         openDeleteWorkoutLogModal(session.id)
                                       }
                                       title="Удалить"
                                     >
-                                      🗑️
+                                      ×
                                     </button>
                                   </div>
                                 </article>
@@ -4682,13 +4717,13 @@ function AppContent() {
                                       </button>{' '}
                                       <button
                                         type="button"
-                                        className="danger-btn"
+                                        className="danger-btn danger-btn--icon"
                                         onClick={() =>
                                           setPendingDeleteBikeActivityId(row.id)
                                         }
                                         title="Удалить"
                                       >
-                                        🗑️
+                                        ×
                                       </button>
                                     </td>
                                   </tr>
@@ -4947,7 +4982,7 @@ function AppContent() {
                                   <path
                                     d={weightChartPath}
                                     fill="none"
-                                    stroke="#2ea463"
+                                    stroke="#3fb950"
                                     strokeWidth="3"
                                     strokeLinecap="round"
                                   />
@@ -4960,8 +4995,8 @@ function AppContent() {
                                       cx={p.x}
                                       cy={p.y}
                                       r="4"
-                                      fill="#9ff7c3"
-                                      stroke="#0f172a"
+                                      fill="#3fb950"
+                                      stroke="#0d1117"
                                       strokeWidth="1.5"
                                     />
                                     <title>{`${p.date}: ${p.weightKg} кг`}</title>
@@ -5051,7 +5086,7 @@ function AppContent() {
                                     <td style={{ width: 52 }}>
                                       <button
                                         type="button"
-                                        className="danger-btn"
+                                        className="danger-btn danger-btn--icon"
                                         title="Удалить запись"
                                         onClick={() =>
                                           setPendingDeleteWeightEntry({
@@ -5061,7 +5096,7 @@ function AppContent() {
                                           })
                                         }
                                       >
-                                        🗑️
+                                        ×
                                       </button>
                                     </td>
                                   </tr>
@@ -5096,15 +5131,11 @@ function AppContent() {
                             </div>
                           ) : activeHabitsCategoryGroup ? (
                             <div style={{ marginTop: 12 }}>
-                              {habitsByCategory.length > 1 ? (
+                              {habitsCategoryFilterOptions.length > 1 ? (
                                 <FilterSelect
                                   className="filter-field--category"
                                   label="Категория"
-                                  value={
-                                    habitsCategoryTabKey ||
-                                    habitsByCategory[0]?.tabKey ||
-                                    ''
-                                  }
+                                  value={habitsCategoryTabKey}
                                   onChange={setHabitsCategoryTabKey}
                                   options={habitsCategoryFilterOptions}
                                 />
@@ -5164,15 +5195,20 @@ function AppContent() {
                                 className="users-table-wrap"
                                 role="tabpanel"
                                 aria-label={
-                                  activeHabitsCategoryGroup.tabLabel
-                                    ? `Привычки: ${activeHabitsCategoryGroup.tabLabel}`
-                                    : 'Привычки без категории'
+                                  activeHabitsCategoryGroup.tabKey === '__all__'
+                                    ? 'Привычки: все категории'
+                                    : activeHabitsCategoryGroup.tabLabel
+                                      ? `Привычки: ${activeHabitsCategoryGroup.tabLabel}`
+                                      : 'Привычки без категории'
                                 }
                               >
                                 <table className="users-table habit-analytics-table">
                                   <thead>
                                     <tr>
                                       <th>Привычка</th>
+                                      {activeHabitsCategoryGroup.showCategoryColumn ? (
+                                        <th>Категория</th>
+                                      ) : null}
                                       <th>Серия</th>
                                       <th>Вчера</th>
                                       <th>Сегодня</th>
@@ -5209,6 +5245,11 @@ function AppContent() {
                                           <td style={{ minWidth: 140 }}>
                                             {h.name}
                                           </td>
+                                          {activeHabitsCategoryGroup.showCategoryColumn ? (
+                                            <td style={{ minWidth: 120 }}>
+                                              {h.categoryName || '—'}
+                                            </td>
+                                          ) : null}
                                           <td style={{ width: 72 }}>
                                             {h.currentStreakDays ?? 0} дн.
                                           </td>
@@ -5288,7 +5329,7 @@ function AppContent() {
                                           <td style={{ width: 52 }}>
                                             <button
                                               type="button"
-                                              className="danger-btn"
+                                              className="danger-btn danger-btn--icon"
                                               title="Удалить привычку"
                                               onClick={() =>
                                                 setPendingDeleteHabit({
@@ -5297,7 +5338,7 @@ function AppContent() {
                                                 })
                                               }
                                             >
-                                              🗑️
+                                              ×
                                             </button>
                                           </td>
                                         </tr>
@@ -5625,11 +5666,11 @@ function AppContent() {
                                     Пароль
                                   </button>
                                   <button
-                                    className="danger-btn"
+                                    className="danger-btn danger-btn--icon"
                                     onClick={() => openDeleteModal(u)}
                                     title="Удалить"
                                   >
-                                    🗑️
+                                    ×
                                   </button>
                                 </td>
                               </tr>
@@ -5682,11 +5723,11 @@ function AppContent() {
                                   </button>
                                   <button
                                     type="button"
-                                    className="danger-btn"
+                                    className="danger-btn danger-btn--icon"
                                     onClick={() => setPendingDeleteCategory(row)}
                                     title="Удалить"
                                   >
-                                    🗑️
+                                    ×
                                   </button>
                                 </td>
                               </tr>
@@ -5843,13 +5884,13 @@ function AppContent() {
                                   {!row.isSystem && (
                                     <button
                                       type="button"
-                                      className="danger-btn"
+                                      className="danger-btn danger-btn--icon"
                                       onClick={() =>
                                         setPendingDeleteAssistantId(row.id)
                                       }
                                       title="Удалить"
                                     >
-                                      🗑️
+                                      ×
                                     </button>
                                   )}
                                 </td>
@@ -5952,14 +5993,14 @@ function AppContent() {
                         </button>
                         <button
                           type="button"
-                          className="danger-btn"
+                          className="danger-btn danger-btn--icon"
                           onClick={() => {
                             if (!currentDialogId) return;
                             setAiDialogModalKind('delete');
                           }}
                           title="Удалить"
                         >
-                          🗑️
+                          ×
                         </button>
                       </div>
                       <div className="chat-messages">
@@ -6039,14 +6080,14 @@ function AppContent() {
                           ✏️
                         </button>
                         <button
-                          className="danger-btn"
+                          className="danger-btn danger-btn--icon"
                           onClick={() => {
                             if (!adminCurrentDialogId) return;
                             setAdminDialogModalKind('delete');
                           }}
                           title="Удалить"
                         >
-                          🗑️
+                          ×
                         </button>
                       </div>
 
@@ -6201,11 +6242,11 @@ function AppContent() {
                       </p>
                       <div className="row">
                         <button
-                          className="danger-btn"
+                          className="danger-btn danger-btn--icon"
                           onClick={deleteAdminUserFromModal}
                           title="Удалить"
                         >
-                          🗑️
+                          ×
                         </button>
                         <button
                           className="ghost-btn"
@@ -6305,11 +6346,11 @@ function AppContent() {
                     </p>
                     <div className="row">
                       <button
-                        className="danger-btn"
+                        className="danger-btn danger-btn--icon"
                         onClick={confirmDeleteCategory}
                         title="Удалить"
                       >
-                        🗑️
+                        ×
                       </button>
                       <button
                         className="ghost-btn"
@@ -6503,7 +6544,7 @@ function AppContent() {
                                         {!f.isSystem && (
                                           <button
                                             type="button"
-                                            className="danger-btn"
+                                            className="danger-btn danger-btn--icon"
                                             onClick={() =>
                                               setPendingDeleteExtraField({
                                                 assistantId: assistantDraft.id,
@@ -6512,7 +6553,7 @@ function AppContent() {
                                             }
                                             title="Удалить"
                                           >
-                                            🗑️
+                                            ×
                                           </button>
                                         )}
                                       </td>
@@ -6555,11 +6596,11 @@ function AppContent() {
                     <div className="row">
                       <button
                         type="button"
-                        className="danger-btn"
+                        className="danger-btn danger-btn--icon"
                         onClick={confirmDeleteAssistant}
                         title="Удалить"
                       >
-                        🗑️
+                        ×
                       </button>
                       <button
                         type="button"
@@ -6686,11 +6727,11 @@ function AppContent() {
                     <div className="row">
                       <button
                         type="button"
-                        className="danger-btn"
+                        className="danger-btn danger-btn--icon"
                         onClick={confirmDeleteExtraField}
                         title="Удалить"
                       >
-                        🗑️
+                        ×
                       </button>
                       <button
                         type="button"
@@ -6806,13 +6847,13 @@ function AppContent() {
                                   <td>
                                     <button
                                       type="button"
-                                      className="danger-btn"
+                                      className="danger-btn danger-btn--icon"
                                       onClick={() =>
                                         removeProgramExercise(exercise.id)
                                       }
                                       title="Удалить"
                                     >
-                                      🗑️
+                                      ×
                                     </button>
                                   </td>
                                 </tr>
@@ -6854,11 +6895,11 @@ function AppContent() {
                         </p>
                         <div className="row">
                           <button
-                            className="danger-btn"
+                            className="danger-btn danger-btn--icon"
                             onClick={deleteProgramFromModal}
                             title="Удалить"
                           >
-                            🗑️
+                            ×
                           </button>
                           <button
                             className="ghost-btn"
@@ -7408,11 +7449,11 @@ function AppContent() {
                       </p>
                       <div className="row">
                         <button
-                          className="danger-btn"
+                          className="danger-btn danger-btn--icon"
                           onClick={submitAiDeleteDialog}
                           title="Удалить"
                         >
-                          🗑️
+                          ×
                         </button>
                         <button
                           className="ghost-btn"
@@ -7893,7 +7934,7 @@ function AppContent() {
                                                 </div>
                                               </div>
                                               <button
-                                                className="danger-btn"
+                                                className="danger-btn danger-btn--icon"
                                                 onClick={() =>
                                                   removeCurrentWorkoutSet(
                                                     exercise.id,
@@ -7904,7 +7945,7 @@ function AppContent() {
                                                   exercise.sets.length <= 1
                                                 }
                                               >
-                                                🗑️
+                                                ×
                                               </button>
                                             </div>
                                           ),
@@ -7920,7 +7961,7 @@ function AppContent() {
                                           +
                                         </button>
                                         <button
-                                          className="danger-btn"
+                                          className="danger-btn danger-btn--icon"
                                           onClick={() =>
                                             openDeleteCurrentWorkoutExerciseModal(
                                               exercise.id,
@@ -7928,7 +7969,7 @@ function AppContent() {
                                           }
                                           title="Удалить"
                                         >
-                                          ✕
+                                          ×
                                         </button>
                                       </div>
                                     </td>
@@ -8128,11 +8169,11 @@ function AppContent() {
                       </p>
                       <div className="row">
                         <button
-                          className="danger-btn"
+                          className="danger-btn danger-btn--icon"
                           onClick={submitDeleteAdminDialog}
                           title="Удалить"
                         >
-                          🗑️
+                          ×
                         </button>
                         <button
                           className="ghost-btn"
@@ -8165,11 +8206,11 @@ function AppContent() {
                       </p>
                       <div className="row">
                         <button
-                          className="danger-btn"
+                          className="danger-btn danger-btn--icon"
                           onClick={confirmDeleteCatalogExercise}
                           title="Удалить"
                         >
-                          🗑️
+                          ×
                         </button>
                         <button
                           className="ghost-btn"
@@ -8201,11 +8242,11 @@ function AppContent() {
                       </p>
                       <div className="row">
                         <button
-                          className="danger-btn"
+                          className="danger-btn danger-btn--icon"
                           onClick={confirmDeleteWorkoutSession}
                           title="Удалить"
                         >
-                          🗑️
+                          ×
                         </button>
                         <button
                           className="ghost-btn"
@@ -8322,7 +8363,7 @@ function AppContent() {
                           onClick={confirmDeleteCurrentWorkoutExercise}
                           title="Удалить"
                         >
-                          🗑️ Удалить
+                          Удалить
                         </button>
                         <button
                           className="ghost-btn"

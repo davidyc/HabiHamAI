@@ -8,7 +8,7 @@
   padding: 4px;
   border-radius: 12px;
   border: 1px solid var(--panel-border);
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.22);
 }
 
 .segment-tabs--primary {
@@ -78,20 +78,22 @@
 }
 
 .segment-tab:hover {
-  color: #d8f5e3;
-  background: rgba(46, 164, 99, 0.12);
+  color: var(--text-bright);
+  background: rgba(230, 57, 70, 0.1);
   filter: none;
   box-shadow: none;
 }
 
 .segment-tab.active {
-  background: linear-gradient(180deg, #2ea463, #268954);
-  color: #f3fff8;
-  box-shadow: 0 2px 10px rgba(46, 164, 99, 0.28);
+  background: rgba(230, 57, 70, 0.14);
+  color: var(--text-bright);
+  box-shadow: inset 0 -3px 0 var(--primary-bright);
 }
 
 .segment-tabs--sidebar .segment-tab.active {
   box-shadow: none;
+  border-left: 3px solid var(--primary-bright);
+  background: rgba(230, 57, 70, 0.12);
 }
 
 .segment-tab:focus-visible {
@@ -103,17 +105,17 @@
 .app-nav-group {
   margin: -4px 0 16px;
   padding: 10px 12px 12px 14px;
-  border-left: 3px solid rgba(46, 164, 99, 0.55);
+  border-left: 3px solid var(--primary);
   border-radius: 0 10px 10px 0;
-  background: rgba(0, 0, 0, 0.14);
+  background: rgba(0, 0, 0, 0.18);
 }
 
 .app-nav-group--nested {
   margin-top: -8px;
   margin-left: 12px;
   padding-left: 12px;
-  border-left-color: rgba(157, 194, 169, 0.45);
-  background: rgba(0, 0, 0, 0.1);
+  border-left-color: rgba(139, 148, 158, 0.45);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .app-nav-group__label {
@@ -123,7 +125,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #7fa892;
+  color: var(--muted);
 }
 
 .app-subnav-row {
@@ -155,7 +157,7 @@
   padding: 9px 14px 10px;
   border: none;
   border-radius: 0;
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
   margin-bottom: -1px;
   background: transparent;
   color: var(--muted);
@@ -163,15 +165,15 @@
 }
 
 .app-subnav--secondary:hover {
-  color: #d8f5e3;
-  background: rgba(46, 164, 99, 0.08);
+  color: var(--text-bright);
+  background: rgba(230, 57, 70, 0.06);
   filter: none;
   box-shadow: none;
 }
 
 .app-subnav--secondary.is-active {
-  color: #ecfdf5;
-  border-bottom-color: var(--primary);
+  color: var(--primary-bright);
+  border-bottom-color: var(--primary-bright);
   background: transparent;
   box-shadow: none;
 }
@@ -184,23 +186,23 @@
   padding: 7px 12px;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.15);
   color: var(--muted);
   font-size: 12px;
 }
 
 .app-subnav--tertiary:hover {
-  color: #d8f5e3;
-  border-color: #4f8c66;
-  background: rgba(46, 164, 99, 0.1);
+  color: var(--text-bright);
+  border-color: rgba(230, 57, 70, 0.45);
+  background: rgba(230, 57, 70, 0.08);
   filter: none;
   box-shadow: none;
 }
 
 .app-subnav--tertiary.is-active {
-  color: #e8fff0;
+  color: var(--text-bright);
   border-color: var(--primary);
-  background: rgba(46, 164, 99, 0.22);
+  background: rgba(230, 57, 70, 0.18);
   box-shadow: none;
 }
 

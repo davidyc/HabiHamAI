@@ -9,6 +9,7 @@
   --color-text-muted: var(--muted);
   --color-action-primary: var(--primary);
   --color-action-primary-hover: var(--primary-hover);
+  --color-success: var(--success);
   --color-danger: var(--danger);
 
   --radius-sm: 10px;
