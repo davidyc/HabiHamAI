@@ -1,7 +1,10 @@
 package com.habiham.mobile
 
 import android.app.Application
+import com.habiham.mobile.data.api.AuthenticatedApiFactory
+import com.habiham.mobile.data.auth.SessionRefreshCoordinator
 import com.habiham.mobile.data.prefs.ApiSettingsStore
+import com.habiham.mobile.data.prefs.CredentialsStore
 import com.habiham.mobile.data.prefs.SessionStore
 import com.habiham.mobile.data.prefs.UserSessionManager
 import com.habiham.mobile.data.repository.AuthRepository
@@ -21,6 +24,9 @@ class HabiHamApplication : Application() {
         private set
 
     lateinit var sessionStore: SessionStore
+        private set
+
+    lateinit var credentialsStore: CredentialsStore
         private set
 
     lateinit var userSessionManager: UserSessionManager
@@ -44,10 +50,20 @@ class HabiHamApplication : Application() {
 
         apiSettingsStore = ApiSettingsStore(this, BuildConfig.DEFAULT_API_BASE_URL)
         sessionStore = SessionStore(this)
-        userSessionManager = UserSessionManager(sessionStore, apiSettingsStore)
-        authRepository = AuthRepository(sessionStore, apiSettingsStore)
-        workoutsRepository = WorkoutsRepository()
-        bikeRepository = BikeRepository()
+        credentialsStore = CredentialsStore(this)
+        authRepository = AuthRepository(sessionStore, apiSettingsStore, credentialsStore)
+
+        val refreshCoordinator = SessionRefreshCoordinator(authRepository)
+        val apiFactory = AuthenticatedApiFactory(sessionStore, refreshCoordinator)
+
+        userSessionManager = UserSessionManager(
+            sessionStore = sessionStore,
+            apiSettingsStore = apiSettingsStore,
+            authRepository = authRepository,
+            appScope = applicationScope,
+        )
+        workoutsRepository = WorkoutsRepository(apiFactory)
+        bikeRepository = BikeRepository(apiFactory)
 
         applicationScope.launch {
             migrateLegacyApiUrlIfNeeded()

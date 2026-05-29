@@ -1,16 +1,19 @@
 package com.habiham.mobile.data.repository
 
 import com.habiham.mobile.data.api.ApiClientFactory
+import com.habiham.mobile.data.api.UnauthorizedHint
 import com.habiham.mobile.data.api.toUserMessage
 import com.habiham.mobile.data.model.LoginRequest
 import com.habiham.mobile.data.model.RegisterRequest
 import com.habiham.mobile.data.prefs.ApiSettingsStore
+import com.habiham.mobile.data.prefs.CredentialsStore
 import com.habiham.mobile.data.prefs.SessionStore
 import retrofit2.HttpException
 
 class AuthRepository(
     private val sessionStore: SessionStore,
     private val apiSettingsStore: ApiSettingsStore,
+    private val credentialsStore: CredentialsStore,
 ) {
     suspend fun login(username: String, password: String): Result<Unit> {
         val apiBaseUrl = apiSettingsStore.getApiBaseUrl()
@@ -25,9 +28,10 @@ class AuthRepository(
             val token = response.accessToken.trim()
             require(token.isNotEmpty()) { "Сервер не вернул токен." }
             sessionStore.saveToken(token)
+            credentialsStore.save(username, password)
         }.fold(
             onSuccess = { Result.success(Unit) },
-            onFailure = { Result.failure(Exception(it.toUserMessage(), it)) },
+            onFailure = { Result.failure(Exception(it.toUserMessage(UnauthorizedHint.Login), it)) },
         )
     }
 
@@ -51,9 +55,29 @@ class AuthRepository(
         )
     }
 
+    suspend fun reloginWithStoredCredentials(): Result<Unit> {
+        val credentials = credentialsStore.get()
+            ?: return Result.failure(Exception("Сохранённые учётные данные не найдены."))
+        val result = login(credentials.username, credentials.password)
+        if (result.isFailure) {
+            sessionStore.clearToken()
+        }
+        return result
+    }
+
+    suspend fun restoreSessionOnStartup(): Result<Unit> {
+        if (!sessionStore.getAccessToken().isNullOrBlank()) {
+            return Result.success(Unit)
+        }
+        return reloginWithStoredCredentials()
+    }
+
     suspend fun logout() {
         sessionStore.clearToken()
+        credentialsStore.clear()
     }
+
+    fun peekSavedUsername(): String? = credentialsStore.get()?.username
 
     private fun registerErrorMessage(err: Throwable): String {
         if (err is HttpException) {
@@ -62,6 +86,6 @@ class AuthRepository(
                 400 -> return "Проверьте логин и пароль (минимум 6 символов)."
             }
         }
-        return err.toUserMessage()
+        return err.toUserMessage(UnauthorizedHint.Login)
     }
 }

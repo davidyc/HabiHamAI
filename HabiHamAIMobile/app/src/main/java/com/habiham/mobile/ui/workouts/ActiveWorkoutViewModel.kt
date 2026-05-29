@@ -156,7 +156,10 @@ class ActiveWorkoutViewModel(
                 currentWorkout = w.copy(
                     exercises = w.exercises.map { ex ->
                         if (ex.localId != exerciseLocalId) ex
-                        else ex.copy(sets = ex.sets + CurrentWorkoutSet())
+                        else {
+                            val newSet = ex.sets.lastOrNull()?.copy() ?: CurrentWorkoutSet()
+                            ex.copy(sets = ex.sets + newSet)
+                        }
                     },
                 ),
             )

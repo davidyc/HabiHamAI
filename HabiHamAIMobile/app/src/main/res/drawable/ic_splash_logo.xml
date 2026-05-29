@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <path
+        android:fillColor="@color/habi_surface_soft"
+        android:pathData="M20,20h88a12,12 0 0,1 12,12v64a12,12 0 0,1 -12,12H20a12,12 0 0,1 -12,-12V32a12,12 0 0,1 12,-12z" />
+    <path
+        android:fillColor="@color/habi_primary_deep"
+        android:pathData="M64,32c17.67,0 32,14.33 32,32s-14.33,32 -32,32 -32,-14.33 -32,-32 14.33,-32 32,-32z" />
+    <path
+        android:fillColor="@color/habi_primary"
+        android:pathData="M64,38c14.36,0 26,11.64 26,26s-11.64,26 -26,26 -26,-11.64 -26,-26 11.64,-26 26,-26z" />
+    <path
+        android:fillColor="@color/habi_text_bright"
+        android:pathData="M50,50h10v16h18V50h10v36h-10V70H60v16H50V50z" />
+</vector>

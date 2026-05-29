@@ -1,8 +1,15 @@
 package com.habiham.mobile.ui.workouts
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,16 +23,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+
+import com.habiham.mobile.ui.components.habihamTextFieldColors
+
+import com.habiham.mobile.ui.components.AnimatedCollapsibleSection
+import com.habiham.mobile.ui.components.CollapsibleExerciseTitle
+import com.habiham.mobile.ui.components.HabiHamListCard
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -150,6 +159,8 @@ private fun FiltersSection(
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 placeholder = { Text("yyyy-MM-dd") },
+                colors = habihamTextFieldColors(),
+                shape = MaterialTheme.shapes.small,
             )
             OutlinedTextField(
                 value = state.dateTo,
@@ -158,6 +169,8 @@ private fun FiltersSection(
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 placeholder = { Text("yyyy-MM-dd") },
+                colors = habihamTextFieldColors(),
+                shape = MaterialTheme.shapes.small,
             )
         }
 
@@ -177,6 +190,8 @@ private fun FiltersSection(
                 modifier = Modifier
                     .menuAnchor()
                     .fillMaxWidth(),
+                colors = habihamTextFieldColors(),
+                shape = MaterialTheme.shapes.small,
             )
             ExposedDropdownMenu(
                 expanded = programExpanded,
@@ -244,17 +259,10 @@ private fun WorkoutSessionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+    HabiHamListCard(
+        modifier = modifier,
+        onClick = onClick,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = session.day?.ifBlank { "Тренировка" } ?: "Тренировка",
                 style = MaterialTheme.typography.titleMedium,
@@ -277,16 +285,25 @@ private fun WorkoutSessionCard(
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
-        }
     }
 }
 
 @Composable
 private fun WorkoutDetailContent(session: WorkoutSessionDto) {
+    var collapsedExerciseIds by remember(session.id) {
+        mutableStateOf(session.exercises.map { it.id }.toSet())
+    }
+    var exercisesRevealed by remember(session.id) { mutableStateOf(false) }
+    LaunchedEffect(session.id) {
+        exercisesRevealed = true
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 8.dp)
+            .navigationBarsPadding()
             .padding(bottom = 32.dp),
     ) {
         Text(session.day ?: "Тренировка", style = MaterialTheme.typography.headlineSmall)
@@ -301,38 +318,65 @@ private fun WorkoutDetailContent(session: WorkoutSessionDto) {
         }
         Spacer(Modifier.height(16.dp))
         session.exercises.forEachIndexed { index, exercise ->
-            if (index > 0) HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            ExerciseBlock(exercise)
+            val enterDelay = 40 * index
+            AnimatedVisibility(
+                visible = exercisesRevealed,
+                enter = fadeIn(tween(300, delayMillis = enterDelay)) +
+                    slideInVertically(
+                        animationSpec = tween(300, delayMillis = enterDelay),
+                        initialOffsetY = { fullHeight -> fullHeight / 4 },
+                    ),
+            ) {
+                Column {
+                    if (index > 0) Spacer(Modifier.height(10.dp))
+                    HistoryExerciseBlock(
+                        exercise = exercise,
+                        expanded = exercise.id !in collapsedExerciseIds,
+                        onToggle = {
+                            collapsedExerciseIds = if (exercise.id in collapsedExerciseIds) {
+                                collapsedExerciseIds - exercise.id
+                            } else {
+                                collapsedExerciseIds + exercise.id
+                            }
+                        },
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ExerciseBlock(exercise: WorkoutExerciseDto) {
-    Column {
-        Text(
-            exercise.name ?: "Упражнение",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Medium,
-        )
-        if (!exercise.meta.isNullOrBlank()) {
-            Text(
-                exercise.meta!!,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        exercise.sets.forEach { set ->
-            val parts = buildList {
-                set.weight?.takeIf { it.isNotBlank() }?.let { add("${it} кг") }
-                set.reps?.takeIf { it.isNotBlank() }?.let { add("$it повт.") }
-                set.rpe?.takeIf { it.isNotBlank() }?.let { add("RPE $it") }
+private fun HistoryExerciseBlock(
+    exercise: WorkoutExerciseDto,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    HabiHamListCard(onClick = onToggle) {
+        AnimatedCollapsibleSection(
+            expanded = expanded,
+            onToggle = onToggle,
+            header = {
+                CollapsibleExerciseTitle(
+                    name = exercise.name.orEmpty(),
+                    meta = exercise.meta,
+                    setCount = exercise.sets.size,
+                    expanded = expanded,
+                )
+            },
+        ) {
+            exercise.sets.forEachIndexed { setIndex, set ->
+                val parts = buildList {
+                    set.weight?.takeIf { it.isNotBlank() }?.let { add("${it} кг") }
+                    set.reps?.takeIf { it.isNotBlank() }?.let { add("$it повт.") }
+                    set.rpe?.takeIf { it.isNotBlank() }?.let { add("RPE $it") }
+                }
+                Text(
+                    text = "${setIndex + 1}. ${parts.joinToString(" · ").ifBlank { "—" }}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 4.dp, top = if (setIndex > 0) 4.dp else 0.dp),
+                )
             }
-            Text(
-                "• ${parts.joinToString(" · ").ifBlank { "—" }}",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = 8.dp, top = 2.dp),
-            )
         }
     }
 }

@@ -60,7 +60,11 @@ class LoginViewModel(
 
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
-
+    init {
+        authRepository.peekSavedUsername()?.let { savedUsername ->
+            _uiState.update { it.copy(username = savedUsername) }
+        }
+    }
 
     fun setMode(mode: AuthMode) {
 

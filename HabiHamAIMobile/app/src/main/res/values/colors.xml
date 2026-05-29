@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="habi_bg_start">#FF0D1117</color>
+    <color name="habi_bg_end">#FF0B0E14</color>
+    <color name="habi_surface">#FF161B22</color>
+    <color name="habi_surface_soft">#FF21262D</color>
+    <color name="habi_panel_border">#FF30363D</color>
+    <color name="habi_primary">#FFE63946</color>
+    <color name="habi_primary_deep">#FF4D1219</color>
+    <color name="habi_text_bright">#FFF0F6FC</color>
+    <color name="habi_primary_glow">#14E63946</color>
+</resources>

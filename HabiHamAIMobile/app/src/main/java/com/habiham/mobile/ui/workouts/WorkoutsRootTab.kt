@@ -2,15 +2,15 @@ package com.habiham.mobile.ui.workouts
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.habiham.mobile.ui.components.HabiHamSegmentTabRow
 
 private enum class StrengthSubTab(val title: String) {
     Current("Текущая"),
@@ -27,15 +27,12 @@ fun WorkoutsRootTab(
     val selected = StrengthSubTab.entries[subTab]
 
     Column(modifier = modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = subTab) {
-            StrengthSubTab.entries.forEachIndexed { index, tab ->
-                Tab(
-                    selected = subTab == index,
-                    onClick = { subTab = index },
-                    text = { Text(tab.title) },
-                )
-            }
-        }
+        HabiHamSegmentTabRow(
+            labels = StrengthSubTab.entries.map { it.title },
+            selectedIndex = subTab,
+            onTabSelected = { subTab = it },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
         when (selected) {
             StrengthSubTab.Current -> ActiveWorkoutTab(
                 viewModel = activeViewModel,

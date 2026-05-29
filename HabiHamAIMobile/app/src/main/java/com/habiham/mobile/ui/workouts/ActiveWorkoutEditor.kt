@@ -1,7 +1,6 @@
 package com.habiham.mobile.ui.workouts
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,8 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,13 +30,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextFieldColors
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,11 +54,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.habiham.mobile.domain.CurrentWorkout
 import com.habiham.mobile.domain.CurrentWorkoutExercise
+import com.habiham.mobile.ui.components.AnimatedCollapsibleSection
+import com.habiham.mobile.ui.components.CollapsibleExerciseTitle
 import com.habiham.mobile.ui.components.DialogImeAdjustResize
 import com.habiham.mobile.ui.components.HabiHamBottomBar
 import com.habiham.mobile.ui.components.HabiHamContentCard
 import com.habiham.mobile.ui.components.HabiHamKeyboardInsets
 import com.habiham.mobile.ui.components.SectionTitle
+import com.habiham.mobile.ui.components.habihamTextFieldColors
 import com.habiham.mobile.ui.components.scrollWithIme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,13 +83,15 @@ fun ActiveWorkoutEditor(
     onSaveDraft: () -> Unit,
     onFinish: () -> Unit,
 ) {
-    var collapsedExerciseIds by remember { mutableStateOf(setOf<String>()) }
+    var collapsedExerciseIds by remember(workout.sessionCode) {
+        mutableStateOf(workout.exercises.map { it.localId }.toSet())
+    }
+    var exercisesRevealed by remember(workout.sessionCode) { mutableStateOf(false) }
+    LaunchedEffect(workout.sessionCode) {
+        exercisesRevealed = true
+    }
 
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = MaterialTheme.colorScheme.primary,
-        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-    )
+    val fieldColors = habihamTextFieldColors()
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -113,9 +119,9 @@ fun ActiveWorkoutEditor(
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface,
+                            navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
                         ),
                     )
                 },
@@ -221,25 +227,39 @@ fun ActiveWorkoutEditor(
                         }
                     }
 
-                    items(workout.exercises, key = { it.localId }) { exercise ->
+                    items(
+                        items = workout.exercises,
+                        key = { it.localId },
+                    ) { exercise ->
                         val collapsed = exercise.localId in collapsedExerciseIds
-                        ExerciseEditorBlock(
-                            exercise = exercise,
-                            collapsed = collapsed,
-                            onToggleCollapsed = {
-                                collapsedExerciseIds = if (collapsed) {
-                                    collapsedExerciseIds - exercise.localId
-                                } else {
-                                    collapsedExerciseIds + exercise.localId
-                                }
-                            },
-                            fieldColors = fieldColors,
-                            onUpdateExercise = onUpdateExercise,
-                            onRemoveExercise = onRemoveExercise,
-                            onAddSet = onAddSet,
-                            onUpdateSet = onUpdateSet,
-                            onRemoveSet = onRemoveSet,
-                        )
+                        val index = workout.exercises.indexOfFirst { it.localId == exercise.localId }
+                        val enterDelay = 35 * index.coerceAtLeast(0)
+                        AnimatedVisibility(
+                            visible = exercisesRevealed,
+                            enter = fadeIn(tween(280, delayMillis = enterDelay)) +
+                                slideInVertically(
+                                    animationSpec = tween(280, delayMillis = enterDelay),
+                                    initialOffsetY = { h -> h / 4 },
+                                ),
+                        ) {
+                            ExerciseEditorBlock(
+                                exercise = exercise,
+                                collapsed = collapsed,
+                                onToggleCollapsed = {
+                                    collapsedExerciseIds = if (collapsed) {
+                                        collapsedExerciseIds - exercise.localId
+                                    } else {
+                                        collapsedExerciseIds + exercise.localId
+                                    }
+                                },
+                                fieldColors = fieldColors,
+                                onUpdateExercise = onUpdateExercise,
+                                onRemoveExercise = onRemoveExercise,
+                                onAddSet = onAddSet,
+                                onUpdateSet = onUpdateSet,
+                                onRemoveSet = onRemoveSet,
+                            )
+                        }
                     }
 
                     error?.let { msg ->
@@ -264,17 +284,6 @@ fun ActiveWorkoutEditor(
     }
 }
 
-private fun formatSetCountLabel(count: Int): String {
-    val n = count.coerceAtLeast(0)
-    val mod10 = n % 10
-    val mod100 = n % 100
-    return when {
-        mod10 == 1 && mod100 != 11 -> "$n подход"
-        mod10 in 2..4 && mod100 !in 12..14 -> "$n подхода"
-        else -> "$n подходов"
-    }
-}
-
 @Composable
 private fun ExerciseEditorBlock(
     exercise: CurrentWorkoutExercise,
@@ -288,56 +297,26 @@ private fun ExerciseEditorBlock(
     onRemoveSet: (String, Int) -> Unit,
 ) {
     HabiHamContentCard {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.small)
-                .clickable(onClick = onToggleCollapsed)
-                .padding(vertical = 4.dp),
+        AnimatedCollapsibleSection(
+            expanded = !collapsed,
+            onToggle = onToggleCollapsed,
+            header = {
+                CollapsibleExerciseTitle(
+                    name = exercise.name,
+                    meta = exercise.meta.takeIf { it.isNotBlank() },
+                    setCount = exercise.sets.size,
+                    expanded = !collapsed,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { onRemoveExercise(exercise.localId) }) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Удалить",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
         ) {
-            IconButton(onClick = onToggleCollapsed) {
-                Icon(
-                    imageVector = if (collapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
-                    contentDescription = if (collapsed) "Развернуть" else "Свернуть",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    exercise.name.ifBlank { "Упражнение" },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                if (exercise.meta.isNotBlank()) {
-                    Text(
-                        exercise.meta,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = if (collapsed) 1 else 2,
-                    )
-                }
-                if (collapsed) {
-                    Text(
-                        formatSetCountLabel(exercise.sets.size),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-            }
-            IconButton(onClick = { onRemoveExercise(exercise.localId) }) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Удалить",
-                    tint = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
-
-        if (collapsed) return@HabiHamContentCard
-
-        Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = exercise.name,
             onValueChange = { onUpdateExercise(exercise.localId, it, null) },
@@ -429,6 +408,7 @@ private fun ExerciseEditorBlock(
             shape = MaterialTheme.shapes.small,
         ) {
             Text("+ Подход")
+        }
         }
     }
 }

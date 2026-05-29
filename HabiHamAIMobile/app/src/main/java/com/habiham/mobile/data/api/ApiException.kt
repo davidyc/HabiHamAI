@@ -7,7 +7,12 @@ import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
-fun HttpException.userMessage(): String {
+enum class UnauthorizedHint {
+    Login,
+    Api,
+}
+
+fun HttpException.userMessage(hint: UnauthorizedHint = UnauthorizedHint.Api): String {
     val raw = response()?.errorBody()?.string()
     if (!raw.isNullOrBlank()) {
         runCatching {
@@ -15,15 +20,18 @@ fun HttpException.userMessage(): String {
         }.getOrNull()?.let { return it }
     }
     return when (code()) {
-        401 -> "Неверный логин или пароль."
+        401 -> when (hint) {
+            UnauthorizedHint.Login -> "Неверный логин или пароль."
+            UnauthorizedHint.Api -> "Сессия истекла. Войдите снова."
+        }
         403 -> "Доступ запрещён."
         in 500..599 -> "Ошибка сервера (${code()})."
         else -> "Ошибка запроса (${code()})."
     }
 }
 
-fun Throwable.toUserMessage(): String = when (this) {
-    is HttpException -> userMessage()
+fun Throwable.toUserMessage(hint: UnauthorizedHint = UnauthorizedHint.Api): String = when (this) {
+    is HttpException -> userMessage(hint)
     is UnknownHostException ->
         "Сервер не найден. Проверьте URL API (на телефоне — IP ПК, не localhost и не 10.0.2.2)."
     is ConnectException ->

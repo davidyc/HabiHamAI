@@ -1,81 +1,131 @@
 package com.habiham.mobile.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import android.app.Activity
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 
-private val GreenPrimary = Color(0xFF2E7D32)
-private val GreenDark = Color(0xFF1B5E20)
-private val SurfaceTint = Color(0xFFF4F7F4)
-
-private val LightColors = lightColorScheme(
-    primary = GreenPrimary,
+private val HabiHamDarkColors = darkColorScheme(
+    primary = HabiHamColors.Primary,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFC8E6C9),
-    onPrimaryContainer = GreenDark,
-    secondary = Color(0xFF558B2F),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFDCEDC8),
-    onSecondaryContainer = GreenDark,
-    tertiary = Color(0xFF388E3C),
-    surface = Color.White,
-    surfaceVariant = SurfaceTint,
-    onSurfaceVariant = Color(0xFF5C6B5C),
-    background = Color(0xFFFAFCFA),
-    outline = Color(0xFFB0BEB0),
-    errorContainer = Color(0xFFFFEBEE),
-)
-
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF81C784),
-    onPrimary = GreenDark,
-    primaryContainer = Color(0xFF1B3D1F),
-    onPrimaryContainer = Color(0xFFC8E6C9),
-    secondary = Color(0xFFAED581),
-    surface = Color(0xFF121812),
-    surfaceVariant = Color(0xFF1E271E),
-    background = Color(0xFF0E120E),
+    primaryContainer = HabiHamColors.PrimaryDeep,
+    onPrimaryContainer = HabiHamColors.TextBright,
+    secondary = HabiHamColors.Ghost,
+    onSecondary = HabiHamColors.Text,
+    secondaryContainer = HabiHamColors.SurfaceSoft,
+    onSecondaryContainer = HabiHamColors.Text,
+    tertiary = HabiHamColors.Link,
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFF0D2847),
+    onTertiaryContainer = HabiHamColors.Link,
+    background = HabiHamColors.BgEnd,
+    onBackground = HabiHamColors.Text,
+    surface = HabiHamColors.Surface,
+    onSurface = HabiHamColors.Text,
+    surfaceVariant = HabiHamColors.SurfaceSoft,
+    onSurfaceVariant = HabiHamColors.Muted,
+    surfaceTint = HabiHamColors.Primary,
+    outline = HabiHamColors.PanelBorder,
+    outlineVariant = Color(0xFF484F58),
+    error = HabiHamColors.Danger,
+    onError = Color.White,
+    errorContainer = HabiHamColors.DangerSoft,
+    onErrorContainer = Color(0xFFFECACA),
+    inverseSurface = HabiHamColors.TextBright,
+    inverseOnSurface = HabiHamColors.BgStart,
+    inversePrimary = HabiHamColors.PrimaryHover,
+    scrim = Color(0xFF010409),
 )
 
 private val HabiHamShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(24.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(18.dp),
 )
 
 private val HabiHamTypography = Typography(
+    headlineMedium = TextStyle(
+        fontWeight = FontWeight.Bold,
+        fontSize = 29.sp,
+        lineHeight = 34.sp,
+        color = HabiHamColors.TextBright,
+    ),
+    headlineSmall = TextStyle(
+        fontWeight = FontWeight.Bold,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+        color = HabiHamColors.TextBright,
+    ),
     titleLarge = TextStyle(
         fontWeight = FontWeight.Bold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
+        color = HabiHamColors.TextBright,
     ),
     titleMedium = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 18.sp,
         lineHeight = 24.sp,
+        color = HabiHamColors.TextBright,
+    ),
+    bodyLarge = TextStyle(
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
+        color = HabiHamColors.Text,
+    ),
+    bodyMedium = TextStyle(
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        color = HabiHamColors.Text,
+    ),
+    bodySmall = TextStyle(
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
+        color = HabiHamColors.Muted,
     ),
     labelLarge = TextStyle(
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
+        lineHeight = 18.sp,
+        color = HabiHamColors.Text,
+    ),
+    labelSmall = TextStyle(
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        color = HabiHamColors.Muted,
     ),
 )
 
 @Composable
 fun HabiHamTheme(content: @Composable () -> Unit) {
+    val colorScheme = HabiHamDarkColors
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            window.statusBarColor = Color.Transparent.toArgb()
+            window.navigationBarColor = HabiHamColors.BgEnd.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = false
+        }
+    }
+
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = colorScheme,
         shapes = HabiHamShapes,
         typography = HabiHamTypography,
         content = content,

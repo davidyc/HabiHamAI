@@ -31,6 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.habiham.mobile.ui.components.HabiHamAccentCard
 import com.habiham.mobile.ui.components.SectionTitle
+import com.habiham.mobile.ui.components.habihamTextFieldColors
+import com.habiham.mobile.ui.theme.HabiHamColors
 import com.habiham.mobile.ui.components.scrollWithIme
 import com.habiham.mobile.util.formatWorkoutDateLabel
 
@@ -122,7 +124,7 @@ fun ActiveWorkoutTab(
                 Text(
                     "Активная",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = HabiHamColors.Muted,
                 )
                 val title = state.currentWorkout?.day
                     ?: state.activeSession?.day
@@ -131,14 +133,14 @@ fun ActiveWorkoutTab(
                     title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = HabiHamColors.TextBright,
                 )
                 val dateIso = state.currentWorkout?.date
                     ?: state.activeSession?.displayDate()
                 Text(
                     formatWorkoutDateLabel(dateIso),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = HabiHamColors.Text,
                 )
                 Spacer(Modifier.height(10.dp))
                 Button(
@@ -182,6 +184,8 @@ private fun ProgramPicker(
             modifier = Modifier
                 .menuAnchor()
                 .fillMaxWidth(),
+            colors = habihamTextFieldColors(),
+            shape = MaterialTheme.shapes.small,
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(

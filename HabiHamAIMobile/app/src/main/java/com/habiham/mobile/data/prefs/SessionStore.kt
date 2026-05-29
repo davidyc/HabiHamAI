@@ -29,6 +29,8 @@ class SessionStore(private val context: Context) {
         }
     }
 
+    suspend fun getAccessToken(): String? = accessTokenFlow.first()
+
     /** Однократная миграция URL из старой версии приложения. */
     suspend fun consumeLegacyApiBaseUrl(): String? {
         var legacy: String? = null

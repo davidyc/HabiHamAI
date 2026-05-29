@@ -1,6 +1,6 @@
 package com.habiham.mobile.data.repository
 
-import com.habiham.mobile.data.api.ApiClientFactory
+import com.habiham.mobile.data.api.AuthenticatedApiFactory
 import com.habiham.mobile.data.api.toUserMessage
 import com.habiham.mobile.data.model.UpsertWorkoutSessionRequest
 import com.habiham.mobile.data.model.WorkoutSessionDto
@@ -12,7 +12,9 @@ data class WorkoutHistoryFilters(
     val program: String? = null,
 )
 
-class WorkoutsRepository {
+class WorkoutsRepository(
+    private val apiFactory: AuthenticatedApiFactory,
+) {
     suspend fun loadSessions(
         session: StoredSession,
         includeHistory: Boolean = false,
@@ -24,7 +26,7 @@ class WorkoutsRepository {
         session: StoredSession,
         filters: WorkoutHistoryFilters,
     ): Result<List<WorkoutSessionDto>> = runCatching {
-        val api = ApiClientFactory.create(session.apiBaseUrl, session.accessToken)
+        val api = apiFactory.create(session.apiBaseUrl)
         val program = filters.program?.trim()?.takeIf { it.isNotEmpty() }
         api.getWorkoutHistory(
             from = filters.from?.takeIf { it.isNotBlank() },
@@ -38,7 +40,7 @@ class WorkoutsRepository {
 
     suspend fun loadProgramOptions(session: StoredSession): Result<List<String>> {
         return runCatching {
-            val api = ApiClientFactory.create(session.apiBaseUrl, session.accessToken)
+            val api = apiFactory.create(session.apiBaseUrl)
             api.getHistoryProgramOptions()
                 .mapNotNull { it.program.trim().takeIf { name -> name.isNotEmpty() } }
                 .distinct()
@@ -60,7 +62,7 @@ class WorkoutsRepository {
         session: StoredSession,
         block: suspend (com.habiham.mobile.data.api.HabiHamApi) -> T,
     ): Result<T> = runCatching {
-        val api = ApiClientFactory.create(session.apiBaseUrl, session.accessToken)
+        val api = apiFactory.create(session.apiBaseUrl)
         block(api)
     }.fold(
         onSuccess = { Result.success(it) },

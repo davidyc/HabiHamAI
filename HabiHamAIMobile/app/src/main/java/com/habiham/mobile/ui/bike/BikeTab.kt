@@ -2,7 +2,6 @@ package com.habiham.mobile.ui.bike
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -44,7 +42,10 @@ import com.habiham.mobile.util.formatBikeDurationSeconds
 import com.habiham.mobile.util.formatCalories
 import com.habiham.mobile.util.formatDistanceKm
 import com.habiham.mobile.util.formatHeartRate
+import com.habiham.mobile.ui.components.HabiHamListCard
+import com.habiham.mobile.ui.components.habihamTextFieldColors
 import com.habiham.mobile.ui.components.scrollWithIme
+import com.habiham.mobile.ui.theme.HabiHamColors
 import com.habiham.mobile.util.formatUtcDateTime
 
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -195,7 +196,7 @@ private fun BikeTabHeader(
                 msg,
                 style = MaterialTheme.typography.bodySmall,
                 color = if (msg.contains("успешно", ignoreCase = true)) {
-                    MaterialTheme.colorScheme.primary
+                    HabiHamColors.Success
                 } else {
                     MaterialTheme.colorScheme.error
                 },
@@ -209,6 +210,8 @@ private fun BikeTabHeader(
                 label = { Text("С") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
+                colors = habihamTextFieldColors(),
+                shape = MaterialTheme.shapes.small,
             )
             OutlinedTextField(
                 value = state.dateTo,
@@ -216,6 +219,8 @@ private fun BikeTabHeader(
                 label = { Text("По") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
+                colors = habihamTextFieldColors(),
+                shape = MaterialTheme.shapes.small,
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -246,12 +251,10 @@ private fun BikeActivityCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen),
+    HabiHamListCard(
+        modifier = modifier,
+        onClick = onOpen,
     ) {
-        Column(Modifier.padding(16.dp)) {
             Text(
                 row.notes?.ifBlank { "Поездка" } ?: "Поездка",
                 style = MaterialTheme.typography.titleMedium,
@@ -273,7 +276,6 @@ private fun BikeActivityCard(
                 OutlinedButton(onClick = onOpen) { Text("Маршрут") }
                 OutlinedButton(onClick = onDelete) { Text("Удалить") }
             }
-        }
     }
 }
 

@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.habiham.mobile.ui.components.habihamTextFieldColors
 
 @Composable
 fun ApiSettingsDialog(
@@ -37,6 +38,8 @@ fun ApiSettingsDialog(
                     singleLine = true,
                     isError = state.error != null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    colors = habihamTextFieldColors(),
+                    shape = MaterialTheme.shapes.small,
                 )
                 state.error?.let { msg ->
                     Spacer(Modifier.height(8.dp))
