@@ -16,6 +16,12 @@ import FilterSelect, {
   STANDARD_DATE_PERIOD_OPTIONS,
   TODO_DATE_PERIOD_OPTIONS,
 } from './shared/ui/FilterSelect';
+import {
+  SegmentTab,
+  SegmentTabs,
+  SubNavGroup,
+  SubNavTab,
+} from './shared/ui/SegmentTabs';
 
 function AppContent() {
   const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
@@ -198,9 +204,6 @@ function AppContent() {
     setStrengthSubTab(sub);
   }
 
-  function workoutTabClass(theme, isActive) {
-    return `top-nav-tab top-nav-tab--${theme}${isActive ? ' active' : ''}`;
-  }
   const [progressSubTab, setProgressSubTab] = useState('weight-tracker');
   const [workoutExerciseCatalog, setWorkoutExerciseCatalog] = useState([]);
   const [selectedCatalogExerciseId, setSelectedCatalogExerciseId] =
@@ -3898,86 +3901,69 @@ function AppContent() {
                         Управляй программами, своими упражнениями и фактическими
                         тренировками.
                       </p>
-                      <div className="workouts-subtabs">
-                        <button
-                          type="button"
-                          className={workoutTabClass(
-                            'strength',
-                            workoutsSubTab === 'strength',
-                          )}
+                      <SegmentTabs
+                        variant="primary"
+                        ariaLabel="Разделы тренировок"
+                      >
+                        <SegmentTab
+                          active={workoutsSubTab === 'strength'}
                           onClick={() => setWorkoutsSubTab('strength')}
                         >
                           Силовые тренировки
-                        </button>
+                        </SegmentTab>
                         {showWorkoutAiTrainerTab ? (
                           <>
-                            <button
-                              type="button"
-                              className={workoutTabClass(
-                                'weekly-reviews',
-                                workoutsSubTab === 'weekly-reviews',
-                              )}
-                              onClick={() => setWorkoutsSubTab('weekly-reviews')}
+                            <SegmentTab
+                              active={workoutsSubTab === 'weekly-reviews'}
+                              onClick={() =>
+                                setWorkoutsSubTab('weekly-reviews')
+                              }
                             >
                               Недельные обзоры
-                            </button>
-                            <button
-                              type="button"
-                              className={workoutTabClass(
-                                'ai-trainer',
-                                workoutsSubTab === 'ai-trainer',
-                              )}
+                            </SegmentTab>
+                            <SegmentTab
+                              active={workoutsSubTab === 'ai-trainer'}
                               onClick={() => setWorkoutsSubTab('ai-trainer')}
                             >
                               ИИ тренер
-                            </button>
+                            </SegmentTab>
                           </>
                         ) : null}
-                        <button
-                          type="button"
-                          className={workoutTabClass(
-                            'bike',
-                            workoutsSubTab === 'bike-activities',
-                          )}
+                        <SegmentTab
+                          active={workoutsSubTab === 'bike-activities'}
                           onClick={() => setWorkoutsSubTab('bike-activities')}
                         >
                           Велотренировки
-                        </button>
-                      </div>
+                        </SegmentTab>
+                      </SegmentTabs>
 
                       {workoutsSubTab === 'strength' && (
-                        <div className="workouts-subtabs workouts-subtabs-nested">
-                          <button
-                            type="button"
-                            className={workoutTabClass(
-                              'my-workout',
-                              strengthSubTab === 'my-workout',
-                            )}
+                        <SubNavGroup
+                          label="Силовые тренировки"
+                          ariaLabel="Подразделы силовых тренировок"
+                        >
+                          <SubNavTab
+                            level="secondary"
+                            active={strengthSubTab === 'my-workout'}
                             onClick={() => setStrengthSubTab('my-workout')}
                           >
                             Моя тренировка
-                          </button>
-                          <button
-                            type="button"
-                            className={workoutTabClass(
-                              'history',
-                              strengthSubTab === 'history',
-                            )}
+                          </SubNavTab>
+                          <SubNavTab
+                            level="secondary"
+                            active={strengthSubTab === 'history'}
                             onClick={() => setStrengthSubTab('history')}
                           >
                             История
-                          </button>
-                          <button
-                            type="button"
-                            className={workoutTabClass(
-                              'manage',
-                              strengthSubTab === 'manage',
-                            )}
+                          </SubNavTab>
+                          <SubNavTab
+                            level="secondary"
+                            active={strengthSubTab === 'manage'}
                             onClick={() => setStrengthSubTab('manage')}
                           >
                             Управление тренировкой
-                          </button>
-                        </div>
+                          </SubNavTab>
+                        </SubNavGroup>
                       )}
 
                       {workoutsSubTab === 'weekly-reviews' &&
@@ -4225,32 +4211,29 @@ function AppContent() {
 
                       {workoutsSubTab === 'strength' &&
                         strengthSubTab === 'manage' && (
-                          <>
-                            <div className="workouts-subtabs">
-                              <button
-                                type="button"
-                                className={workoutTabClass(
-                                  'programs',
-                                  workoutsManageSubTab === 'add',
-                                )}
-                                onClick={() => setWorkoutsManageSubTab('add')}
-                              >
-                                Программы
-                              </button>
-                              <button
-                                type="button"
-                                className={workoutTabClass(
-                                  'exercises',
-                                  workoutsManageSubTab === 'exercises',
-                                )}
-                                onClick={() =>
-                                  setWorkoutsManageSubTab('exercises')
-                                }
-                              >
-                                Упражнения
-                              </button>
-                            </div>
-                          </>
+                          <SubNavGroup
+                            label="Управление тренировкой"
+                            level="tertiary"
+                            nested
+                            ariaLabel="Управление тренировкой"
+                          >
+                            <SubNavTab
+                              level="tertiary"
+                              active={workoutsManageSubTab === 'add'}
+                              onClick={() => setWorkoutsManageSubTab('add')}
+                            >
+                              Программы
+                            </SubNavTab>
+                            <SubNavTab
+                              level="tertiary"
+                              active={workoutsManageSubTab === 'exercises'}
+                              onClick={() =>
+                                setWorkoutsManageSubTab('exercises')
+                              }
+                            >
+                              Упражнения
+                            </SubNavTab>
+                          </SubNavGroup>
                         )}
 
                       {workoutsSubTab === 'strength' &&
@@ -4841,30 +4824,24 @@ function AppContent() {
                           : 'Ежедневные привычки и задачи с историей выполнения.'}
                       </p>
                       {tab === 'tracking' && (
-                        <div
-                          className="tracking-tabs"
-                          role="tablist"
-                          aria-label="Раздел трекинга"
+                        <SegmentTabs
+                          variant="primary"
+                          className="segment-tabs--narrow"
+                          ariaLabel="Раздел трекинга"
                         >
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={progressSubTab === 'habits'}
-                            className={`tracking-tab${progressSubTab === 'habits' ? ' active' : ''}`}
+                          <SegmentTab
+                            active={progressSubTab === 'habits'}
                             onClick={() => setProgressSubTab('habits')}
                           >
                             Привычки
-                          </button>
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={progressSubTab === 'todos'}
-                            className={`tracking-tab${progressSubTab === 'todos' ? ' active' : ''}`}
+                          </SegmentTab>
+                          <SegmentTab
+                            active={progressSubTab === 'todos'}
                             onClick={() => setProgressSubTab('todos')}
                           >
                             Задачи
-                          </button>
-                        </div>
+                          </SegmentTab>
+                        </SegmentTabs>
                       )}
                       {tab === 'progress' && (
                         <>

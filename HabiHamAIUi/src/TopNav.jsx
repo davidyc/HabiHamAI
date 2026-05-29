@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import { SegmentTab, SegmentTabs } from "./shared/ui/SegmentTabs";
 
 function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const topbarRef = useRef(null);
-  const sidebarTabs = ["workouts", "progress", "tracking"];
+  const sidebarTabs = [
+    { id: "workouts", label: "Тренировки" },
+    { id: "progress", label: "Мой прогресс" },
+    { id: "tracking", label: "Трекинг" },
+  ];
   const topbarTabs = [
-    "profile",
-    ...(hasAiAccess ? ["ai"] : []),
-    ...(isAdmin ? ["admin"] : [])
+    { id: "profile", label: "Профиль" },
+    ...(hasAiAccess ? [{ id: "ai", label: "AI помощник" }] : []),
+    ...(isAdmin ? [{ id: "admin", label: "Админ" }] : []),
   ];
 
   useEffect(() => {
@@ -75,24 +80,21 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
           </button>
           <div className="dashboard-topbar-brand">HabiHamAI</div>
         </div>
-        <nav className="dashboard-topbar-links" aria-label="Навигация в верхней панели">
-          {topbarTabs.map((id) => (
-            <button
+        <SegmentTabs
+          variant="compact"
+          className="dashboard-topbar-links"
+          ariaLabel="Навигация в верхней панели"
+        >
+          {topbarTabs.map(({ id, label }) => (
+            <SegmentTab
               key={id}
-              type="button"
-              className={`topbar-nav-item ${tab === id ? "active" : ""}`}
+              active={tab === id}
               onClick={() => onTabChange(id)}
             >
-              {id === "ai"
-                ? "AI помощник"
-                : id === "profile"
-                  ? "Профиль"
-                  : id === "progress"
-                    ? "Мой прогресс"
-                    : "Админ"}
-            </button>
+              {label}
+            </SegmentTab>
           ))}
-        </nav>
+        </SegmentTabs>
         <div className="topbar-right">
           <div className="topbar-user">
             <div className="sidebar-avatar topbar-avatar">{(currentUserName || "U").charAt(0).toUpperCase()}</div>
@@ -131,24 +133,21 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
             ×
           </button>
         </div>
-        <nav className="sidebar-nav">
-          {sidebarTabs.map((id) => (
-            <button
+        <SegmentTabs
+          variant="sidebar"
+          className="sidebar-nav"
+          ariaLabel="Основные разделы"
+        >
+          {sidebarTabs.map(({ id, label }) => (
+            <SegmentTab
               key={id}
-              type="button"
-              className={`sidebar-nav-item ${tab === id ? "active" : ""}`}
+              active={tab === id}
               onClick={() => handleSidebarTabChange(id)}
             >
-              {id === "workouts"
-                ? "Тренировки"
-                : id === "progress"
-                  ? "Мой прогресс"
-                  : id === "tracking"
-                    ? "Трекинг"
-                    : id}
-            </button>
+              {label}
+            </SegmentTab>
           ))}
-        </nav>
+        </SegmentTabs>
       </aside>
     </>
   );

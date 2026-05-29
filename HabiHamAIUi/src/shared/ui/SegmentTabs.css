@@ -1,0 +1,231 @@
+/* Уровень 1 — основные вкладки */
+.segment-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  margin: 12px 0 16px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.segment-tabs--primary {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.segment-tabs--compact {
+  width: auto;
+  margin: 0;
+  flex-wrap: nowrap;
+}
+
+.segment-tabs--sidebar {
+  flex-direction: column;
+  max-width: none;
+  margin: 0;
+  padding: 6px;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+}
+
+.segment-tabs--narrow {
+  max-width: 360px;
+}
+
+.segment-tab {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.segment-tabs--primary .segment-tab {
+  flex: 1 1 auto;
+  min-width: max(120px, 0px);
+}
+
+.segment-tabs--compact .segment-tab {
+  flex: 0 1 auto;
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.segment-tabs--sidebar .segment-tab {
+  flex: none;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.segment-tab:hover {
+  color: #d8f5e3;
+  background: rgba(46, 164, 99, 0.12);
+  filter: none;
+  box-shadow: none;
+}
+
+.segment-tab.active {
+  background: linear-gradient(180deg, #2ea463, #268954);
+  color: #f3fff8;
+  box-shadow: 0 2px 10px rgba(46, 164, 99, 0.28);
+}
+
+.segment-tabs--sidebar .segment-tab.active {
+  box-shadow: none;
+}
+
+.segment-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+/* Уровень 2–3 — вложенные подпункты */
+.app-nav-group {
+  margin: -4px 0 16px;
+  padding: 10px 12px 12px 14px;
+  border-left: 3px solid rgba(46, 164, 99, 0.55);
+  border-radius: 0 10px 10px 0;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.app-nav-group--nested {
+  margin-top: -8px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left-color: rgba(157, 194, 169, 0.45);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.app-nav-group__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7fa892;
+}
+
+.app-subnav-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.app-subnav-row--secondary {
+  border-bottom: 1px solid var(--panel-border);
+  gap: 0;
+}
+
+.app-subnav {
+  width: auto;
+  margin-top: 0;
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 1.25;
+  box-shadow: none;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.app-subnav--secondary {
+  padding: 9px 14px 10px;
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.app-subnav--secondary:hover {
+  color: #d8f5e3;
+  background: rgba(46, 164, 99, 0.08);
+  filter: none;
+  box-shadow: none;
+}
+
+.app-subnav--secondary.is-active {
+  color: #ecfdf5;
+  border-bottom-color: var(--primary);
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-subnav-row--tertiary {
+  gap: 6px;
+}
+
+.app-subnav--tertiary {
+  padding: 7px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-subnav--tertiary:hover {
+  color: #d8f5e3;
+  border-color: #4f8c66;
+  background: rgba(46, 164, 99, 0.1);
+  filter: none;
+  box-shadow: none;
+}
+
+.app-subnav--tertiary.is-active {
+  color: #e8fff0;
+  border-color: var(--primary);
+  background: rgba(46, 164, 99, 0.22);
+  box-shadow: none;
+}
+
+.app-subnav:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+@media (max-width: 860px) {
+  .segment-tabs--primary .segment-tab {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+
+  .app-nav-group--nested {
+    margin-left: 8px;
+  }
+
+  .app-subnav-row--secondary {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-subnav--secondary {
+    flex-shrink: 0;
+  }
+}

@@ -107,136 +107,6 @@ h1 {
   align-items: center;
 }
 
-.top-nav-tab {
-  width: auto;
-  margin-top: 0;
-  padding: 8px 14px;
-  border: 1px solid #3d6a4f;
-  background: #1b2b20;
-  color: #c6f5d6;
-  border-radius: 999px;
-  box-shadow: none;
-}
-
-.top-nav-tab:hover {
-  box-shadow: none;
-  filter: brightness(1.06);
-}
-
-.top-nav-tab.active {
-  background: linear-gradient(180deg, #2ea463, #268954);
-  color: #f3fff8;
-}
-
-/* Вкладки тренировок — лёгкие отличия оттенка */
-.top-nav-tab--strength {
-  border-color: #3d6a4f;
-  background: #1b2b20;
-  color: #c6f5d6;
-}
-
-.top-nav-tab--strength.active {
-  background: linear-gradient(180deg, #2ea463, #268954);
-  color: #f3fff8;
-  border-color: #3f9f6a;
-}
-
-.top-nav-tab--ai-trainer {
-  border-color: #4a4a68;
-  background: #1f1f2b;
-  color: #d6d6f0;
-}
-
-.top-nav-tab--ai-trainer.active {
-  background: linear-gradient(180deg, #5a5a9e, #4f4f8f);
-  color: #f3f3ff;
-  border-color: #6a6ab0;
-}
-
-.top-nav-tab--weekly-reviews {
-  border-color: #5a4a3d;
-  background: #2a221c;
-  color: #f0e6dc;
-}
-
-.top-nav-tab--weekly-reviews.active {
-  background: linear-gradient(180deg, #9a7a4a, #7a6038);
-  color: #fffaf3;
-  border-color: #b8925a;
-}
-
-.top-nav-tab--bike {
-  border-color: #3d5f6a;
-  background: #1b262b;
-  color: #c6e8f5;
-}
-
-.top-nav-tab--bike.active {
-  background: linear-gradient(180deg, #2e8ea4, #267f94);
-  color: #f3fbff;
-  border-color: #3f96a8;
-}
-
-.top-nav-tab--my-workout {
-  border-color: #4a6640;
-  background: #21281c;
-  color: #d8f0c8;
-}
-
-.top-nav-tab--my-workout.active {
-  background: linear-gradient(180deg, #6a9e38, #5d8f30);
-  color: #f6fff0;
-  border-color: #7aad48;
-}
-
-.top-nav-tab--history {
-  border-color: #3d5868;
-  background: #1b242b;
-  color: #c6ddf5;
-}
-
-.top-nav-tab--history.active {
-  background: linear-gradient(180deg, #2e7aa4, #266d94);
-  color: #f3f9ff;
-  border-color: #3f8aa8;
-}
-
-.top-nav-tab--manage {
-  border-color: #3d6860;
-  background: #1b2b28;
-  color: #c6f5ec;
-}
-
-.top-nav-tab--manage.active {
-  background: linear-gradient(180deg, #2e9e84, #268f76);
-  color: #f3fffa;
-  border-color: #3f9f88;
-}
-
-.top-nav-tab--programs {
-  border-color: #3a644f;
-  background: #1a2922;
-  color: #c0f0d4;
-}
-
-.top-nav-tab--programs.active {
-  background: linear-gradient(180deg, #289e5c, #228f52);
-  color: #f0fff6;
-  border-color: #3a9970;
-}
-
-.top-nav-tab--exercises {
-  border-color: #3d6458;
-  background: #1b2a26;
-  color: #c4f5dc;
-}
-
-.top-nav-tab--exercises.active {
-  background: linear-gradient(180deg, #30a468, #28965e);
-  color: #f2fff7;
-  border-color: #40a878;
-}
-
 .user-chip {
   display: inline-flex;
   align-items: center;
@@ -454,71 +324,6 @@ button:active {
   gap: 10px;
 }
 
-.tracking-tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-  width: 100%;
-  max-width: 360px;
-  margin: 12px 0 16px;
-  padding: 4px;
-  border-radius: 12px;
-  border: 1px solid var(--panel-border);
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.tracking-tab {
-  flex: 1;
-  width: auto;
-  min-width: 0;
-  margin-top: 0;
-  padding: 10px 16px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.25;
-  text-align: center;
-  cursor: pointer;
-  box-shadow: none;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
-}
-
-.tracking-tab:hover {
-  color: #d8f5e3;
-  background: rgba(46, 164, 99, 0.12);
-  filter: none;
-  box-shadow: none;
-}
-
-.tracking-tab.active {
-  background: linear-gradient(180deg, #2ea463, #268954);
-  color: #f3fff8;
-  box-shadow: 0 2px 10px rgba(46, 164, 99, 0.28);
-}
-
-.tracking-tab:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--primary-soft);
-}
-
-.workouts-subtabs {
-  display: flex;
-  gap: 8px;
-  margin: 10px 0;
-  flex-wrap: wrap;
-}
-
-.workouts-subtabs-nested {
-  margin-top: 0;
-  padding-left: 4px;
-  border-left: 2px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
-}
-
 .filter-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -554,59 +359,6 @@ button:active {
   border-radius: 12px;
   padding: 12px;
   color: var(--muted);
-}
-
-.category-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.category-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: auto;
-  margin-top: 0;
-  padding: 8px 12px;
-  border: 1px solid #3d6a4f;
-  border-radius: 999px;
-  background: #1b2b20;
-  color: #c6f5d6;
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.category-tab:hover {
-  filter: brightness(1.06);
-}
-
-.category-tab.active {
-  background: linear-gradient(180deg, #2ea463, #268954);
-  border-color: #3f9f6a;
-  color: #f3fff8;
-}
-
-.category-tab__label {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.category-tab__count {
-  flex-shrink: 0;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.2);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.category-tab.active .category-tab__count {
-  background: rgba(0, 0, 0, 0.18);
 }
 
 .category-group__header {
@@ -1407,11 +1159,6 @@ pre {
     width: 100%;
   }
 
-  .top-nav-tab {
-    flex: 1;
-    text-align: center;
-  }
-
   .top-nav-right {
     width: 100%;
     justify-content: space-between;
@@ -1533,25 +1280,14 @@ body {
   font-family: "Segoe Script", "Brush Script MT", cursive;
 }
 
-.dashboard-topbar-links {
-  display: flex;
-  gap: 8px;
-}
-
-.topbar-nav-item {
+.dashboard-topbar-links.segment-tabs {
   width: auto;
   margin: 0;
-  padding: 7px 12px;
-  border-radius: 999px;
-  border: 1px solid #3d6a4f;
-  background: #1b2b20;
-  color: #c6f5d6;
-  box-shadow: none;
-}
-
-.topbar-nav-item.active {
-  background: linear-gradient(180deg, #2ea463, #268954);
-  color: #f3fff8;
+  padding: 0;
+  border: none;
+  background: transparent;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .topbar-right {
@@ -1702,37 +1438,15 @@ body {
   filter: none;
 }
 
-.sidebar-nav {
-  display: grid;
-  gap: 2px;
+.sidebar-nav.segment-tabs {
+  flex: 1;
+  min-height: 0;
   padding: 10px 8px;
+  overflow-y: auto;
 }
 
 .sidebar-drawer-head {
   display: none;
-}
-
-.sidebar-nav-item {
-  text-align: left;
-  width: 100%;
-  margin: 0;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #eef1ff;
-  padding: 10px 12px;
-  box-shadow: none;
-  font-weight: 500;
-}
-
-.sidebar-nav-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: none;
-}
-
-.sidebar-nav-item.active {
-  background: rgba(46, 164, 99, 0.3);
-  color: #dcffea;
 }
 
 .sidebar-footer {
@@ -1943,30 +1657,22 @@ button {
     box-shadow: none;
   }
 
-  .sidebar-nav {
-    display: grid;
-    gap: 2px;
+  .sidebar-nav.segment-tabs {
     padding: 10px 8px;
     overflow: visible;
-  }
-
-  .sidebar-nav-item {
-    width: 100%;
-    text-align: left;
-    white-space: normal;
   }
 
   .dashboard-topbar-brand {
     font-size: 24px;
   }
 
-  .dashboard-topbar-links {
-    gap: 6px;
+  .dashboard-topbar-links.segment-tabs {
+    gap: 4px;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
 
-  .topbar-nav-item {
+  .dashboard-topbar-links .segment-tab {
     padding: 6px 10px;
     font-size: 12px;
   }
@@ -2058,7 +1764,7 @@ button {
     align-items: stretch;
   }
 
-  .tracking-tabs {
+  .segment-tabs--narrow {
     max-width: none;
   }
 
