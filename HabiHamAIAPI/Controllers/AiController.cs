@@ -33,6 +33,10 @@ public sealed class AiController : ControllerBase
     public Task<IActionResult> GetWeeklyReview(Guid reviewId, CancellationToken cancellationToken) =>
         _service.GetWeeklyReviewAsync(User, reviewId, cancellationToken);
 
+    [HttpDelete("trainer/weekly-reviews/{reviewId:guid}")]
+    public Task<IActionResult> DeleteWeeklyReview(Guid reviewId, CancellationToken cancellationToken) =>
+        _service.DeleteWeeklyReviewAsync(User, reviewId, cancellationToken);
+
     [HttpPost("trainer/weekly-reviews/import")]
     public Task<IActionResult> ImportWeeklyReview([FromBody] ImportWeeklyTrainingReviewRequest request, CancellationToken cancellationToken) =>
         _service.ImportWeeklyReviewAsync(User, request, cancellationToken);

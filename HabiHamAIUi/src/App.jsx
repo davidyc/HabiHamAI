@@ -194,6 +194,8 @@ function AppContent() {
   const [weeklyReviewModalLoading, setWeeklyReviewModalLoading] =
     useState(false);
   const [weeklyReviewGenerating, setWeeklyReviewGenerating] = useState(false);
+  const [pendingDeleteWeeklyReview, setPendingDeleteWeeklyReview] =
+    useState(null);
   const [workoutSessions, setWorkoutSessions] = useState([]);
   const [workoutsSubTab, setWorkoutsSubTab] = useState('strength');
   const [strengthSubTab, setStrengthSubTab] = useState('manage');
@@ -668,6 +670,38 @@ function AppContent() {
     setIsWeeklyReviewModalOpen(false);
     setSelectedWeeklyReview(null);
     setWeeklyReviewModalLoading(false);
+  }
+
+  function openDeleteWeeklyReviewModal(review) {
+    if (!review?.id) return;
+    setPendingDeleteWeeklyReview({
+      id: review.id,
+      periodFrom: review.periodFrom,
+      periodTo: review.periodTo,
+    });
+  }
+
+  async function confirmDeleteWeeklyReview() {
+    const reviewId = pendingDeleteWeeklyReview?.id;
+    if (!aiToken || !reviewId) return;
+
+    const result = await request(
+      'DELETE',
+      `/ai/trainer/weekly-reviews/${reviewId}`,
+      null,
+      aiToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+
+    setPendingDeleteWeeklyReview(null);
+    if (selectedWeeklyReview?.id === reviewId) {
+      closeWeeklyReviewModal();
+    }
+    setWeeklyTrainingReviews((prev) =>
+      prev.filter((x) => x.id !== reviewId),
+    );
+    await loadWeeklyTrainingReviews(aiToken);
   }
 
   function resolveAssistantIdForTrainerChat() {
@@ -4095,15 +4129,27 @@ function AppContent() {
                                       {review.preview}
                                     </p>
                                   ) : null}
-                                  <button
-                                    type="button"
-                                    className="ghost-btn"
-                                    onClick={() =>
-                                      openWeeklyReviewModal(review.id)
-                                    }
-                                  >
-                                    Читать полностью
-                                  </button>
+                                  <div className="row">
+                                    <button
+                                      type="button"
+                                      className="ghost-btn"
+                                      onClick={() =>
+                                        openWeeklyReviewModal(review.id)
+                                      }
+                                    >
+                                      Читать полностью
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="danger-btn danger-btn--icon"
+                                      onClick={() =>
+                                        openDeleteWeeklyReviewModal(review)
+                                      }
+                                      title="Удалить обзор"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
                                 </article>
                               ))}
                             </div>
@@ -4150,9 +4196,55 @@ function AppContent() {
                                     >
                                       Закрыть
                                     </button>
+                                    <button
+                                      type="button"
+                                      className="danger-btn danger-btn--icon"
+                                      onClick={() =>
+                                        openDeleteWeeklyReviewModal(
+                                          selectedWeeklyReview,
+                                        )
+                                      }
+                                      title="Удалить обзор"
+                                    >
+                                      ×
+                                    </button>
                                   </div>
                                 </>
                               ) : null}
+                            </ModalShell>
+
+                            <ModalShell
+                              open={Boolean(pendingDeleteWeeklyReview)}
+                              onClose={() => setPendingDeleteWeeklyReview(null)}
+                            >
+                              <h3>Удалить обзор</h3>
+                              <p className="subtitle">
+                                Удалить обзор за период{' '}
+                                <strong>
+                                  {pendingDeleteWeeklyReview?.periodFrom} —{' '}
+                                  {pendingDeleteWeeklyReview?.periodTo}
+                                </strong>
+                                ? Это действие нельзя отменить.
+                              </p>
+                              <div className="row">
+                                <button
+                                  type="button"
+                                  className="danger-btn danger-btn--icon"
+                                  onClick={() => void confirmDeleteWeeklyReview()}
+                                  title="Удалить"
+                                >
+                                  ×
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-btn"
+                                  onClick={() =>
+                                    setPendingDeleteWeeklyReview(null)
+                                  }
+                                >
+                                  Отмена
+                                </button>
+                              </div>
                             </ModalShell>
                           </div>
                         )}

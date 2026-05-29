@@ -408,6 +408,30 @@ public sealed class AiUserService : IAiUserService
         });
     }
 
+    public async Task<IActionResult> DeleteWeeklyReviewAsync(
+        ClaimsPrincipal principal,
+        Guid reviewId,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await ResolveCurrentUserAsync(principal, cancellationToken);
+        if (currentUser is null)
+        {
+            return new UnauthorizedObjectResult(new { message = "User not found." });
+        }
+
+        var row = await _dbContext.UserWeeklyTrainingReviews
+            .FirstOrDefaultAsync(x => x.Id == reviewId && x.UserId == currentUser.Id, cancellationToken);
+
+        if (row is null)
+        {
+            return new NotFoundObjectResult(new { message = "Review not found." });
+        }
+
+        _dbContext.UserWeeklyTrainingReviews.Remove(row);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return new OkObjectResult(new { message = "Review deleted." });
+    }
+
     public async Task<IActionResult> ImportWeeklyReviewAsync(
         ClaimsPrincipal principal,
         ImportWeeklyTrainingReviewRequest request,

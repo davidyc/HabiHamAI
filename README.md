@@ -116,6 +116,7 @@
 | POST   | `/ai/trainer/weekly-review`               | Обзор за период (`days`, `endingOn`, `assistantId`). По умолчанию `writeToDialog: false` — только БД; при `true` дублируется в чат. Ответ: `reviewId`, `response`, `cached`, `period`. |
 | GET    | `/ai/trainer/weekly-reviews`              | Список сохранённых обзоров пользователя (период, превью текста). |
 | GET    | `/ai/trainer/weekly-reviews/{reviewId}`   | Полный текст обзора по id. |
+| DELETE | `/ai/trainer/weekly-reviews/{reviewId}`   | Удалить сохранённый обзор. |
 | GET    | `/ai/dialogs`                             | Список диалогов.                                                                                       |
 | GET    | `/ai/dialogs/{dialogId}/messages`         | Сообщения диалога.                                                                                     |
 | POST   | `/ai/dialogs`                             | Создать диалог.                                                                                        |
