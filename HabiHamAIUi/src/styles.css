@@ -1924,6 +1924,28 @@ body {
   list-style: none;
 }
 
+.role-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.role-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.role-checkbox input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
 .topbar-user {
   display: flex;
   align-items: center;

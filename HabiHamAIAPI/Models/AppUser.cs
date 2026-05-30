@@ -7,7 +7,7 @@ public sealed class AppUser
     public long? TelegramChatId { get; set; }
     public string Username { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
-    public AppUserRole Role { get; set; } = AppUserRole.User;
+    public List<AppUserRoleAssignment> RoleAssignments { get; set; } = [];
     public DateTime CreatedAtUtc { get; set; }
     public DateOnly? BirthDate { get; set; }
     public decimal? HeightCm { get; set; }

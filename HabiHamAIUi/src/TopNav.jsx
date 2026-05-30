@@ -1,21 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { SegmentTab, SegmentTabs } from "./shared/ui/SegmentTabs";
 
-function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLogout }) {
+function TopNav({
+  tab,
+  currentUserName,
+  sidebarTabs = [],
+  accountMenuItems = [],
+  onTabChange,
+  onLogout,
+}) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const topbarRef = useRef(null);
   const userMenuRef = useRef(null);
-  const sidebarTabs = [
-    { id: "workouts", label: "Тренировки" },
-    { id: "progress", label: "Мой прогресс" },
-    { id: "tracking", label: "Трекинг" },
-  ];
-  const accountMenuItems = [
-    { id: "profile", label: "Профиль" },
-    ...(hasAiAccess ? [{ id: "ai", label: "AI помощник" }] : []),
-    ...(isAdmin ? [{ id: "admin", label: "Админ" }] : []),
-  ];
 
   useEffect(() => {
     const topbar = topbarRef.current;

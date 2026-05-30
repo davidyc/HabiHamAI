@@ -3,6 +3,7 @@ using System;
 using HabiHamAIAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace HabiHamAIAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260530130246_AppRolesCatalog")]
+    partial class AppRolesCatalog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -139,55 +142,6 @@ namespace HabiHamAIAPI.Migrations
                     b.ToTable("ai_assistant_field_definitions", (string)null);
                 });
 
-            modelBuilder.Entity("HabiHamAIAPI.Models.AppPermission", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("category");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("code");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsSystem")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("is_system");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("label");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("SortOrder");
-
-                    b.ToTable("app_permissions", (string)null);
-                });
-
             modelBuilder.Entity("HabiHamAIAPI.Models.AppRole", b =>
                 {
                     b.Property<Guid>("Id")
@@ -243,25 +197,6 @@ namespace HabiHamAIAPI.Migrations
                     b.HasIndex("SortOrder");
 
                     b.ToTable("app_roles", (string)null);
-                });
-
-            modelBuilder.Entity("HabiHamAIAPI.Models.AppRolePermission", b =>
-                {
-                    b.Property<string>("RoleName")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("role_name");
-
-                    b.Property<string>("PermissionCode")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("permission_code");
-
-                    b.HasKey("RoleName", "PermissionCode");
-
-                    b.HasIndex("PermissionCode");
-
-                    b.ToTable("app_role_permissions", (string)null);
                 });
 
             modelBuilder.Entity("HabiHamAIAPI.Models.AppUser", b =>
@@ -1041,27 +976,6 @@ namespace HabiHamAIAPI.Migrations
                         .IsRequired();
 
                     b.Navigation("AiAssistant");
-                });
-
-            modelBuilder.Entity("HabiHamAIAPI.Models.AppRolePermission", b =>
-                {
-                    b.HasOne("HabiHamAIAPI.Models.AppPermission", "Permission")
-                        .WithMany()
-                        .HasForeignKey("PermissionCode")
-                        .HasPrincipalKey("Code")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("HabiHamAIAPI.Models.AppRole", "Role")
-                        .WithMany()
-                        .HasForeignKey("RoleName")
-                        .HasPrincipalKey("Name")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Permission");
-
-                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("HabiHamAIAPI.Models.AppUser", b =>

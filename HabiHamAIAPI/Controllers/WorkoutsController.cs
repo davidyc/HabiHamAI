@@ -1,13 +1,13 @@
+using HabiHamAIAPI.Authorization;
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HabiHamAIAPI.Controllers;
 
 [ApiController]
 [Route("users/me/workouts")]
-[Authorize]
+[RequirePermission(AppPermissionCatalog.Workouts)]
 public sealed class WorkoutsController : ControllerBase
 {
     private readonly IWorkoutsService _service;

@@ -11,15 +11,18 @@ public sealed class AuthService : IAuthService
     private readonly AppDbContext _dbContext;
     private readonly IPasswordHasher<AppUser> _passwordHasher;
     private readonly ITokenService _tokenService;
+    private readonly IAppPermissionService _permissionService;
 
     public AuthService(
         AppDbContext dbContext,
         IPasswordHasher<AppUser> passwordHasher,
-        ITokenService tokenService)
+        ITokenService tokenService,
+        IAppPermissionService permissionService)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
+        _permissionService = permissionService;
     }
 
     public async Task<IActionResult> LoginAsync(LoginRequest request)
@@ -30,7 +33,9 @@ public sealed class AuthService : IAuthService
         }
 
         var normalizedUsername = request.Username.Trim().ToLowerInvariant();
-        var user = await _dbContext.Users.FirstOrDefaultAsync(x => x.Username == normalizedUsername);
+        var user = await _dbContext.Users
+            .Include(x => x.RoleAssignments)
+            .FirstOrDefaultAsync(x => x.Username == normalizedUsername);
         if (user is null)
         {
             return new UnauthorizedObjectResult(new { message = "Invalid credentials." });
@@ -42,8 +47,17 @@ public sealed class AuthService : IAuthService
             return new UnauthorizedObjectResult(new { message = "Invalid credentials." });
         }
 
-        var token = _tokenService.GenerateToken(user.Username, user.Role);
-        return new OkObjectResult(new { accessToken = token, tokenType = "Bearer" });
+        var permissions = await _permissionService.ResolvePermissionsForUserAsync(user);
+        var token = _tokenService.GenerateToken(
+            user.Username,
+            AppUserRoleHelper.GetRoles(user),
+            permissions);
+        return new OkObjectResult(new
+        {
+            accessToken = token,
+            tokenType = "Bearer",
+            permissions,
+        });
     }
 
     public async Task<IActionResult> RegisterAsync(RegisterRequest request)
@@ -69,14 +83,18 @@ public sealed class AuthService : IAuthService
         {
             Id = Guid.NewGuid(),
             Username = normalizedUsername,
-            Role = AppUserRole.User,
             CreatedAtUtc = DateTime.UtcNow
         };
+        AppUserRoleHelper.SetRoles(user, [AppUserRoleHelper.DefaultRoleName]);
         user.PasswordHash = _passwordHasher.HashPassword(user, request.Password);
 
         _dbContext.Users.Add(user);
         await _dbContext.SaveChangesAsync();
 
-        return new OkObjectResult(new { message = "User created.", role = user.Role.ToString() });
+        return new OkObjectResult(new
+        {
+            message = "User created.",
+            roles = AppUserRoleHelper.GetRoleNames(user),
+        });
     }
 }

@@ -1,13 +1,13 @@
+using HabiHamAIAPI.Authorization;
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Services.Ai;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HabiHamAIAPI.Controllers;
 
 [ApiController]
 [Route("admin/ai-assistants")]
-[Authorize(Roles = "Admin")]
+[RequirePermission(AppPermissionCatalog.AdminAiAssistants)]
 public sealed class AdminAiAssistantsController : ControllerBase
 {
     private readonly IAdminAiAssistantsService _service;

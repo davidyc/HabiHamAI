@@ -21,6 +21,7 @@ public sealed class AdminUsersService : IAdminUsersService
     {
         var users = await _dbContext.Users
             .AsNoTracking()
+            .Include(x => x.RoleAssignments)
             .OrderBy(x => x.CreatedAtUtc)
             .Select(MapToResponseExpression())
             .ToListAsync();
@@ -32,6 +33,7 @@ public sealed class AdminUsersService : IAdminUsersService
     {
         var user = await _dbContext.Users
             .AsNoTracking()
+            .Include(x => x.RoleAssignments)
             .Where(x => x.Id == id)
             .Select(MapToResponseExpression())
             .FirstOrDefaultAsync();
@@ -53,10 +55,14 @@ public sealed class AdminUsersService : IAdminUsersService
             return new BadRequestObjectResult(new { message = "Password must be at least 6 characters." });
         }
 
-        if (!Enum.TryParse<AppUserRole>(request.Role, true, out var role))
+        var roleNames = AppUserRoleHelper.ResolveRoleNamesFromRequest(request.Roles, request.Role).ToList();
+        var validationError = await ValidateRoleNamesAsync(roleNames);
+        if (validationError is not null)
         {
-            return new BadRequestObjectResult(new { message = "Invalid role. Use Admin, User or AiUser." });
+            return validationError;
         }
+
+        var roles = AppUserRoleHelper.ParseRoleNames(roleNames);
 
         var normalizedUsername = request.Username.Trim().ToLowerInvariant();
         var exists = await _dbContext.Users.AnyAsync(x => x.Username == normalizedUsername);
@@ -69,9 +75,9 @@ public sealed class AdminUsersService : IAdminUsersService
         {
             Id = Guid.NewGuid(),
             Username = normalizedUsername,
-            Role = role,
             CreatedAtUtc = DateTime.UtcNow
         };
+        AppUserRoleHelper.SetRoles(user, roles);
         user.PasswordHash = _passwordHasher.HashPassword(user, request.Password);
 
         _dbContext.Users.Add(user);
@@ -87,12 +93,18 @@ public sealed class AdminUsersService : IAdminUsersService
             return new BadRequestObjectResult(new { message = "Username is required." });
         }
 
-        if (!Enum.TryParse<AppUserRole>(request.Role, true, out var role))
+        var roleNames = AppUserRoleHelper.ResolveRoleNamesFromRequest(request.Roles, request.Role).ToList();
+        var validationError = await ValidateRoleNamesAsync(roleNames);
+        if (validationError is not null)
         {
-            return new BadRequestObjectResult(new { message = "Invalid role. Use Admin, User or AiUser." });
+            return validationError;
         }
 
-        var user = await _dbContext.Users.FirstOrDefaultAsync(x => x.Id == id);
+        var roles = AppUserRoleHelper.ParseRoleNames(roleNames);
+
+        var user = await _dbContext.Users
+            .Include(x => x.RoleAssignments)
+            .FirstOrDefaultAsync(x => x.Id == id);
         if (user is null)
         {
             return new NotFoundObjectResult(new { message = "User not found." });
@@ -106,7 +118,7 @@ public sealed class AdminUsersService : IAdminUsersService
         }
 
         user.Username = normalizedUsername;
-        user.Role = role;
+        AppUserRoleHelper.SetRoles(user, roles);
         await _dbContext.SaveChangesAsync();
 
         return new OkObjectResult(MapToResponse(user));
@@ -150,13 +162,30 @@ public sealed class AdminUsersService : IAdminUsersService
         return new OkObjectResult(new { message = "User deleted." });
     }
 
+    private async Task<IActionResult?> ValidateRoleNamesAsync(IReadOnlyList<string> roleNames)
+    {
+        var activeRoles = await _dbContext.AppRoles
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .Select(x => x.Name)
+            .ToListAsync();
+
+        var activeSet = new HashSet<string>(activeRoles, StringComparer.OrdinalIgnoreCase);
+        if (roleNames.Any(name => !activeSet.Contains(name)))
+        {
+            return new BadRequestObjectResult(new { message = "One or more roles are invalid or inactive." });
+        }
+
+        return null;
+    }
+
     private static System.Linq.Expressions.Expression<Func<AppUser, AdminUserResponse>> MapToResponseExpression()
     {
         return user => new AdminUserResponse
         {
             Id = user.Id,
             Username = user.Username,
-            Role = user.Role.ToString(),
+            Roles = user.RoleAssignments.Select(r => r.RoleName).ToList(),
             CreatedAtUtc = user.CreatedAtUtc,
             BirthDate = user.BirthDate,
             HeightCm = user.HeightCm,
@@ -176,7 +205,7 @@ public sealed class AdminUsersService : IAdminUsersService
         {
             Id = user.Id,
             Username = user.Username,
-            Role = user.Role.ToString(),
+            Roles = AppUserRoleHelper.GetRoleNames(user).ToList(),
             CreatedAtUtc = user.CreatedAtUtc,
             BirthDate = user.BirthDate,
             HeightCm = user.HeightCm,

@@ -1,13 +1,13 @@
+using HabiHamAIAPI.Authorization;
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HabiHamAIAPI.Controllers;
 
 [ApiController]
 [Route("admin/dialogs")]
-[Authorize(Roles = "Admin")]
+[RequirePermission(AppPermissionCatalog.AdminDialogs)]
 public sealed class AdminDialogsController : ControllerBase
 {
     private readonly IAdminDialogsService _service;

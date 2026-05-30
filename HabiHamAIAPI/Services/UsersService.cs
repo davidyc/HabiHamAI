@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using System.Globalization;
+using HabiHamAIAPI.Authorization;
 using HabiHamAIAPI.Data;
 using HabiHamAIAPI.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -25,7 +26,7 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
             return new UnauthorizedObjectResult(new { message = "User is not authorized." });
         }
 
-        return new OkObjectResult(MapToProfileResponse(user));
+        return new OkObjectResult(MapToProfileResponse(user, GetPermissionsFromPrincipal(principal)));
     }
 
     public async Task<IActionResult> UpdateMyProfileAsync(ClaimsPrincipal principal, UpdateUserProfileRequest request)
@@ -63,7 +64,7 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
             CancellationToken.None);
 
         await _dbContext.SaveChangesAsync();
-        return new OkObjectResult(MapToProfileResponse(user));
+        return new OkObjectResult(MapToProfileResponse(user, GetPermissionsFromPrincipal(principal)));
     }
 
     public async Task<IActionResult> GetMyWeightTrackerAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
@@ -709,7 +710,9 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
         }
 
         var normalizedUsername = username.Trim().ToLowerInvariant();
-        return await _dbContext.Users.FirstOrDefaultAsync(x => x.Username == normalizedUsername, cancellationToken);
+        return await _dbContext.Users
+            .Include(x => x.RoleAssignments)
+            .FirstOrDefaultAsync(x => x.Username == normalizedUsername, cancellationToken);
     }
 
     private async Task SyncWeightWithTrackerAndAiAsync(
@@ -826,13 +829,14 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
         return normalized.Length <= maxLength ? normalized : normalized[..maxLength];
     }
 
-    private static UserProfileResponse MapToProfileResponse(AppUser user)
+    private static UserProfileResponse MapToProfileResponse(AppUser user, IReadOnlyList<string> permissions)
     {
         return new UserProfileResponse
         {
             Id = user.Id,
             Username = user.Username,
-            Role = user.Role.ToString(),
+            Roles = AppUserRoleHelper.GetRoleNames(user).ToList(),
+            Permissions = permissions.ToList(),
             CreatedAtUtc = user.CreatedAtUtc,
             BirthDate = user.BirthDate,
             HeightCm = user.HeightCm,
@@ -846,4 +850,15 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
             TelegramLinked = user.TelegramChatId.HasValue
         };
     }
+
+    private static IReadOnlyList<string> GetPermissionsFromPrincipal(ClaimsPrincipal principal) =>
+        principal.Claims
+            .Where(claim => string.Equals(
+                claim.Type,
+                PermissionAuthorizationHandler.PermissionClaimType,
+                StringComparison.OrdinalIgnoreCase))
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
 }

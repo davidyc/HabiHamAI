@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using HabiHamAIAPI.Authorization;
 using HabiHamAIAPI.Models;
 using Microsoft.IdentityModel.Tokens;
 
@@ -15,7 +16,7 @@ public sealed class TokenService : ITokenService
         _configuration = configuration;
     }
 
-    public string GenerateToken(string username, AppUserRole role)
+    public string GenerateToken(string username, IReadOnlyList<string> roles, IReadOnlyList<string> permissions)
     {
         var jwtSection = _configuration.GetSection("Jwt");
         var key = GetRequiredSetting("JWT_KEY", jwtSection["Key"], "Jwt:Key");
@@ -23,13 +24,39 @@ public sealed class TokenService : ITokenService
         var audience = GetRequiredSetting("JWT_AUDIENCE", jwtSection["Audience"], "Jwt:Audience");
         var expiresMinutes = int.TryParse(jwtSection["ExpiresMinutes"], out var value) ? value : 60;
 
-        var claims = new[]
+        var distinctRoles = roles
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (distinctRoles.Count == 0)
         {
-            new Claim(JwtRegisteredClaimNames.Sub, username),
-            new Claim(ClaimTypes.Name, username),
-            new Claim(ClaimTypes.Role, role.ToString()),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            distinctRoles = [AppUserRoleHelper.DefaultRoleName];
+        }
+
+        var distinctPermissions = permissions
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, username),
+            new(ClaimTypes.Name, username),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
+
+        foreach (var role in distinctRoles)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
+        }
+
+        foreach (var permission in distinctPermissions)
+        {
+            claims.Add(new Claim(PermissionAuthorizationHandler.PermissionClaimType, permission));
+        }
 
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),

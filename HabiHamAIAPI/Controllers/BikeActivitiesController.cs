@@ -1,12 +1,13 @@
+using HabiHamAIAPI.Authorization;
+using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HabiHamAIAPI.Controllers;
 
 [ApiController]
 [Route("users/me/bike-activities")]
-[Authorize]
+[RequirePermission(AppPermissionCatalog.Bike)]
 public sealed class BikeActivitiesController : ControllerBase
 {
     private readonly IBikeActivitiesService _service;

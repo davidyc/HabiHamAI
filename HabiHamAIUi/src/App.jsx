@@ -44,6 +44,49 @@ function AppContent() {
     from: getIsoDateDaysAgo(6),
     to: getTodayIsoDate(),
   });
+  const APP_PERMISSION = {
+    Workouts: 'app.workouts',
+    Bike: 'app.bike',
+    Progress: 'app.progress',
+    Habits: 'app.habits',
+    Todos: 'app.todos',
+    Profile: 'app.profile',
+    AiAssistant: 'ai.assistant',
+    AdminUsers: 'admin.users',
+    AdminRoles: 'admin.roles',
+    AdminCategories: 'admin.categories',
+    AdminProfiles: 'admin.profiles',
+    AdminAiAssistants: 'admin.ai_assistants',
+    AdminAiTestChat: 'admin.ai_test_chat',
+    AdminDialogs: 'admin.dialogs',
+  };
+  const ADMIN_SUBTAB_PERMISSION = {
+    'users-manage': APP_PERMISSION.AdminUsers,
+    roles: APP_PERMISSION.AdminRoles,
+    categories: APP_PERMISSION.AdminCategories,
+    'users-profiles': APP_PERMISSION.AdminProfiles,
+    'ai-assistants': APP_PERMISSION.AdminAiAssistants,
+    'ai-test-chat': APP_PERMISSION.AdminAiTestChat,
+    dialogs: APP_PERMISSION.AdminDialogs,
+  };
+  const PERMISSION_CATEGORY_LABELS = {
+    app: 'Приложение',
+    ai: 'AI',
+    admin: 'Админка',
+  };
+  const normalizeUserRoles = (source) => {
+    if (Array.isArray(source?.roles) && source.roles.length > 0) {
+      return source.roles.map((role) => String(role));
+    }
+    if (source?.role) {
+      return [String(source.role)];
+    }
+    return ['User'];
+  };
+  const userHasAnyRole = (roles, ...expected) => {
+    const set = new Set(roles.map((role) => String(role).toLowerCase()));
+    return expected.some((role) => set.has(String(role).toLowerCase()));
+  };
   const formatUserDisplayName = (firstName, lastName, loginFallback) => {
     const fullName = [firstName, lastName]
       .map((part) => String(part ?? '').trim())
@@ -184,7 +227,8 @@ function AppContent() {
   const [adminToken, setAdminToken] = useState('');
   const [aiToken, setAiToken] = useState('');
   const [currentUserName, setCurrentUserName] = useState('');
-  const [currentUserRole, setCurrentUserRole] = useState('');
+  const [currentUserRoles, setCurrentUserRoles] = useState([]);
+  const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
   const [errorView, setErrorView] = useState('Ошибок нет.');
 
   const [registerUsername, setRegisterUsername] = useState('user1');
@@ -225,6 +269,7 @@ function AppContent() {
   }
 
   const [progressSubTab, setProgressSubTab] = useState('weight-tracker');
+  const [adminSubTab, setAdminSubTab] = useState('users-manage');
   const [workoutExerciseCatalog, setWorkoutExerciseCatalog] = useState([]);
   const [selectedCatalogExerciseId, setSelectedCatalogExerciseId] =
     useState('');
@@ -315,7 +360,7 @@ function AppContent() {
   const [users, setUsers] = useState([]);
   const [adminCreateUsername, setAdminCreateUsername] = useState('');
   const [adminCreatePassword, setAdminCreatePassword] = useState('');
-  const [adminCreateRole, setAdminCreateRole] = useState('AiUser');
+  const [adminCreateRoles, setAdminCreateRoles] = useState(['AiUser']);
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -323,7 +368,7 @@ function AppContent() {
   const [selectedAdminUser, setSelectedAdminUser] = useState(null);
   const [adminManageUserId, setAdminManageUserId] = useState('');
   const [editUserName, setEditUserName] = useState('');
-  const [editUserRole, setEditUserRole] = useState('User');
+  const [editUserRoles, setEditUserRoles] = useState(['User']);
   const [newPasswordValue, setNewPasswordValue] = useState('');
   const [adminDialogUserId, setAdminDialogUserId] = useState('');
   const [adminDialogs, setAdminDialogs] = useState([]);
@@ -379,6 +424,21 @@ function AppContent() {
     sortOrder: 0,
   });
   const [pendingDeleteCategory, setPendingDeleteCategory] = useState(null);
+  const [adminRoles, setAdminRoles] = useState([]);
+  const [adminRoleModalKind, setAdminRoleModalKind] = useState(null);
+  const [adminRoleDraft, setAdminRoleDraft] = useState({
+    id: '',
+    name: '',
+    label: '',
+    description: '',
+    isActive: true,
+    sortOrder: 0,
+    isSystem: false,
+  });
+  const [pendingDeleteRole, setPendingDeleteRole] = useState(null);
+  const [adminPermissionsCatalog, setAdminPermissionsCatalog] = useState([]);
+  const [rolePermissionsModalRole, setRolePermissionsModalRole] = useState(null);
+  const [rolePermissionDraft, setRolePermissionDraft] = useState([]);
   const [pendingDeleteCatalogExerciseId, setPendingDeleteCatalogExerciseId] =
     useState(null);
   const [pendingDeleteWorkoutSessionId, setPendingDeleteWorkoutSessionId] =
@@ -530,10 +590,10 @@ function AppContent() {
     }
   }
 
-  function tryGetRoleFromToken(token) {
+  function tryGetRolesFromToken(token) {
     try {
       const payloadPart = token.split('.')[1];
-      if (!payloadPart) return '';
+      if (!payloadPart) return [];
       const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
       const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
       const payload = JSON.parse(window.atob(padded));
@@ -544,10 +604,37 @@ function AppContent() {
           'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
         ] ||
         '';
-      if (Array.isArray(rawRole)) return rawRole[0] || '';
-      return String(rawRole || '');
+      if (Array.isArray(rawRole)) {
+        return rawRole.map((role) => String(role)).filter(Boolean);
+      }
+      if (rawRole) return [String(rawRole)];
+      return [];
     } catch {
-      return '';
+      return [];
+    }
+  }
+
+  function tryGetPermissionsFromToken(token) {
+    try {
+      const payloadPart = token.split('.')[1];
+      if (!payloadPart) return [];
+      const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+      const payload = JSON.parse(window.atob(padded));
+      const raw =
+        payload.permission ||
+        payload.permissions ||
+        payload[
+          'http://schemas.microsoft.com/ws/2008/06/identity/claims/permission'
+        ] ||
+        '';
+      if (Array.isArray(raw)) {
+        return raw.map((item) => String(item)).filter(Boolean);
+      }
+      if (raw) return [String(raw)];
+      return [];
+    } catch {
+      return [];
     }
   }
 
@@ -621,11 +708,43 @@ function AppContent() {
       setAccessToken(token);
       setAdminToken(token);
       setAiToken(token);
-      const nextRole = tryGetRoleFromToken(token);
+      const nextRoles = tryGetRolesFromToken(token);
+      const nextPermissions = Array.isArray(result.data?.permissions)
+        ? result.data.permissions.map((item) => String(item))
+        : tryGetPermissionsFromToken(token);
       setCurrentUserName(tryGetUserNameFromToken(token) || username.trim());
-      setCurrentUserRole(nextRole);
-      setTab('workouts');
-      if (nextRole === 'Admin' || nextRole === 'AiUser') {
+      setCurrentUserRoles(nextRoles);
+      setCurrentUserPermissions(nextPermissions);
+      const defaultTab =
+        [
+          { id: 'workouts', permission: APP_PERMISSION.Workouts },
+          { id: 'bike', permission: APP_PERMISSION.Bike },
+          { id: 'progress', permission: APP_PERMISSION.Progress },
+          { id: 'habits', permission: APP_PERMISSION.Habits },
+          { id: 'todos', permission: APP_PERMISSION.Todos },
+          { id: 'profile', permission: APP_PERMISSION.Profile },
+          { id: 'ai', permission: APP_PERMISSION.AiAssistant },
+          { id: 'admin', permission: null },
+        ].find((item) => {
+          if (item.id === 'admin') {
+            return nextPermissions.some((perm) =>
+              String(perm).startsWith('admin.'),
+            );
+          }
+          return nextPermissions.some(
+            (perm) =>
+              String(perm).toLowerCase() ===
+              String(item.permission).toLowerCase(),
+          );
+        })?.id || 'profile';
+      setTab(defaultTab);
+      if (
+        nextPermissions.some(
+          (item) =>
+            String(item).toLowerCase() ===
+            APP_PERMISSION.AiAssistant.toLowerCase(),
+        )
+      ) {
         await loadDialogs(token);
         await loadAiAssistants(token);
       }
@@ -1353,6 +1472,151 @@ function AppContent() {
     }
   }
 
+  async function loadAdminRoles() {
+    if (!adminToken) return;
+    const result = await request('GET', '/admin/roles', null, adminToken);
+    handleResult(result);
+    if (!result.ok) return;
+    setAdminRoles(Array.isArray(result.data) ? result.data : []);
+  }
+
+  function openAdminRoleCreateModal() {
+    const nextSort = adminRoles.length
+      ? Math.max(...adminRoles.map((x) => x.sortOrder || 0)) + 1
+      : 1;
+    setAdminRoleDraft({
+      id: '',
+      name: '',
+      label: '',
+      description: '',
+      isActive: true,
+      sortOrder: nextSort,
+      isSystem: false,
+    });
+    setAdminRoleModalKind('create');
+  }
+
+  function openAdminRoleEditModal(role) {
+    if (!role) return;
+    setAdminRoleDraft({
+      id: role.id,
+      name: role.name || '',
+      label: role.label || '',
+      description: role.description || '',
+      isActive: Boolean(role.isActive),
+      sortOrder: Number(role.sortOrder) || 0,
+      isSystem: Boolean(role.isSystem),
+    });
+    setAdminRoleModalKind('edit');
+  }
+
+  async function submitAdminRoleModal() {
+    const label = String(adminRoleDraft.label ?? '').trim();
+    if (!label) return setErrorView('Укажи название роли.');
+    const body = {
+      label,
+      description: String(adminRoleDraft.description ?? '').trim() || null,
+      isActive: Boolean(adminRoleDraft.isActive),
+      sortOrder: Number(adminRoleDraft.sortOrder) || 0,
+    };
+    let r;
+    if (adminRoleModalKind === 'create') {
+      const name = String(adminRoleDraft.name ?? '').trim();
+      if (!name) return setErrorView('Укажи код роли (латиница, например Moderator).');
+      r = await request(
+        'POST',
+        '/admin/roles',
+        { ...body, name },
+        adminToken,
+      );
+    } else if (adminRoleModalKind === 'edit' && adminRoleDraft.id) {
+      r = await request(
+        'PUT',
+        `/admin/roles/${adminRoleDraft.id}`,
+        body,
+        adminToken,
+      );
+    } else {
+      return;
+    }
+    handleResult(r);
+    if (r.ok) {
+      setAdminRoleModalKind(null);
+      await loadAdminRoles();
+    }
+  }
+
+  async function confirmDeleteRole() {
+    if (!pendingDeleteRole?.id) return;
+    const r = await request(
+      'DELETE',
+      `/admin/roles/${pendingDeleteRole.id}`,
+      null,
+      adminToken,
+    );
+    handleResult(r);
+    if (r.ok) {
+      setPendingDeleteRole(null);
+      await loadAdminRoles();
+    }
+  }
+
+  async function loadAdminPermissionsCatalog() {
+    if (!adminToken) return;
+    const result = await request(
+      'GET',
+      '/admin/roles/permissions/catalog',
+      null,
+      adminToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    setAdminPermissionsCatalog(Array.isArray(result.data) ? result.data : []);
+  }
+
+  async function openRolePermissionsModal(role) {
+    if (!role?.id) return;
+    setRolePermissionsModalRole(role);
+    const result = await request(
+      'GET',
+      `/admin/roles/${role.id}/permissions`,
+      null,
+      adminToken,
+    );
+    handleResult(result);
+    if (!result.ok) {
+      setRolePermissionsModalRole(null);
+      return;
+    }
+    const codes = Array.isArray(result.data?.permissionCodes)
+      ? result.data.permissionCodes.map((item) => String(item))
+      : [];
+    setRolePermissionDraft(codes);
+  }
+
+  function toggleRolePermissionDraft(code, checked) {
+    setRolePermissionDraft((prev) => {
+      if (checked) {
+        return prev.includes(code) ? prev : [...prev, code];
+      }
+      return prev.filter((item) => item !== code);
+    });
+  }
+
+  async function submitRolePermissionsModal() {
+    if (!rolePermissionsModalRole?.id) return;
+    const result = await request(
+      'PUT',
+      `/admin/roles/${rolePermissionsModalRole.id}/permissions`,
+      { permissionCodes: rolePermissionDraft },
+      adminToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    setRolePermissionsModalRole(null);
+    setRolePermissionDraft([]);
+  }
+
   async function loadUsers() {
     const result = await request('GET', '/admin/users', null, adminToken);
     handleResult(result);
@@ -1392,10 +1656,20 @@ function AppContent() {
     setProfileLastName(profile.lastName || '');
     setProfileAiSummary(profile.aiSummary || '');
     setProfileTelegramLinked(Boolean(profile.telegramLinked));
+    if (Array.isArray(profile.permissions)) {
+      setCurrentUserPermissions(profile.permissions.map((item) => String(item)));
+    }
     await loadUserCategories(token);
-    await loadWeightTracker(token);
-    await loadHabitsOverview(token);
-    await loadTodos(token);
+    const perms = Array.isArray(profile.permissions)
+      ? profile.permissions.map((item) => String(item))
+      : currentUserPermissions;
+    const profileCan = (code) =>
+      perms.some(
+        (item) => String(item).toLowerCase() === String(code).toLowerCase(),
+      );
+    if (profileCan(APP_PERMISSION.Progress)) await loadWeightTracker(token);
+    if (profileCan(APP_PERMISSION.Habits)) await loadHabitsOverview(token);
+    if (profileCan(APP_PERMISSION.Todos)) await loadTodos(token);
   }
 
   async function loadUserCategories(token = accessToken) {
@@ -2982,7 +3256,7 @@ function AppContent() {
       {
         username: adminCreateUsername.trim(),
         password: adminCreatePassword,
-        role: adminCreateRole,
+        roles: adminCreateRoles,
       },
       adminToken,
     );
@@ -2990,7 +3264,7 @@ function AppContent() {
     if (result.ok) {
       setAdminCreateUsername('');
       setAdminCreatePassword('');
-      setAdminCreateRole('AiUser');
+      setAdminCreateRoles(['AiUser']);
       setIsCreateUserModalOpen(false);
       await loadUsers();
     }
@@ -3001,7 +3275,7 @@ function AppContent() {
     const result = await request(
       'PUT',
       `/admin/users/${selectedAdminUser.id}`,
-      { username: editUserName.trim(), role: editUserRole },
+      { username: editUserName.trim(), roles: editUserRoles },
       adminToken,
     );
     handleResult(result);
@@ -3048,7 +3322,7 @@ function AppContent() {
   function openEditModal(user) {
     setSelectedAdminUser(user);
     setEditUserName(user.username || '');
-    setEditUserRole(user.role || 'User');
+    setEditUserRoles(normalizeUserRoles(user));
     setIsEditUserModalOpen(true);
   }
 
@@ -3063,6 +3337,51 @@ function AppContent() {
     setIsDeleteModalOpen(true);
   }
 
+  const roleLabelsMap = useMemo(() => {
+    const map = {
+      User: 'Пользователь',
+      AiUser: 'AI',
+      Admin: 'Админ',
+    };
+    for (const row of adminRoles) {
+      map[row.name] = row.label || row.name;
+    }
+    return map;
+  }, [adminRoles]);
+
+  const userRoleOptions = useMemo(() => {
+    if (!adminRoles.length) {
+      return [
+        { value: 'User', label: 'Пользователь' },
+        { value: 'AiUser', label: 'AI-пользователь' },
+        { value: 'Admin', label: 'Администратор' },
+      ];
+    }
+    return [...adminRoles]
+      .filter((row) => row.isActive)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      .map((row) => ({ value: row.name, label: row.label || row.name }));
+  }, [adminRoles]);
+
+  const defaultUserRoleName = useMemo(() => {
+    if (adminRoles.some((row) => row.name === 'User' && row.isActive)) {
+      return 'User';
+    }
+    const first = adminRoles.find((row) => row.isActive);
+    return first?.name || 'User';
+  }, [adminRoles]);
+
+  const formatUserRolesLabel = (roles) =>
+    roles.map((role) => roleLabelsMap[role] || role).join(', ');
+
+  const toggleUserRoleSelection = (current, role, checked) => {
+    if (checked) {
+      return current.includes(role) ? current : [...current, role];
+    }
+    const next = current.filter((item) => item !== role);
+    return next.length > 0 ? next : [defaultUserRoleName];
+  };
+
   const dialogOptions = useMemo(
     () =>
       dialogs.map((d) => (
@@ -3076,10 +3395,10 @@ function AppContent() {
     () =>
       users.map((u) => (
         <option key={u.id} value={u.id}>
-          {u.username} ({u.role})
+          {u.username} ({formatUserRolesLabel(normalizeUserRoles(u))})
         </option>
       )),
-    [users],
+    [users, roleLabelsMap],
   );
   const adminDialogOptions = useMemo(
     () =>
@@ -3124,9 +3443,83 @@ function AppContent() {
   );
 
   const isLoggedIn = Boolean(accessToken);
-  const isAdmin = currentUserRole === 'Admin';
-  const hasAiAccess =
-    currentUserRole === 'Admin' || currentUserRole === 'AiUser';
+  const hasPermission = (code) =>
+    currentUserPermissions.some(
+      (item) => String(item).toLowerCase() === String(code).toLowerCase(),
+    );
+  const hasAdminAccess = currentUserPermissions.some((item) =>
+    String(item).startsWith('admin.'),
+  );
+  const hasAiAccess = hasPermission(APP_PERMISSION.AiAssistant);
+  const isAdmin = hasAdminAccess;
+
+  const sidebarNavTabs = useMemo(
+    () =>
+      [
+        { id: 'workouts', label: 'Силовые', permission: APP_PERMISSION.Workouts },
+        { id: 'bike', label: 'Вело', permission: APP_PERMISSION.Bike },
+        { id: 'progress', label: 'Мой прогресс', permission: APP_PERMISSION.Progress },
+        { id: 'habits', label: 'Привычки', permission: APP_PERMISSION.Habits },
+        { id: 'todos', label: 'Задачи', permission: APP_PERMISSION.Todos },
+      ].filter((item) => hasPermission(item.permission)),
+    [currentUserPermissions],
+  );
+
+  const accountNavItems = useMemo(
+    () =>
+      [
+        { id: 'profile', label: 'Профиль', permission: APP_PERMISSION.Profile },
+        { id: 'ai', label: 'AI помощник', permission: APP_PERMISSION.AiAssistant },
+        { id: 'admin', label: 'Админ', permission: null },
+      ].filter((item) => {
+        if (item.id === 'admin') return hasAdminAccess;
+        return hasPermission(item.permission);
+      }),
+    [currentUserPermissions, hasAdminAccess],
+  );
+
+  const visibleAdminSubTabs = useMemo(
+    () =>
+      Object.entries(ADMIN_SUBTAB_PERMISSION)
+        .filter(([, permission]) => hasPermission(permission))
+        .map(([id]) => id),
+    [currentUserPermissions],
+  );
+
+  useEffect(() => {
+    if (tab !== 'admin' || !hasAdminAccess) return;
+    if (
+      visibleAdminSubTabs.length > 0 &&
+      !visibleAdminSubTabs.includes(adminSubTab)
+    ) {
+      setAdminSubTab(visibleAdminSubTabs[0]);
+    }
+  }, [tab, hasAdminAccess, adminSubTab, visibleAdminSubTabs]);
+
+  const adminSubTabLabels = {
+    'users-manage': 'Учётные записи',
+    roles: 'Роли',
+    categories: 'Категории',
+    'users-profiles': 'Профили',
+    'ai-assistants': 'ИИ помощники',
+    'ai-test-chat': 'Тест чата',
+    dialogs: 'Диалоги',
+  };
+
+  const permissionsByCategory = useMemo(() => {
+    const grouped = {};
+    for (const row of adminPermissionsCatalog) {
+      const category = row.category || 'other';
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push(row);
+    }
+    for (const category of Object.keys(grouped)) {
+      grouped[category].sort(
+        (a, b) => (a.sortOrder || 0) - (b.sortOrder || 0),
+      );
+    }
+    return grouped;
+  }, [adminPermissionsCatalog]);
 
   const topbarDisplayName = useMemo(
     () =>
@@ -3198,14 +3591,9 @@ function AppContent() {
     loadWorkoutHistory();
   }, [tab, workoutsSubTab, strengthSubTab, historyDateFrom, historyDateTo]);
   useEffect(() => {
-    if (
-      tab !== 'workouts' ||
-      workoutsSubTab !== 'bike-activities' ||
-      !accessToken
-    )
-      return;
+    if (tab !== 'bike' || !accessToken) return;
     loadBikeActivities();
-  }, [tab, workoutsSubTab, accessToken, bikeDateFrom, bikeDateTo]);
+  }, [tab, accessToken, bikeDateFrom, bikeDateTo]);
   useEffect(() => {
     if (tab !== 'workouts' || !hasAiAccess || !aiToken) return;
     loadAiAssistants(aiToken);
@@ -3221,15 +3609,13 @@ function AppContent() {
     loadWeeklyTrainingReviews(aiToken);
   }, [tab, workoutsSubTab, aiToken]);
   useEffect(() => {
-    if (tab !== 'tracking' || !accessToken) return;
-    if (progressSubTab === 'habits') {
-      void loadHabitsOverview(accessToken);
-    }
-  }, [tab, progressSubTab, accessToken]);
+    if (tab !== 'habits' || !accessToken) return;
+    void loadHabitsOverview(accessToken);
+  }, [tab, accessToken]);
   useEffect(() => {
-    if (tab !== 'tracking' || progressSubTab !== 'todos' || !accessToken) return;
+    if (tab !== 'todos' || !accessToken) return;
     void loadTodos(accessToken);
-  }, [tab, progressSubTab, accessToken, todoFilterDateFrom, todoFilterDateTo]);
+  }, [tab, accessToken, todoFilterDateFrom, todoFilterDateTo]);
   useEffect(() => {
     if (tab !== 'workouts') return;
     if (
@@ -3462,12 +3848,12 @@ function AppContent() {
   ]);
 
   useEffect(() => {
-    if (tab !== 'tracking' || progressSubTab !== 'habits' || !accessToken) return;
+    if (tab !== 'habits' || !hasPermission(APP_PERMISSION.Habits) || !accessToken)
+      return;
     const habits = activeHabitsCategoryGroup?.items ?? [];
     void loadHabitsCategoryCheckins(habits, accessToken);
   }, [
     tab,
-    progressSubTab,
     accessToken,
     habitsCategoryTabKey,
     habitFilterDateFrom,
@@ -3796,26 +4182,39 @@ function AppContent() {
                 <TopNav
                   tab={tab}
                   currentUserName={topbarDisplayName}
-                  isAdmin={isAdmin}
-                  hasAiAccess={hasAiAccess}
+                  sidebarTabs={sidebarNavTabs}
+                  accountMenuItems={accountNavItems}
                   onTabChange={(id) => {
-                    if (id === 'admin' && !isAdmin) return;
+                    if (id === 'admin' && !hasAdminAccess) return;
                     if (id === 'ai' && !hasAiAccess) return;
+                    if (id === 'workouts' && !hasPermission(APP_PERMISSION.Workouts))
+                      return;
+                    if (id === 'bike' && !hasPermission(APP_PERMISSION.Bike))
+                      return;
+                    if (id === 'progress' && !hasPermission(APP_PERMISSION.Progress))
+                      return;
+                    if (id === 'habits' && !hasPermission(APP_PERMISSION.Habits))
+                      return;
+                    if (id === 'todos' && !hasPermission(APP_PERMISSION.Todos))
+                      return;
+                    if (id === 'profile' && !hasPermission(APP_PERMISSION.Profile))
+                      return;
                     setTab(id);
                     if (id === 'profile') {
                       loadMyProfile();
                     }
                     if (id === 'progress') {
-                      setProgressSubTab('weight-tracker');
                       loadMyProfile();
                     }
-                    if (id === 'tracking') {
-                      setProgressSubTab('habits');
+                    if (id === 'habits' || id === 'todos') {
                       loadMyProfile();
                     }
                     if (id === 'workouts') {
                       loadWorkoutSessions();
                       loadWorkoutExerciseCatalog();
+                    }
+                    if (id === 'bike') {
+                      loadBikeActivities();
                     }
                     if (id === 'ai') {
                       loadAiAssistants(aiToken);
@@ -3825,6 +4224,8 @@ function AppContent() {
                       loadAdminDialogs();
                       loadAdminAiAssistants();
                       loadAdminCategories();
+                      loadAdminRoles();
+                      loadAdminPermissionsCatalog();
                       if (hasAiAccess) loadAiAssistants(aiToken);
                     }
                   }}
@@ -3833,7 +4234,8 @@ function AppContent() {
                     setAdminToken('');
                     setAiToken('');
                     setCurrentUserName('');
-                    setCurrentUserRole('');
+                    setCurrentUserRoles([]);
+                    setCurrentUserPermissions([]);
                     setProfileBirthDate('');
                     setProfileHeightCm('');
                     setProfileWeightKg('');
@@ -4046,12 +4448,14 @@ function AppContent() {
                         variant="primary"
                         ariaLabel="Разделы тренировок"
                       >
+                        {hasPermission(APP_PERMISSION.Workouts) ? (
                         <SegmentTab
                           active={workoutsSubTab === 'strength'}
                           onClick={() => setWorkoutsSubTab('strength')}
                         >
                           Силовые тренировки
                         </SegmentTab>
+                        ) : null}
                         {showWorkoutAiTrainerTab ? (
                           <>
                             <SegmentTab
@@ -4070,15 +4474,10 @@ function AppContent() {
                             </SegmentTab>
                           </>
                         ) : null}
-                        <SegmentTab
-                          active={workoutsSubTab === 'bike-activities'}
-                          onClick={() => setWorkoutsSubTab('bike-activities')}
-                        >
-                          Велотренировки
-                        </SegmentTab>
                       </SegmentTabs>
 
-                      {workoutsSubTab === 'strength' && (
+                      {workoutsSubTab === 'strength' &&
+                        hasPermission(APP_PERMISSION.Workouts) && (
                         <SubNavGroup
                           label="Силовые тренировки"
                           ariaLabel="Подразделы силовых тренировок"
@@ -4409,6 +4808,7 @@ function AppContent() {
                         )}
 
                       {workoutsSubTab === 'strength' &&
+                        hasPermission(APP_PERMISSION.Workouts) &&
                         strengthSubTab === 'manage' && (
                           <SubNavGroup
                             label="Управление тренировкой"
@@ -4436,6 +4836,7 @@ function AppContent() {
                         )}
 
                       {workoutsSubTab === 'strength' &&
+                        hasPermission(APP_PERMISSION.Workouts) &&
                         strengthSubTab === 'manage' &&
                         workoutsManageSubTab === 'add' && (
                           <>
@@ -4520,6 +4921,7 @@ function AppContent() {
                         )}
 
                       {workoutsSubTab === 'strength' &&
+                        hasPermission(APP_PERMISSION.Workouts) &&
                         strengthSubTab === 'manage' &&
                         workoutsManageSubTab === 'exercises' && (
                           <>
@@ -4613,6 +5015,7 @@ function AppContent() {
                         )}
 
                       {workoutsSubTab === 'strength' &&
+                        hasPermission(APP_PERMISSION.Workouts) &&
                         strengthSubTab === 'my-workout' && (
                           <>
                             <label>Выбери программу</label>
@@ -4688,6 +5091,7 @@ function AppContent() {
                           </>
                         )}
                       {workoutsSubTab === 'strength' &&
+                        hasPermission(APP_PERMISSION.Workouts) &&
                         strengthSubTab === 'history' && (
                           <>
                             <h4>История моих тренировок</h4>
@@ -4768,135 +5172,144 @@ function AppContent() {
                             </div>
                           </>
                         )}
-                      {workoutsSubTab === 'bike-activities' && (
-                        <>
-                          <h4>Велотренировки (TCX)</h4>
-                          <p className="subtitle">
-                            Загрузите экспорт TCX (например из Zepp).
-                            Принимаются только поездки со спортом{' '}
-                            <strong>Biking</strong>. Файл на сервере не хранится
-                            — сохраняются разобранные данные.
-                          </p>
-                          <div className="row">
-                            <button
-                              type="button"
-                              onClick={() => bikeTcxImportRef.current?.click()}
-                            >
-                              Загрузить TCX
-                            </button>
-                            <input
-                              ref={bikeTcxImportRef}
-                              type="file"
-                              accept=".tcx,application/xml,text/xml"
-                              style={{ display: 'none' }}
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (f) importBikeTcxFile(f);
-                              }}
-                            />
-                          </div>
-                          {bikeImportMessage ? (
-                            <p
-                              className="subtitle"
-                              style={{ whiteSpace: 'pre-wrap' }}
-                            >
-                              {bikeImportMessage}
-                            </p>
-                          ) : null}
-                          <DatePeriodFilter
-                            preset={bikeDatePeriodPreset}
-                            onPresetChange={setBikeDatePeriodPreset}
-                            from={bikeDateFrom}
-                            to={bikeDateTo}
-                            onFromChange={setBikeDateFrom}
-                            onToChange={setBikeDateTo}
-                            options={STANDARD_DATE_PERIOD_OPTIONS}
-                            onApplyPreset={(v) =>
-                              applyBikeDatePreset(Number(v))
-                            }
+                    </section>
+                  </section>
+                )}
+
+                {tab === 'bike' && hasPermission(APP_PERMISSION.Bike) && (
+                  <section className="card-grid">
+                    <section className="card full-span">
+                      <h3>Велотренировки</h3>
+                      <p className="subtitle">
+                        Импорт TCX (например из Zepp) и история поездок.
+                      </p>
+                      <>
+                        <h4>Велотренировки (TCX)</h4>
+                        <p className="subtitle">
+                          Загрузите экспорт TCX (например из Zepp).
+                          Принимаются только поездки со спортом{' '}
+                          <strong>Biking</strong>. Файл на сервере не хранится
+                          — сохраняются разобранные данные.
+                        </p>
+                        <div className="row">
+                          <button
+                            type="button"
+                            onClick={() => bikeTcxImportRef.current?.click()}
+                          >
+                            Загрузить TCX
+                          </button>
+                          <input
+                            ref={bikeTcxImportRef}
+                            type="file"
+                            accept=".tcx,application/xml,text/xml"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) importBikeTcxFile(f);
+                            }}
                           />
-                          <div className="users-table-wrap">
-                            <table className="users-table">
-                              <thead>
+                        </div>
+                        {bikeImportMessage ? (
+                          <p
+                            className="subtitle"
+                            style={{ whiteSpace: 'pre-wrap' }}
+                          >
+                            {bikeImportMessage}
+                          </p>
+                        ) : null}
+                        <DatePeriodFilter
+                          preset={bikeDatePeriodPreset}
+                          onPresetChange={setBikeDatePeriodPreset}
+                          from={bikeDateFrom}
+                          to={bikeDateTo}
+                          onFromChange={setBikeDateFrom}
+                          onToChange={setBikeDateTo}
+                          options={STANDARD_DATE_PERIOD_OPTIONS}
+                          onApplyPreset={(v) =>
+                            applyBikeDatePreset(Number(v))
+                          }
+                        />
+                        <div className="users-table-wrap">
+                          <table className="users-table">
+                            <thead>
+                              <tr>
+                                <th>Старт</th>
+                                <th>Название</th>
+                                <th>Длительность</th>
+                                <th>Дистанция, км</th>
+                                <th>Ккал</th>
+                                <th>ЧСС ср. / макс</th>
+                                <th>Точек трека</th>
+                                <th>Импорт</th>
+                                <th />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {bikeActivities.length === 0 && (
                                 <tr>
-                                  <th>Старт</th>
-                                  <th>Название</th>
-                                  <th>Длительность</th>
-                                  <th>Дистанция, км</th>
-                                  <th>Ккал</th>
-                                  <th>ЧСС ср. / макс</th>
-                                  <th>Точек трека</th>
-                                  <th>Импорт</th>
-                                  <th />
+                                  <td colSpan="9">
+                                    Нет записей по выбранному периоду.
+                                  </td>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {bikeActivities.length === 0 && (
-                                  <tr>
-                                    <td colSpan="9">
-                                      Нет записей по выбранному периоду.
-                                    </td>
-                                  </tr>
-                                )}
-                                {bikeActivities.map((row) => (
-                                  <tr key={row.id}>
-                                    <td>
-                                      {formatUtcDateTime(row.startTimeUtc)}
-                                    </td>
-                                    <td>{row.notes || '—'}</td>
-                                    <td>
-                                      {formatBikeDurationSeconds(
-                                        row.totalSeconds,
-                                      )}
-                                    </td>
-                                    <td>
-                                      {row.distanceMeters != null
-                                        ? (
-                                            Number(row.distanceMeters) / 1000
-                                          ).toFixed(2)
-                                        : '—'}
-                                    </td>
-                                    <td>
-                                      {row.calories != null
-                                        ? Math.round(row.calories)
-                                        : '—'}
-                                    </td>
-                                    <td>
-                                      {row.averageHeartRateBpm ?? '—'} /{' '}
-                                      {row.maxHeartRateBpm ?? '—'}
-                                    </td>
-                                    <td>{row.trackpointCount}</td>
-                                    <td>
-                                      {formatUtcDateTime(row.importedAtUtc)}
-                                    </td>
-                                    <td>
-                                      <button
-                                        type="button"
-                                        className="ghost-btn"
-                                        onClick={() =>
-                                          openBikeActivityDetail(row.id)
-                                        }
-                                      >
-                                        Маршрут
-                                      </button>{' '}
-                                      <button
-                                        type="button"
-                                        className="danger-btn danger-btn--icon"
-                                        onClick={() =>
-                                          setPendingDeleteBikeActivityId(row.id)
-                                        }
-                                        title="Удалить"
-                                      >
-                                        ×
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </>
-                      )}
+                              )}
+                              {bikeActivities.map((row) => (
+                                <tr key={row.id}>
+                                  <td>
+                                    {formatUtcDateTime(row.startTimeUtc)}
+                                  </td>
+                                  <td>{row.notes || '—'}</td>
+                                  <td>
+                                    {formatBikeDurationSeconds(
+                                      row.totalSeconds,
+                                    )}
+                                  </td>
+                                  <td>
+                                    {row.distanceMeters != null
+                                      ? (
+                                          Number(row.distanceMeters) / 1000
+                                        ).toFixed(2)
+                                      : '—'}
+                                  </td>
+                                  <td>
+                                    {row.calories != null
+                                      ? Math.round(row.calories)
+                                      : '—'}
+                                  </td>
+                                  <td>
+                                    {row.averageHeartRateBpm ?? '—'} /{' '}
+                                    {row.maxHeartRateBpm ?? '—'}
+                                  </td>
+                                  <td>{row.trackpointCount}</td>
+                                  <td>
+                                    {formatUtcDateTime(row.importedAtUtc)}
+                                  </td>
+                                  <td>
+                                    <button
+                                      type="button"
+                                      className="ghost-btn"
+                                      onClick={() =>
+                                        openBikeActivityDetail(row.id)
+                                      }
+                                    >
+                                      Маршрут
+                                    </button>{' '}
+                                    <button
+                                      type="button"
+                                      className="danger-btn danger-btn--icon"
+                                      onClick={() =>
+                                        setPendingDeleteBikeActivityId(row.id)
+                                      }
+                                      title="Удалить"
+                                    >
+                                      ×
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
                     </section>
                   </section>
                 )}
@@ -5013,37 +5426,13 @@ function AppContent() {
                   </section>
                 )}
 
-                {(tab === 'progress' || tab === 'tracking') && (
+                {tab === 'progress' && hasPermission(APP_PERMISSION.Progress) && (
                   <section className="card-grid">
                     <section className="card full-span">
-                      <h3>{tab === 'progress' ? 'Мой прогресс' : 'Трекинг'}</h3>
+                      <h3>Мой прогресс</h3>
                       <p className="subtitle">
-                        {tab === 'progress'
-                          ? 'История веса с синхронизацией профиля и AI-тренера.'
-                          : 'Ежедневные привычки и задачи с историей выполнения.'}
+                        История веса с синхронизацией профиля и AI-тренера.
                       </p>
-                      {tab === 'tracking' && (
-                        <SegmentTabs
-                          variant="primary"
-                          className="segment-tabs--narrow"
-                          ariaLabel="Раздел трекинга"
-                        >
-                          <SegmentTab
-                            active={progressSubTab === 'habits'}
-                            onClick={() => setProgressSubTab('habits')}
-                          >
-                            Привычки
-                          </SegmentTab>
-                          <SegmentTab
-                            active={progressSubTab === 'todos'}
-                            onClick={() => setProgressSubTab('todos')}
-                          >
-                            Задачи
-                          </SegmentTab>
-                        </SegmentTabs>
-                      )}
-                      {tab === 'progress' && (
-                        <>
                           <div className="row profile-row">
                             <div>
                               <label>Дата</label>
@@ -5268,10 +5657,15 @@ function AppContent() {
                               </tbody>
                             </table>
                           </div>
-                        </>
-                      )}
-                      {tab === 'tracking' && progressSubTab === 'habits' && (
-                        <>
+                    </section>
+                  </section>
+                )}
+
+                {tab === 'habits' && hasPermission(APP_PERMISSION.Habits) && (
+                  <section className="card-grid">
+                    <section className="card full-span">
+                      <h3>Привычки</h3>
+                      <>
                           <p className="subtitle" style={{ marginTop: 8 }}>
                             Отмечайте сегодня и вчера по клику. Остальной период
                             — только просмотр.
@@ -5536,10 +5930,15 @@ function AppContent() {
                             </div>
                           ) : null}
                         </>
-                      )}
+                    </section>
+                  </section>
+                )}
 
-                      {tab === 'tracking' && progressSubTab === 'todos' && (
-                        <div className="todos-panel">
+                {tab === 'todos' && hasPermission(APP_PERMISSION.Todos) && (
+                  <section className="card-grid">
+                    <section className="card full-span">
+                      <h3>Задачи</h3>
+                      <div className="todos-panel">
                           <div className="row todos-panel__toolbar">
                             <button
                               type="button"
@@ -5828,13 +6227,37 @@ function AppContent() {
                             </div>
                           ) : null}
                         </div>
-                      )}
                     </section>
                   </section>
                 )}
 
                 {tab === 'admin' && isAdmin && (
                   <section className="card-grid">
+                    <section className="card full-span">
+                      <h3>Админ</h3>
+                      <p className="subtitle">
+                        Управление пользователями, категориями, ИИ-помощниками
+                        и диалогами.
+                      </p>
+                      <SegmentTabs
+                        variant="primary"
+                        className="segment-tabs--narrow"
+                        ariaLabel="Разделы админки"
+                      >
+                        {visibleAdminSubTabs.map((subTabId) => (
+                          <SegmentTab
+                            key={subTabId}
+                            active={adminSubTab === subTabId}
+                            onClick={() => setAdminSubTab(subTabId)}
+                          >
+                            {adminSubTabLabels[subTabId] || subTabId}
+                          </SegmentTab>
+                        ))}
+                      </SegmentTabs>
+                    </section>
+
+                    {adminSubTab === 'users-manage' &&
+                      hasPermission(APP_PERMISSION.AdminUsers) && (
                     <section className="card full-span">
                       <h3>Управление пользователем</h3>
                       <div className="row">
@@ -5847,7 +6270,7 @@ function AppContent() {
                           <thead>
                             <tr>
                               <th>Логин</th>
-                              <th>Роль</th>
+                              <th>Роли</th>
                               <th>Действия</th>
                             </tr>
                           </thead>
@@ -5860,7 +6283,7 @@ function AppContent() {
                             {users.map((u) => (
                               <tr key={`manage-${u.id}`}>
                                 <td>{u.username}</td>
-                                <td>{u.role}</td>
+                                <td>{formatUserRolesLabel(normalizeUserRoles(u))}</td>
                                 <td className="admin-actions">
                                   <button
                                     onClick={() => openEditModal(u)}
@@ -5885,7 +6308,85 @@ function AppContent() {
                         </table>
                       </div>
                     </section>
+                    )}
 
+                    {adminSubTab === 'roles' &&
+                      hasPermission(APP_PERMISSION.AdminRoles) && (
+                    <section className="card full-span">
+                      <h3>Роли пользователей</h3>
+                      <p className="subtitle">
+                        Код роли используется в JWT. Для каждой роли настрой,
+                        какие разделы приложения и админки ей доступны. Изменения
+                        прав вступают в силу после повторного входа пользователя.
+                      </p>
+                      <div className="row">
+                        <button type="button" onClick={openAdminRoleCreateModal}>
+                          Новая роль
+                        </button>
+                      </div>
+                      <div className="users-table-wrap">
+                        <table className="users-table">
+                          <thead>
+                            <tr>
+                              <th>Код</th>
+                              <th>Название</th>
+                              <th>Описание</th>
+                              <th>Порядок</th>
+                              <th>Активна</th>
+                              <th>Тип</th>
+                              <th>Действия</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {adminRoles.length === 0 && (
+                              <tr>
+                                <td colSpan="7">Роли не загружены.</td>
+                              </tr>
+                            )}
+                            {adminRoles.map((row) => (
+                              <tr key={row.id}>
+                                <td>{row.name}</td>
+                                <td>{row.label || '—'}</td>
+                                <td>{row.description || '—'}</td>
+                                <td>{row.sortOrder}</td>
+                                <td>{row.isActive ? 'Да' : 'Нет'}</td>
+                                <td>{row.isSystem ? 'Системная' : 'Пользовательская'}</td>
+                                <td className="admin-actions">
+                                  <button
+                                    type="button"
+                                    onClick={() => openRolePermissionsModal(row)}
+                                    title="Права доступа"
+                                  >
+                                    Права
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openAdminRoleEditModal(row)}
+                                    title="Редактировать"
+                                  >
+                                    ✏️
+                                  </button>
+                                  {!row.isSystem ? (
+                                    <button
+                                      type="button"
+                                      className="danger-btn danger-btn--icon"
+                                      onClick={() => setPendingDeleteRole(row)}
+                                      title="Удалить"
+                                    >
+                                      ×
+                                    </button>
+                                  ) : null}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                    )}
+
+                    {adminSubTab === 'categories' &&
+                      hasPermission(APP_PERMISSION.AdminCategories) && (
                     <section className="card full-span">
                       <h3>Категории привычек и задач</h3>
                       <div className="row">
@@ -5942,7 +6443,10 @@ function AppContent() {
                         </table>
                       </div>
                     </section>
+                    )}
 
+                    {adminSubTab === 'users-profiles' &&
+                      hasPermission(APP_PERMISSION.AdminProfiles) && (
                     <section className="card full-span">
                       <h3>Пользователи</h3>
                       <div className="users-table-wrap">
@@ -5950,7 +6454,7 @@ function AppContent() {
                           <thead>
                             <tr>
                               <th>Логин</th>
-                              <th>Роль</th>
+                              <th>Роли</th>
                               <th>Имя</th>
                               <th>Фамилия</th>
                               <th>Дата рождения</th>
@@ -5973,7 +6477,7 @@ function AppContent() {
                             {users.map((u) => (
                               <tr key={u.id}>
                                 <td>{u.username}</td>
-                                <td>{u.role}</td>
+                                <td>{formatUserRolesLabel(normalizeUserRoles(u))}</td>
                                 <td>{u.firstName || '-'}</td>
                                 <td>{u.lastName || '-'}</td>
                                 <td>{u.birthDate || '-'}</td>
@@ -6003,7 +6507,10 @@ function AppContent() {
                         для администратора отключено.
                       </p>
                     </section>
+                    )}
 
+                    {adminSubTab === 'ai-assistants' &&
+                      hasPermission(APP_PERMISSION.AdminAiAssistants) && (
                     <section className="card full-span">
                       <h3>ИИ помощники</h3>
                       <div className="row">
@@ -6075,14 +6582,7 @@ function AppContent() {
                                     onClick={() => {
                                       if (!row.isActive) return;
                                       setChatAssistantPreviewId(row.id);
-                                      requestAnimationFrame(() =>
-                                        adminAssistantTestChatPanelRef.current?.scrollIntoView(
-                                          {
-                                            behavior: 'smooth',
-                                            block: 'nearest',
-                                          },
-                                        ),
-                                      );
+                                      setAdminSubTab('ai-test-chat');
                                     }}
                                   >
                                     Тест чата
@@ -6106,7 +6606,10 @@ function AppContent() {
                         </table>
                       </div>
                     </section>
+                    )}
 
+                    {adminSubTab === 'ai-test-chat' &&
+                      hasPermission(APP_PERMISSION.AdminAiTestChat) && (
                     <section
                       className="card full-span"
                       ref={adminAssistantTestChatPanelRef}
@@ -6117,8 +6620,8 @@ function AppContent() {
                         аккаунта. Не меняет пользовательский выбор «Включить» на
                         вкладке ИИ. Для запроса API нужен{' '}
                         <strong>активный</strong> помощник — кнопка «Тест чата»
-                        в таблице выше неактивна, пока в карточке помощника не
-                        стоит «Активен».
+                        на вкладке «ИИ помощники» неактивна, пока в карточке
+                        помощника не стоит «Активен».
                       </p>
                       <p className="subtitle">
                         {chatAssistantPreviewId && !previewAssistantRow ? (
@@ -6151,9 +6654,10 @@ function AppContent() {
                           </>
                         ) : (
                           <>
-                            Выбери помощника кнопкой «Тест чата» в таблице или
-                            пиши на вкладке «ИИ» с включённым помощником — там
-                            же заполняются доп. поля.
+                            Выбери помощника кнопкой «Тест чата» на вкладке
+                            «ИИ помощники» или пиши на вкладке «ИИ» с
+                            включённым помощником — там же заполняются доп.
+                            поля.
                           </>
                         )}
                       </p>
@@ -6230,7 +6734,10 @@ function AppContent() {
                         </button>
                       </div>
                     </section>
+                    )}
 
+                    {adminSubTab === 'dialogs' &&
+                      hasPermission(APP_PERMISSION.AdminDialogs) && (
                     <section className="card full-span">
                       <h3>Диалоги (Админ)</h3>
                       <label>Пользователь</label>
@@ -6325,6 +6832,7 @@ function AppContent() {
                         ))}
                       </div>
                     </section>
+                    )}
                   </section>
                 )}
 
@@ -6347,15 +6855,27 @@ function AppContent() {
                       placeholder="пароль"
                       type="password"
                     />
-                    <label>Роль</label>
-                    <select
-                      value={adminCreateRole}
-                      onChange={(e) => setAdminCreateRole(e.target.value)}
-                    >
-                      <option value="User">Пользователь</option>
-                      <option value="AiUser">AI-пользователь</option>
-                      <option value="Admin">Администратор</option>
-                    </select>
+                    <span className="filter-field__label">Роли</span>
+                    <div className="role-checkbox-group">
+                      {userRoleOptions.map((opt) => (
+                        <label key={opt.value} className="role-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={adminCreateRoles.includes(opt.value)}
+                            onChange={(e) =>
+                              setAdminCreateRoles((prev) =>
+                                toggleUserRoleSelection(
+                                  prev,
+                                  opt.value,
+                                  e.target.checked,
+                                ),
+                              )
+                            }
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
                     <div className="row">
                       <button onClick={createAdminUser}>Создать</button>
                       <button
@@ -6381,15 +6901,27 @@ function AppContent() {
                         value={editUserName}
                         onChange={(e) => setEditUserName(e.target.value)}
                       />
-                      <label>Роль</label>
-                      <select
-                        value={editUserRole}
-                        onChange={(e) => setEditUserRole(e.target.value)}
-                      >
-                        <option value="User">Пользователь</option>
-                        <option value="AiUser">AI-пользователь</option>
-                        <option value="Admin">Администратор</option>
-                      </select>
+                      <span className="filter-field__label">Роли</span>
+                      <div className="role-checkbox-group">
+                        {userRoleOptions.map((opt) => (
+                          <label key={opt.value} className="role-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={editUserRoles.includes(opt.value)}
+                              onChange={(e) =>
+                                setEditUserRoles((prev) =>
+                                  toggleUserRoleSelection(
+                                    prev,
+                                    opt.value,
+                                    e.target.checked,
+                                  ),
+                                )
+                              }
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
                       <div className="row">
                         <button onClick={saveAdminUserFromModal}>
                           Сохранить
@@ -6561,6 +7093,194 @@ function AppContent() {
                       <button
                         className="ghost-btn"
                         onClick={() => setPendingDeleteCategory(null)}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                    </ModalShell>
+                  )}
+                {tab === 'admin' &&
+                  isAdmin &&
+                  (adminRoleModalKind === 'create' ||
+                    adminRoleModalKind === 'edit') && (
+                    <ModalShell
+                      open={Boolean(adminRoleModalKind)}
+                      onClose={() => setAdminRoleModalKind(null)}
+                    >
+                      <h3>
+                        {adminRoleModalKind === 'create'
+                          ? 'Новая роль'
+                          : 'Редактировать роль'}
+                      </h3>
+                      {adminRoleModalKind === 'create' ? (
+                        <>
+                          <label>Код (латиница)</label>
+                          <input
+                            value={adminRoleDraft.name}
+                            onChange={(e) =>
+                              setAdminRoleDraft((d) => ({
+                                ...d,
+                                name: e.target.value,
+                              }))
+                            }
+                            placeholder="Например: Moderator"
+                          />
+                        </>
+                      ) : (
+                        <p className="subtitle">
+                          Код: <b>{adminRoleDraft.name}</b>
+                          {adminRoleDraft.isSystem ? ' (системная)' : ''}
+                        </p>
+                      )}
+                      <label>Название</label>
+                      <input
+                        value={adminRoleDraft.label}
+                        onChange={(e) =>
+                          setAdminRoleDraft((d) => ({
+                            ...d,
+                            label: e.target.value,
+                          }))
+                        }
+                        placeholder="Отображаемое название"
+                      />
+                      <label>Описание</label>
+                      <input
+                        value={adminRoleDraft.description}
+                        onChange={(e) =>
+                          setAdminRoleDraft((d) => ({
+                            ...d,
+                            description: e.target.value,
+                          }))
+                        }
+                        placeholder="Необязательно"
+                      />
+                      <label>Порядок сортировки</label>
+                      <input
+                        type="number"
+                        value={adminRoleDraft.sortOrder}
+                        onChange={(e) =>
+                          setAdminRoleDraft((d) => ({
+                            ...d,
+                            sortOrder: Number(e.target.value) || 0,
+                          }))
+                        }
+                      />
+                      <label className="role-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={adminRoleDraft.isActive}
+                          disabled={adminRoleDraft.isSystem}
+                          onChange={(e) =>
+                            setAdminRoleDraft((d) => ({
+                              ...d,
+                              isActive: e.target.checked,
+                            }))
+                          }
+                        />
+                        Активна
+                      </label>
+                      <div className="row">
+                        <button type="button" onClick={submitAdminRoleModal}>
+                          Сохранить
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setAdminRoleModalKind(null)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </ModalShell>
+                  )}
+                {tab === 'admin' && isAdmin && rolePermissionsModalRole && (
+                  <ModalShell
+                    open={Boolean(rolePermissionsModalRole)}
+                    onClose={() => {
+                      setRolePermissionsModalRole(null);
+                      setRolePermissionDraft([]);
+                    }}
+                    wide
+                    scroll
+                  >
+                    <h3>
+                      Права роли «
+                      {rolePermissionsModalRole.label ||
+                        rolePermissionsModalRole.name}
+                      »
+                    </h3>
+                    <p className="subtitle">
+                      Отметь функции, доступные пользователям с этой ролью.
+                    </p>
+                    {Object.entries(permissionsByCategory).map(
+                      ([category, items]) => (
+                        <section key={category} style={{ marginBottom: 16 }}>
+                          <span className="filter-field__label">
+                            {PERMISSION_CATEGORY_LABELS[category] || category}
+                          </span>
+                          <div className="role-checkbox-group">
+                            {items.map((item) => (
+                              <label
+                                key={item.code}
+                                className="role-checkbox"
+                                title={item.description || item.code}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={rolePermissionDraft.includes(
+                                    item.code,
+                                  )}
+                                  onChange={(e) =>
+                                    toggleRolePermissionDraft(
+                                      item.code,
+                                      e.target.checked,
+                                    )
+                                  }
+                                />
+                                {item.label || item.code}
+                              </label>
+                            ))}
+                          </div>
+                        </section>
+                      ),
+                    )}
+                    <div className="row">
+                      <button type="button" onClick={submitRolePermissionsModal}>
+                        Сохранить
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => {
+                          setRolePermissionsModalRole(null);
+                          setRolePermissionDraft([]);
+                        }}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </ModalShell>
+                )}
+                {tab === 'admin' && isAdmin && pendingDeleteRole && (
+                  <ModalShell
+                    open={Boolean(pendingDeleteRole)}
+                    onClose={() => setPendingDeleteRole(null)}
+                  >
+                    <h3>Удалить роль</h3>
+                    <p className="subtitle">
+                      Удалить роль «{pendingDeleteRole.label || pendingDeleteRole.name}»?
+                    </p>
+                    <div className="row">
+                      <button
+                        className="danger-btn danger-btn--icon"
+                        onClick={confirmDeleteRole}
+                        title="Удалить"
+                      >
+                        ×
+                      </button>
+                      <button
+                        className="ghost-btn"
+                        onClick={() => setPendingDeleteRole(null)}
                       >
                         Отмена
                       </button>
@@ -7338,7 +8058,7 @@ function AppContent() {
                   </ModalShell>
                 )}
 
-                {tab === 'tracking' && isCreateHabitModalOpen && (
+                {tab === 'habits' && isCreateHabitModalOpen && (
                   <ModalShell
                     open={isCreateHabitModalOpen}
                     onClose={() => setIsCreateHabitModalOpen(false)}
@@ -7384,7 +8104,7 @@ function AppContent() {
                   </ModalShell>
                 )}
 
-                {tab === 'tracking' && isCreateTodoModalOpen && (
+                {tab === 'todos' && isCreateTodoModalOpen && (
                   <ModalShell
                     open={isCreateTodoModalOpen}
                     onClose={() => setIsCreateTodoModalOpen(false)}
@@ -7439,7 +8159,7 @@ function AppContent() {
                   </ModalShell>
                 )}
 
-                {tab === 'tracking' && pendingDeleteTodo && (
+                {tab === 'todos' && pendingDeleteTodo && (
                   <ModalShell
                     open={Boolean(pendingDeleteTodo)}
                     onClose={() => setPendingDeleteTodo(null)}
@@ -7478,7 +8198,7 @@ function AppContent() {
                   </ModalShell>
                 )}
 
-                {tab === 'tracking' && pendingDeleteHabit && (
+                {tab === 'habits' && pendingDeleteHabit && (
                   <ModalShell
                     open={Boolean(pendingDeleteHabit)}
                     onClose={() => setPendingDeleteHabit(null)}
@@ -8465,7 +9185,7 @@ function AppContent() {
                   )}
 
                 {tab === 'workouts' &&
-                  workoutsSubTab === 'bike-activities' &&
+                  tab === 'bike' &&
                   pendingDeleteBikeActivityId && (
                     <ModalShell
                       open
@@ -8495,7 +9215,7 @@ function AppContent() {
                   )}
 
                 {tab === 'workouts' &&
-                  workoutsSubTab === 'bike-activities' &&
+                  tab === 'bike' &&
                   bikeDetailOpen && (
                     <ModalShell
                       open

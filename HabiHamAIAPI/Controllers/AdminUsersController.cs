@@ -1,13 +1,13 @@
+using HabiHamAIAPI.Authorization;
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HabiHamAIAPI.Controllers;
 
 [ApiController]
 [Route("admin/users")]
-[Authorize(Roles = "Admin")]
+[RequirePermission(AppPermissionCatalog.AdminUsers)]
 public sealed class AdminUsersController : ControllerBase
 {
     private readonly IAdminUsersService _service;

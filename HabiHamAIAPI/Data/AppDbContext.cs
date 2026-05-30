@@ -10,6 +10,10 @@ public sealed class AppDbContext : DbContext
     }
 
     public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<AppRole> AppRoles => Set<AppRole>();
+    public DbSet<AppPermission> AppPermissions => Set<AppPermission>();
+    public DbSet<AppRolePermission> AppRolePermissions => Set<AppRolePermission>();
+    public DbSet<AppUserRoleAssignment> UserRoleAssignments => Set<AppUserRoleAssignment>();
     public DbSet<AiAssistant> AiAssistants => Set<AiAssistant>();
     public DbSet<AiAssistantFieldDefinition> AiAssistantFieldDefinitions => Set<AiAssistantFieldDefinition>();
     public DbSet<UserAiAssistantExtras> UserAiAssistantExtras => Set<UserAiAssistantExtras>();
@@ -38,12 +42,11 @@ public sealed class AppDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Username).HasMaxLength(100).IsRequired();
             entity.Property(x => x.PasswordHash).IsRequired();
-            entity.Property(x => x.Role)
-                .HasConversion<string>()
-                .HasMaxLength(30)
-                .HasDefaultValue(AppUserRole.User)
-                .IsRequired();
             entity.Property(x => x.CreatedAtUtc).IsRequired();
+            entity.HasMany(x => x.RoleAssignments)
+                .WithOne(x => x.User)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
             entity.Property(x => x.BirthDate).HasColumnType("date");
             entity.Property(x => x.HeightCm).HasPrecision(5, 2);
             entity.Property(x => x.WeightKg).HasPrecision(5, 2);
@@ -73,6 +76,69 @@ public sealed class AppDbContext : DbContext
                 .WithOne(x => x.User)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AppRole>(entity =>
+        {
+            entity.ToTable("app_roles");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Label).HasColumnName("label").HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(300);
+            entity.Property(x => x.IsSystem).HasColumnName("is_system").HasDefaultValue(false).IsRequired();
+            entity.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true).IsRequired();
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => x.SortOrder);
+        });
+
+        modelBuilder.Entity<AppPermission>(entity =>
+        {
+            entity.ToTable("app_permissions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Label).HasColumnName("label").HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(300);
+            entity.Property(x => x.Category).HasColumnName("category").HasMaxLength(30).IsRequired();
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
+            entity.Property(x => x.IsSystem).HasColumnName("is_system").HasDefaultValue(true).IsRequired();
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.HasIndex(x => x.SortOrder);
+        });
+
+        modelBuilder.Entity<AppRolePermission>(entity =>
+        {
+            entity.ToTable("app_role_permissions");
+            entity.HasKey(x => new { x.RoleName, x.PermissionCode });
+            entity.Property(x => x.RoleName).HasColumnName("role_name").HasMaxLength(30).IsRequired();
+            entity.Property(x => x.PermissionCode).HasColumnName("permission_code").HasMaxLength(50).IsRequired();
+            entity.HasOne(x => x.Role)
+                .WithMany()
+                .HasForeignKey(x => x.RoleName)
+                .HasPrincipalKey(x => x.Name)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Permission)
+                .WithMany()
+                .HasForeignKey(x => x.PermissionCode)
+                .HasPrincipalKey(x => x.Code)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AppUserRoleAssignment>(entity =>
+        {
+            entity.ToTable("user_roles");
+            entity.HasKey(x => new { x.UserId, x.RoleName });
+            entity.Property(x => x.RoleName)
+                .HasColumnName("role")
+                .HasMaxLength(30)
+                .IsRequired();
+            entity.HasOne(x => x.Role)
+                .WithMany()
+                .HasForeignKey(x => x.RoleName)
+                .HasPrincipalKey(x => x.Name)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<AiAssistant>(entity =>

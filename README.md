@@ -11,6 +11,8 @@
 | `HabiHamAIMobile/` | Android: силовые тренировки и вело. См. `HabiHamAIMobile/README.md`. |
 | `HabiHamAITrackingMobile/` | Android: привычки и задачи (трекинг). См. `HabiHamAITrackingMobile/README.md`. |
 
+Агент новостей KZ (KASE/AIX) вынесен в отдельный каталог на уровень выше: **`../HabiHamNewsAgent/`** (см. `HabiHamNewsAgent/README.md`).
+
 **Backend:** в каталоге `HabiHamAIAPI` выполните `dotnet run` (профиль `http` в `Properties/launchSettings.json` — по умолчанию **http://localhost:5193**). Нужны PostgreSQL и параметры JWT; при старте применяются миграции. LLM: переменные `OPENAI_*` / секция Kernestal (см. раздел 7 ниже).
 
 **Frontend:** в `HabiHamAIUi` — `npm install`, затем `npm run dev`. Базовый URL API: переменная окружения **`VITE_API_BASE_URL`** или значение по умолчанию `http://localhost:5193` в коде клиента.

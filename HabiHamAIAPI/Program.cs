@@ -1,8 +1,10 @@
 using System.Text;
+using HabiHamAIAPI.Authorization;
 using HabiHamAIAPI.Data;
 using HabiHamAIAPI.Models;
 using HabiHamAIAPI.Options;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -80,6 +82,8 @@ builder.Services.AddScoped<ITelegramUserLinkService, TelegramUserLinkService>();
 builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();
 builder.Services.AddScoped<IAdminDialogsService, AdminDialogsService>();
 builder.Services.AddScoped<IAdminCategoriesService, AdminCategoriesService>();
+builder.Services.AddScoped<IAdminRolesService, AdminRolesService>();
+builder.Services.AddScoped<IAppPermissionService, AppPermissionService>();
 builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
 builder.Services.AddScoped<IBikeActivitiesService, BikeActivitiesService>();
 builder.Services.AddSingleton<IPingService, PingService>();
@@ -142,7 +146,16 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    foreach (var code in AppPermissionCatalog.AllCodes)
+    {
+        options.AddPolicy(PermissionPolicyNames.For(code), policy =>
+            policy.RequireAuthenticatedUser()
+                .AddRequirements(new PermissionRequirement(code)));
+    }
+});
+builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo { Title = "HabiHamAIAPI", Version = "v1" });
@@ -168,6 +181,10 @@ using (var scope = app.Services.CreateScope())
     var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
     await BaselineExistingDatabaseForMigrationsAsync(dbContext);
     await dbContext.Database.MigrateAsync();
+    await EnsureSystemRolesAsync(dbContext);
+    var permissionService = scope.ServiceProvider.GetRequiredService<IAppPermissionService>();
+    await permissionService.EnsureCatalogAsync();
+    await permissionService.EnsureDefaultRolePermissionsAsync();
 
     var adminSection = builder.Configuration.GetSection("AdminBootstrap");
     var adminUsername = (Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_USERNAME")
@@ -177,23 +194,25 @@ using (var scope = app.Services.CreateScope())
         ?? adminSection["Password"]
         ?? "admin123";
 
-    var adminUser = await dbContext.Users.FirstOrDefaultAsync(x => x.Username == adminUsername);
+    var adminUser = await dbContext.Users
+        .Include(x => x.RoleAssignments)
+        .FirstOrDefaultAsync(x => x.Username == adminUsername);
     if (adminUser is null)
     {
         var createdAdmin = new AppUser
         {
             Id = Guid.NewGuid(),
             Username = adminUsername,
-            Role = AppUserRole.Admin,
             CreatedAtUtc = DateTime.UtcNow
         };
+        AppUserRoleHelper.SetRoles(createdAdmin, ["Admin"]);
         createdAdmin.PasswordHash = passwordHasher.HashPassword(createdAdmin, adminPassword);
         dbContext.Users.Add(createdAdmin);
         await dbContext.SaveChangesAsync();
     }
-    else if (adminUser.Role != AppUserRole.Admin)
+    else if (!AppUserRoleHelper.HasRole(adminUser, "Admin"))
     {
-        adminUser.Role = AppUserRole.Admin;
+        AppUserRoleHelper.EnsureRole(adminUser, "Admin");
         await dbContext.SaveChangesAsync();
     }
 }
@@ -222,6 +241,48 @@ if (trainerMcpEnabled && trainerMcpHttpEnabled)
 }
 
 app.Run();
+
+static async Task EnsureSystemRolesAsync(AppDbContext dbContext)
+{
+    var systemRoles = new (string Name, string Label, string? Description, int SortOrder)[]
+    {
+        ("Admin", "Администратор", "Полный доступ к админ-панели", 1),
+        ("User", "Пользователь", "Базовый доступ к приложению", 2),
+        ("AiUser", "AI-пользователь", "Доступ к разделу ИИ-помощника", 3),
+    };
+
+    var now = DateTime.UtcNow;
+    foreach (var (name, label, description, sortOrder) in systemRoles)
+    {
+        var existing = await dbContext.AppRoles.FirstOrDefaultAsync(x => x.Name == name);
+        if (existing is null)
+        {
+            dbContext.AppRoles.Add(new AppRole
+            {
+                Id = Guid.NewGuid(),
+                Name = name,
+                Label = label,
+                Description = description,
+                IsSystem = true,
+                IsActive = true,
+                SortOrder = sortOrder,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            });
+        }
+        else
+        {
+            existing.Label = label;
+            existing.Description = description;
+            existing.IsSystem = true;
+            existing.IsActive = true;
+            existing.SortOrder = sortOrder;
+            existing.UpdatedAtUtc = now;
+        }
+    }
+
+    await dbContext.SaveChangesAsync();
+}
 
 static async Task BaselineExistingDatabaseForMigrationsAsync(AppDbContext dbContext)
 {
