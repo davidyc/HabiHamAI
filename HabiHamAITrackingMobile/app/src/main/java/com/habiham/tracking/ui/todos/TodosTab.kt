@@ -1,5 +1,6 @@
 package com.habiham.tracking.ui.todos
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -34,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.habiham.tracking.domain.computeTodoPeriodAnalytics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -42,12 +45,15 @@ import androidx.compose.ui.unit.dp
 import com.habiham.tracking.data.model.TodoItemDto
 import com.habiham.tracking.data.model.UserCategoryDto
 import com.habiham.tracking.domain.TodoSortDir
+import com.habiham.tracking.domain.isTodoOverdue
 import com.habiham.tracking.domain.TodoSortKey
 import com.habiham.tracking.ui.components.CategoryFilterRow
 import com.habiham.tracking.ui.components.CategoryGroupHeader
 import com.habiham.tracking.ui.components.DatePeriodFilter
 import com.habiham.tracking.ui.components.HabiHamListCard
+import com.habiham.tracking.ui.theme.HabiHamColors
 import com.habiham.tracking.ui.components.SectionTitle
+import com.habiham.tracking.ui.components.TodoPeriodAnalyticsPanel
 import com.habiham.tracking.ui.components.habihamTextFieldColors
 import com.habiham.tracking.ui.components.scrollWithIme
 import com.habiham.tracking.ui.filter.TODO_DATE_PERIOD_OPTIONS
@@ -63,6 +69,13 @@ fun TodosTab(
     val activeGroup = viewModel.activeCategoryGroup()
     val categoryOptions = viewModel.categoryFilterOptions()
     val statusOptions = viewModel.statusFilterOptions()
+    val todoAnalytics = remember(displayTodos, state.dateFrom, state.dateTo) {
+        computeTodoPeriodAnalytics(
+            todos = displayTodos,
+            filterFrom = state.dateFrom,
+            filterTo = state.dateTo,
+        )
+    }
     val emptyMessage = when {
         state.todos.isEmpty() -> "Задач пока нет. Нажмите «Добавить задачу»."
         state.statusFilter == TodoStatusFilter.Open -> "Нет открытых задач за выбранный период."
@@ -130,6 +143,10 @@ fun TodosTab(
                             totalCount = group.totalCount,
                         )
                     }
+                }
+                if (todoAnalytics != null) {
+                    Spacer(Modifier.height(12.dp))
+                    TodoPeriodAnalyticsPanel(summary = todoAnalytics)
                 }
                 Spacer(Modifier.height(8.dp))
                 TodoSortRow(
@@ -283,23 +300,58 @@ private fun TodoCard(
     modifier: Modifier = Modifier,
 ) {
     val isDone = !todo.doneDate.isNullOrBlank()
-    HabiHamListCard(modifier = modifier) {
+    val overdue = isTodoOverdue(todo)
+    HabiHamListCard(
+        modifier = modifier,
+        border = if (overdue) {
+            BorderStroke(1.dp, HabiHamColors.HabitFailed.copy(alpha = 0.85f))
+        } else {
+            null
+        },
+        containerColor = if (overdue) {
+            HabiHamColors.HabitFailed.copy(alpha = 0.12f)
+        } else {
+            null
+        },
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = isDone, onCheckedChange = { onToggleDone() })
             Column(Modifier.weight(1f)) {
-                Text(
-                    todo.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    textDecoration = if (isDone) TextDecoration.LineThrough else null,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        todo.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        textDecoration = if (isDone) TextDecoration.LineThrough else null,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (overdue) {
+                        Badge(containerColor = HabiHamColors.HabitFailed) {
+                            Text("Просрочено", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
                 val meta = buildList {
                     if (showCategory) add(todo.categoryName ?: "—")
-                    todo.dueDate?.let { add("до $it") }
+                    todo.dueDate?.let { due ->
+                        add(if (overdue) "дедлайн $due" else "до $due")
+                    }
                     if (isDone && todo.doneDate != null) add("выполнено ${todo.doneDate}")
                 }.joinToString(" · ")
                 if (meta.isNotBlank()) {
-                    Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (overdue) {
+                            HabiHamColors.HabitFailed
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontWeight = if (overdue) FontWeight.SemiBold else FontWeight.Normal,
+                    )
                 }
             }
         }

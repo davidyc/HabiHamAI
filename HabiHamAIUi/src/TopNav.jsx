@@ -3,13 +3,15 @@ import { SegmentTab, SegmentTabs } from "./shared/ui/SegmentTabs";
 
 function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const topbarRef = useRef(null);
+  const userMenuRef = useRef(null);
   const sidebarTabs = [
     { id: "workouts", label: "Тренировки" },
     { id: "progress", label: "Мой прогресс" },
     { id: "tracking", label: "Трекинг" },
   ];
-  const topbarTabs = [
+  const accountMenuItems = [
     { id: "profile", label: "Профиль" },
     ...(hasAiAccess ? [{ id: "ai", label: "AI помощник" }] : []),
     ...(isAdmin ? [{ id: "admin", label: "Админ" }] : []),
@@ -23,7 +25,7 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
       const { height } = topbar.getBoundingClientRect();
       document.documentElement.style.setProperty(
         "--dashboard-mobile-topbar-height",
-        `${Math.ceil(height)}px`
+        `${Math.ceil(height)}px`,
       );
     };
 
@@ -38,7 +40,7 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
       window.removeEventListener("resize", syncTopbarHeight);
       document.documentElement.style.removeProperty("--dashboard-mobile-topbar-height");
     };
-  }, []);
+  }, [isUserMenuOpen]);
 
   useEffect(() => {
     if (!isSidebarOpen) return undefined;
@@ -59,9 +61,45 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
     };
   }, [isSidebarOpen]);
 
+  useEffect(() => {
+    if (!isUserMenuOpen) return undefined;
+
+    const onPointerDown = (event) => {
+      if (!userMenuRef.current?.contains(event.target)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isUserMenuOpen]);
+
   function handleSidebarTabChange(id) {
     onTabChange(id);
     setIsSidebarOpen(false);
+  }
+
+  function handleAccountNav(id) {
+    onTabChange(id);
+    setIsUserMenuOpen(false);
+  }
+
+  function handleLogout() {
+    setIsUserMenuOpen(false);
+    onLogout();
+  }
+
+  function accountMenuItemClass(id, isActive) {
+    return `topbar-user-menu__item topbar-user-menu__item--${id}${isActive ? " is-active" : ""}`;
   }
 
   return (
@@ -80,32 +118,59 @@ function TopNav({ tab, currentUserName, isAdmin, hasAiAccess, onTabChange, onLog
           </button>
           <div className="dashboard-topbar-brand">HabiHamAI</div>
         </div>
-        <SegmentTabs
-          variant="compact"
-          className="dashboard-topbar-links"
-          ariaLabel="Навигация в верхней панели"
-        >
-          {topbarTabs.map(({ id, label }) => (
-            <SegmentTab
-              key={id}
-              active={tab === id}
-              onClick={() => onTabChange(id)}
-            >
-              {label}
-            </SegmentTab>
-          ))}
-        </SegmentTabs>
-        <div className="topbar-right">
-          <div className="topbar-user">
-            <div className="sidebar-avatar topbar-avatar">{(currentUserName || "U").charAt(0).toUpperCase()}</div>
-            <div className="topbar-user-meta">
-              <strong>{currentUserName}</strong>
-              <span>Активный профиль</span>
-            </div>
-          </div>
-          <button type="button" className="logout-btn topbar-logout-btn" onClick={onLogout}>
-            Выход
+
+        <div className="topbar-right" ref={userMenuRef}>
+          <button
+            type="button"
+            className={`topbar-user-menu-trigger${isUserMenuOpen ? " is-open" : ""}`}
+            aria-haspopup="menu"
+            aria-expanded={isUserMenuOpen}
+            aria-controls="topbar-user-menu"
+            onClick={() => setIsUserMenuOpen((open) => !open)}
+          >
+            <span className="topbar-user">
+              <span className="sidebar-avatar topbar-avatar">
+                {(currentUserName || "U").charAt(0).toUpperCase()}
+              </span>
+              <span className="topbar-user-meta">
+                <strong>{currentUserName}</strong>
+                <span>Активный профиль</span>
+              </span>
+            </span>
+            <span className="topbar-user-menu-chevron" aria-hidden="true" />
           </button>
+          {isUserMenuOpen ? (
+            <ul
+              id="topbar-user-menu"
+              className="topbar-user-menu"
+              role="menu"
+              aria-label="Меню аккаунта"
+            >
+              {accountMenuItems.map(({ id, label }) => (
+                <li key={id} role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={accountMenuItemClass(id, tab === id)}
+                    onClick={() => handleAccountNav(id)}
+                  >
+                    {label}
+                  </button>
+                </li>
+              ))}
+              <li className="topbar-user-menu__divider" role="separator" />
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="topbar-user-menu__item topbar-user-menu__item--logout"
+                  onClick={handleLogout}
+                >
+                  Выход
+                </button>
+              </li>
+            </ul>
+          ) : null}
         </div>
       </header>
 

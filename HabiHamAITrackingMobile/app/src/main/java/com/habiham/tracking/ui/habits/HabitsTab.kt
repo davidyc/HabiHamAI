@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.habiham.tracking.domain.computeHabitPeriodAnalytics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +44,7 @@ import com.habiham.tracking.ui.components.CategoryGroupHeader
 import com.habiham.tracking.ui.components.DatePeriodFilter
 import com.habiham.tracking.ui.components.HabiHamListCard
 import com.habiham.tracking.ui.components.HabitStatusDot
+import com.habiham.tracking.ui.components.HabitPeriodAnalyticsPanel
 import com.habiham.tracking.ui.components.HabitStatusLegend
 import com.habiham.tracking.ui.components.SectionTitle
 import com.habiham.tracking.ui.components.habihamTextFieldColors
@@ -63,6 +65,14 @@ fun HabitsTab(
     val activeGroup = viewModel.activeCategoryGroup()
     val categoryOptions = viewModel.categoryFilterOptions()
     val displayHabits = activeGroup?.items.orEmpty()
+    val habitAnalytics = remember(state.checkinsByHabitId, displayHabits, state.dateFrom, state.dateTo) {
+        computeHabitPeriodAnalytics(
+            habits = displayHabits,
+            checkinsByHabitId = state.checkinsByHabitId,
+            filterFrom = state.dateFrom,
+            filterTo = state.dateTo,
+        )
+    }
 
     LazyColumn(
         modifier = modifier
@@ -119,6 +129,10 @@ fun HabitsTab(
                 }
                 Spacer(Modifier.height(8.dp))
                 HabitStatusLegend()
+                if (habitAnalytics != null) {
+                    Spacer(Modifier.height(12.dp))
+                    HabitPeriodAnalyticsPanel(summary = habitAnalytics)
+                }
             }
         }
 

@@ -71,13 +71,17 @@ fun HabiHamContentCard(
 @Composable
 fun HabiHamListCard(
     modifier: Modifier = Modifier,
+    border: BorderStroke? = null,
+    containerColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor ?: MaterialTheme.colorScheme.surfaceVariant,
+        ),
+        border = border ?: BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         content = {
             Column(modifier = Modifier.padding(14.dp), content = content)

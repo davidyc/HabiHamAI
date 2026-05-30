@@ -22,6 +22,15 @@ import {
   SubNavGroup,
   SubNavTab,
 } from './shared/ui/SegmentTabs';
+import {
+  computeHabitPeriodAnalytics,
+  computeTodoPeriodAnalytics,
+  isTodoOverdue,
+} from './shared/tracking/analytics';
+import {
+  HabitPeriodAnalyticsPanel,
+  TodoPeriodAnalyticsPanel,
+} from './shared/ui/TrackingAnalyticsPanel';
 
 function AppContent() {
   const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
@@ -35,6 +44,15 @@ function AppContent() {
     from: getIsoDateDaysAgo(6),
     to: getTodayIsoDate(),
   });
+  const formatUserDisplayName = (firstName, lastName, loginFallback) => {
+    const fullName = [firstName, lastName]
+      .map((part) => String(part ?? '').trim())
+      .filter(Boolean)
+      .join(' ');
+    if (fullName) return fullName;
+    const login = String(loginFallback ?? '').trim();
+    return login || 'неизвестно';
+  };
   const getIsoDateRange = (fromIso, toIso) => {
     if (!fromIso || !toIso) return [];
     const start = new Date(`${fromIso}T00:00:00Z`);
@@ -3110,6 +3128,16 @@ function AppContent() {
   const hasAiAccess =
     currentUserRole === 'Admin' || currentUserRole === 'AiUser';
 
+  const topbarDisplayName = useMemo(
+    () =>
+      formatUserDisplayName(
+        profileFirstName,
+        profileLastName,
+        currentUserName || username,
+      ),
+    [profileFirstName, profileLastName, currentUserName, username],
+  );
+
   const workoutTrainerAssistant = useMemo(
     () => aiAssistants.find((x) => x?.assistantCode === 'trainer') ?? null,
     [aiAssistants],
@@ -3469,6 +3497,50 @@ function AppContent() {
     );
   }, [activeTodosCategoryGroup, todoTableSort]);
 
+  const habitPeriodAnalytics = useMemo(() => {
+    const habits = activeHabitsCategoryGroup?.items ?? [];
+    if (habits.length === 0) return null;
+    const today = getTodayIsoDate();
+    return computeHabitPeriodAnalytics({
+      habits,
+      checkinsByHabitId: habitsCheckinsByHabitId,
+      filterRange: habitFilterRange,
+      getDisplayDates: getHabitDisplayDates,
+      resolveStatus: (statusMap, habit, date) =>
+        resolveHabitStatusForDate(
+          statusMap,
+          habit,
+          date,
+          date === today ? 'todayStatus' : null,
+        ),
+    });
+  }, [
+    activeHabitsCategoryGroup,
+    habitsCheckinsByHabitId,
+    habitFilterRange,
+    habitFilterDateFrom,
+    habitFilterDateTo,
+  ]);
+
+  const todoPeriodAnalytics = useMemo(() => {
+    const items = activeTodosCategoryGroup?.items ?? [];
+    if (items.length === 0) return null;
+    return computeTodoPeriodAnalytics({
+      todos: items,
+      filterFrom: todoFilterDateFrom,
+      filterTo: todoFilterDateTo,
+      getToday: getTodayIsoDate,
+      getDateRange: getIsoDateRange,
+    });
+  }, [
+    activeTodosCategoryGroup,
+    todoFilterDateFrom,
+    todoFilterDateTo,
+    todosFilteredByStatus,
+    todoStatusFilter,
+    todosCategoryTabKey,
+  ]);
+
   useEffect(() => {
     if (habitsOverview.length === 0) {
       setHabitsCategoryTabKey('__all__');
@@ -3723,7 +3795,7 @@ function AppContent() {
               <div className="dashboard-shell">
                 <TopNav
                   tab={tab}
-                  currentUserName={currentUserName || username || 'неизвестно'}
+                  currentUserName={topbarDisplayName}
                   isAdmin={isAdmin}
                   hasAiAccess={hasAiAccess}
                   onTabChange={(id) => {
@@ -5222,7 +5294,7 @@ function AppContent() {
                               Привычек пока нет. Нажмите «Добавить привычку».
                             </div>
                           ) : activeHabitsCategoryGroup ? (
-                            <div style={{ marginTop: 12 }}>
+                            <div className="habits-panel" style={{ marginTop: 12 }}>
                               {habitsCategoryFilterOptions.length > 1 ? (
                                 <FilterSelect
                                   className="filter-field--category"
@@ -5261,6 +5333,7 @@ function AppContent() {
                                   applyHabitFilterPreset(Number(v))
                                 }
                               />
+                              <HabitPeriodAnalyticsPanel summary={habitPeriodAnalytics} />
                               <div
                                 className="habit-analytics-legend"
                                 aria-hidden="true"
@@ -5284,7 +5357,7 @@ function AppContent() {
                               </div>
 
                               <div
-                                className="users-table-wrap"
+                                className="users-table-wrap users-table-wrap--habits"
                                 role="tabpanel"
                                 aria-label={
                                   activeHabitsCategoryGroup.tabKey === '__all__'
@@ -5334,18 +5407,30 @@ function AppContent() {
                                       const displayDates = getHabitDisplayDates(h);
                                       return (
                                         <tr key={h.id}>
-                                          <td style={{ minWidth: 140 }}>
+                                          <td
+                                            className="habit-table__name"
+                                            data-label="Привычка"
+                                          >
                                             {h.name}
                                           </td>
                                           {activeHabitsCategoryGroup.showCategoryColumn ? (
-                                            <td style={{ minWidth: 120 }}>
+                                            <td
+                                              className="habit-table__category"
+                                              data-label="Категория"
+                                            >
                                               {h.categoryName || '—'}
                                             </td>
                                           ) : null}
-                                          <td style={{ width: 72 }}>
+                                          <td
+                                            className="habit-table__streak"
+                                            data-label="Серия"
+                                          >
                                             {h.currentStreakDays ?? 0} дн.
                                           </td>
-                                          <td style={{ width: 56 }}>
+                                          <td
+                                            className="habit-table__mark"
+                                            data-label="Вчера"
+                                          >
                                             {canMarkYesterday ? (
                                               <button
                                                 type="button"
@@ -5373,7 +5458,10 @@ function AppContent() {
                                               />
                                             )}
                                           </td>
-                                          <td style={{ width: 56 }}>
+                                          <td
+                                            className="habit-table__mark"
+                                            data-label="Сегодня"
+                                          >
                                             <button
                                               type="button"
                                               className="habit-today-btn"
@@ -5390,7 +5478,10 @@ function AppContent() {
                                               />
                                             </button>
                                           </td>
-                                          <td>
+                                          <td
+                                            className="habit-table__period"
+                                            data-label="Период"
+                                          >
                                             {displayDates.length === 0 ? (
                                               <span className="subtitle">
                                                 Укажите период
@@ -5418,7 +5509,10 @@ function AppContent() {
                                               </div>
                                             )}
                                           </td>
-                                          <td style={{ width: 52 }}>
+                                          <td
+                                            className="habit-table__actions"
+                                            data-label="Действия"
+                                          >
                                             <button
                                               type="button"
                                               className="danger-btn danger-btn--icon"
@@ -5479,6 +5573,8 @@ function AppContent() {
                               options={todoStatusFilterOptions}
                             />
                           </DatePeriodFilter>
+
+                          <TodoPeriodAnalyticsPanel summary={todoPeriodAnalytics} />
 
                           {todos.length === 0 ? (
                             <div className="workout-empty" style={{ marginTop: 8 }}>
@@ -5629,13 +5725,29 @@ function AppContent() {
                                   <tbody>
                                     {sortedActiveTodoItems.map((t) => {
                                       const isDone = Boolean(t.doneDate);
+                                      const overdue = isTodoOverdue(
+                                        t,
+                                        getTodayIsoDate,
+                                      );
                                       return (
-                                        <tr key={t.id}>
+                                        <tr
+                                          key={t.id}
+                                          className={
+                                            overdue
+                                              ? 'todos-table__row--overdue'
+                                              : undefined
+                                          }
+                                        >
                                           <td
                                             className="todos-table__title"
                                             data-label="Задача"
                                           >
                                             {t.title}
+                                            {overdue ? (
+                                              <span className="todo-overdue-badge">
+                                                Просрочено
+                                              </span>
+                                            ) : null}
                                           </td>
                                           {activeTodosCategoryGroup.showCategoryColumn ? (
                                             <td
@@ -5646,18 +5758,20 @@ function AppContent() {
                                             </td>
                                           ) : null}
                                           <td
-                                            className="todos-table__due"
+                                            className={`todos-table__due${overdue ? ' todos-table__due--overdue' : ''}`}
                                             data-label="Дедлайн"
                                           >
                                             {t.dueDate || '—'}
                                           </td>
                                           <td
-                                            className="todos-table__status"
+                                            className={`todos-table__status${overdue ? ' todos-table__status--overdue' : ''}`}
                                             data-label="Статус"
                                           >
                                             {isDone
                                               ? `Готово: ${t.doneDate}`
-                                              : 'Открыто'}
+                                              : overdue
+                                                ? 'Просрочено'
+                                                : 'Открыто'}
                                           </td>
                                           <td className="todos-table__actions">
                                             <div className="todo-row-actions">
