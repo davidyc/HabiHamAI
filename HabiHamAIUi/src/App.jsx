@@ -51,6 +51,7 @@ function AppContent() {
     Habits: 'app.habits',
     Todos: 'app.todos',
     Profile: 'app.profile',
+    Investments: 'app.investments',
     AiAssistant: 'ai.assistant',
     AdminUsers: 'admin.users',
     AdminRoles: 'admin.roles',
@@ -474,6 +475,20 @@ function AppContent() {
   const [bikeDetailOpen, setBikeDetailOpen] = useState(false);
   const [pendingDeleteBikeActivityId, setPendingDeleteBikeActivityId] =
     useState(null);
+  const [investments, setInvestments] = useState([]);
+  const [investmentSummary, setInvestmentSummary] = useState(null);
+  const [investmentsMessage, setInvestmentsMessage] = useState('');
+  const [isCreateInvestmentModalOpen, setIsCreateInvestmentModalOpen] =
+    useState(false);
+  const [investmentDraft, setInvestmentDraft] = useState({
+    ticker: '',
+    name: '',
+    assetType: 'stock',
+    quantity: '',
+    averagePrice: '',
+    currency: 'RUB',
+    notes: '',
+  });
   const planningImportInputRef = useRef(null);
   const exercisesImportInputRef = useRef(null);
   const bikeTcxImportRef = useRef(null);
@@ -722,6 +737,7 @@ function AppContent() {
           { id: 'progress', permission: APP_PERMISSION.Progress },
           { id: 'habits', permission: APP_PERMISSION.Habits },
           { id: 'todos', permission: APP_PERMISSION.Todos },
+          { id: 'investments', permission: APP_PERMISSION.Investments },
           { id: 'profile', permission: APP_PERMISSION.Profile },
           { id: 'ai', permission: APP_PERMISSION.AiAssistant },
           { id: 'admin', permission: null },
@@ -2397,6 +2413,107 @@ function AppContent() {
     }
   }
 
+  function formatMoney(value, currency = 'RUB') {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return '—';
+    try {
+      return new Intl.NumberFormat('ru-RU', {
+        style: 'currency',
+        currency: currency || 'RUB',
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      return `${amount.toFixed(2)} ${currency || ''}`.trim();
+    }
+  }
+
+  function formatInvestmentAssetType(value) {
+    const map = {
+      stock: 'Акции',
+      bond: 'Облигации',
+      etf: 'ETF',
+      crypto: 'Крипто',
+      other: 'Другое',
+    };
+    return map[String(value ?? '').toLowerCase()] || value || '—';
+  }
+
+  async function loadInvestments() {
+    if (!accessToken) return;
+    setInvestmentsMessage('');
+    const [listResult, summaryResult] = await Promise.all([
+      request('GET', '/users/me/investments', null, accessToken),
+      request('GET', '/users/me/investments/summary', null, accessToken),
+    ]);
+    if (listResult.ok && Array.isArray(listResult.data)) {
+      setInvestments(listResult.data);
+    } else {
+      handleResult(listResult);
+    }
+    if (summaryResult.ok) {
+      setInvestmentSummary(summaryResult.data);
+    } else {
+      handleResult(summaryResult);
+    }
+  }
+
+  function resetInvestmentDraft() {
+    setInvestmentDraft({
+      ticker: '',
+      name: '',
+      assetType: 'stock',
+      quantity: '',
+      averagePrice: '',
+      currency: 'RUB',
+      notes: '',
+    });
+  }
+
+  async function submitCreateInvestment() {
+    if (!accessToken) return;
+    const ticker = investmentDraft.ticker.trim();
+    const name = investmentDraft.name.trim();
+    const quantity = Number(investmentDraft.quantity);
+    const averagePrice = Number(investmentDraft.averagePrice);
+    if (!ticker || !name) {
+      setInvestmentsMessage('Укажите тикер и название.');
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setInvestmentsMessage('Количество должно быть больше нуля.');
+      return;
+    }
+    if (!Number.isFinite(averagePrice) || averagePrice < 0) {
+      setInvestmentsMessage('Укажите корректную среднюю цену.');
+      return;
+    }
+    setInvestmentsMessage('');
+    const result = await request(
+      'POST',
+      '/users/me/investments',
+      {
+        ticker,
+        name,
+        assetType: investmentDraft.assetType,
+        quantity,
+        averagePrice,
+        currency: investmentDraft.currency || 'RUB',
+        notes: investmentDraft.notes.trim() || null,
+      },
+      accessToken,
+    );
+    if (result.ok) {
+      setIsCreateInvestmentModalOpen(false);
+      resetInvestmentDraft();
+      await loadInvestments();
+      return;
+    }
+    setInvestmentsMessage(
+      result.data?.message ||
+        'Сохранение позиций пока недоступно — функция в разработке.',
+    );
+  }
+
   async function loadBikeActivities() {
     if (!accessToken) return;
     const qs = new URLSearchParams();
@@ -3461,6 +3578,11 @@ function AppContent() {
         { id: 'progress', label: 'Мой прогресс', permission: APP_PERMISSION.Progress },
         { id: 'habits', label: 'Привычки', permission: APP_PERMISSION.Habits },
         { id: 'todos', label: 'Задачи', permission: APP_PERMISSION.Todos },
+        {
+          id: 'investments',
+          label: 'Инвестиции',
+          permission: APP_PERMISSION.Investments,
+        },
       ].filter((item) => hasPermission(item.permission)),
     [currentUserPermissions],
   );
@@ -3594,6 +3716,11 @@ function AppContent() {
     if (tab !== 'bike' || !accessToken) return;
     loadBikeActivities();
   }, [tab, accessToken, bikeDateFrom, bikeDateTo]);
+  useEffect(() => {
+    if (tab !== 'investments' || !accessToken) return;
+    if (!hasPermission(APP_PERMISSION.Investments)) return;
+    loadInvestments();
+  }, [tab, accessToken, currentUserPermissions]);
   useEffect(() => {
     if (tab !== 'workouts' || !hasAiAccess || !aiToken) return;
     loadAiAssistants(aiToken);
@@ -4197,6 +4324,11 @@ function AppContent() {
                       return;
                     if (id === 'todos' && !hasPermission(APP_PERMISSION.Todos))
                       return;
+                    if (
+                      id === 'investments' &&
+                      !hasPermission(APP_PERMISSION.Investments)
+                    )
+                      return;
                     if (id === 'profile' && !hasPermission(APP_PERMISSION.Profile))
                       return;
                     setTab(id);
@@ -4215,6 +4347,9 @@ function AppContent() {
                     }
                     if (id === 'bike') {
                       loadBikeActivities();
+                    }
+                    if (id === 'investments') {
+                      loadInvestments();
                     }
                     if (id === 'ai') {
                       loadAiAssistants(aiToken);
@@ -6231,6 +6366,146 @@ function AppContent() {
                   </section>
                 )}
 
+                {tab === 'investments' &&
+                  hasPermission(APP_PERMISSION.Investments) && (
+                  <section className="card-grid">
+                    <section className="card full-span">
+                      <h3>Инвестиции</h3>
+                      <p className="subtitle">
+                        Портфель и учёт позиций. Раздел в разработке — данные
+                        пока загружаются с сервера-заглушки.
+                      </p>
+                      {investmentSummary?.isStub ? (
+                        <p className="subtitle" style={{ marginTop: 4 }}>
+                          Сводка и список позиций пока пустые.
+                        </p>
+                      ) : null}
+                      <div className="tracking-analytics-stats">
+                        <div className="tracking-analytics-stat">
+                          <span className="tracking-analytics-stat__label">
+                            Вложено
+                          </span>
+                          <span className="tracking-analytics-stat__value">
+                            {formatMoney(
+                              investmentSummary?.totalInvested ?? 0,
+                              investmentSummary?.currency,
+                            )}
+                          </span>
+                        </div>
+                        <div className="tracking-analytics-stat">
+                          <span className="tracking-analytics-stat__label">
+                            Текущая стоимость
+                          </span>
+                          <span className="tracking-analytics-stat__value">
+                            {formatMoney(
+                              investmentSummary?.totalCurrentValue ?? 0,
+                              investmentSummary?.currency,
+                            )}
+                          </span>
+                        </div>
+                        <div className="tracking-analytics-stat">
+                          <span className="tracking-analytics-stat__label">
+                            P/L
+                          </span>
+                          <span className="tracking-analytics-stat__value">
+                            {formatMoney(
+                              investmentSummary?.totalProfitLoss ?? 0,
+                              investmentSummary?.currency,
+                            )}
+                          </span>
+                          <span className="tracking-analytics-stat__hint">
+                            {Number.isFinite(
+                              Number(investmentSummary?.totalProfitLossPercent),
+                            )
+                              ? `${Number(investmentSummary.totalProfitLossPercent).toFixed(2)}%`
+                              : '0%'}
+                          </span>
+                        </div>
+                        <div className="tracking-analytics-stat">
+                          <span className="tracking-analytics-stat__label">
+                            Позиций
+                          </span>
+                          <span className="tracking-analytics-stat__value">
+                            {investmentSummary?.positionsCount ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="row">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetInvestmentDraft();
+                            setInvestmentsMessage('');
+                            setIsCreateInvestmentModalOpen(true);
+                          }}
+                        >
+                          Добавить позицию
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => loadInvestments()}
+                        >
+                          Обновить
+                        </button>
+                      </div>
+                      {investmentsMessage ? (
+                        <p
+                          className="subtitle"
+                          style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}
+                        >
+                          {investmentsMessage}
+                        </p>
+                      ) : null}
+                      <div className="users-table-wrap" style={{ marginTop: 12 }}>
+                        <table className="users-table">
+                          <thead>
+                            <tr>
+                              <th>Тикер</th>
+                              <th>Название</th>
+                              <th>Тип</th>
+                              <th>Кол-во</th>
+                              <th>Ср. цена</th>
+                              <th>Текущая</th>
+                              <th>Валюта</th>
+                              <th>Заметки</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {investments.length === 0 && (
+                              <tr>
+                                <td colSpan="8">
+                                  Позиций пока нет. Нажмите «Добавить позицию».
+                                </td>
+                              </tr>
+                            )}
+                            {investments.map((row) => (
+                              <tr key={row.id}>
+                                <td>{row.ticker || '—'}</td>
+                                <td>{row.name || '—'}</td>
+                                <td>
+                                  {formatInvestmentAssetType(row.assetType)}
+                                </td>
+                                <td>{row.quantity ?? '—'}</td>
+                                <td>
+                                  {formatMoney(row.averagePrice, row.currency)}
+                                </td>
+                                <td>
+                                  {row.currentPrice != null
+                                    ? formatMoney(row.currentPrice, row.currency)
+                                    : '—'}
+                                </td>
+                                <td>{row.currency || 'RUB'}</td>
+                                <td>{row.notes || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  </section>
+                )}
+
                 {tab === 'admin' && isAdmin && (
                   <section className="card-grid">
                     <section className="card full-span">
@@ -8152,6 +8427,149 @@ function AppContent() {
                         type="button"
                         className="ghost-btn"
                         onClick={() => setIsCreateTodoModalOpen(false)}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </ModalShell>
+                )}
+
+                {tab === 'investments' && isCreateInvestmentModalOpen && (
+                  <ModalShell
+                    open={isCreateInvestmentModalOpen}
+                    onClose={() => setIsCreateInvestmentModalOpen(false)}
+                    titleId="investment-create-title"
+                  >
+                    <h3 id="investment-create-title">Новая позиция</h3>
+                    <label htmlFor="investment-create-ticker">Тикер</label>
+                    <input
+                      id="investment-create-ticker"
+                      type="text"
+                      value={investmentDraft.ticker}
+                      onChange={(e) =>
+                        setInvestmentDraft((prev) => ({
+                          ...prev,
+                          ticker: e.target.value,
+                        }))
+                      }
+                      placeholder="SBER, FXUS, BTC"
+                    />
+                    <label htmlFor="investment-create-name">Название</label>
+                    <input
+                      id="investment-create-name"
+                      type="text"
+                      value={investmentDraft.name}
+                      onChange={(e) =>
+                        setInvestmentDraft((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                      placeholder="Сбербанк, ETF и т.д."
+                    />
+                    <label htmlFor="investment-create-type">Тип актива</label>
+                    <select
+                      id="investment-create-type"
+                      value={investmentDraft.assetType}
+                      onChange={(e) =>
+                        setInvestmentDraft((prev) => ({
+                          ...prev,
+                          assetType: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="stock">Акции</option>
+                      <option value="bond">Облигации</option>
+                      <option value="etf">ETF</option>
+                      <option value="crypto">Крипто</option>
+                      <option value="other">Другое</option>
+                    </select>
+                    <div className="row">
+                      <div>
+                        <label htmlFor="investment-create-quantity">
+                          Количество
+                        </label>
+                        <input
+                          id="investment-create-quantity"
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={investmentDraft.quantity}
+                          onChange={(e) =>
+                            setInvestmentDraft((prev) => ({
+                              ...prev,
+                              quantity: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="investment-create-avg-price">
+                          Средняя цена
+                        </label>
+                        <input
+                          id="investment-create-avg-price"
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={investmentDraft.averagePrice}
+                          onChange={(e) =>
+                            setInvestmentDraft((prev) => ({
+                              ...prev,
+                              averagePrice: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <label htmlFor="investment-create-currency">Валюта</label>
+                    <select
+                      id="investment-create-currency"
+                      value={investmentDraft.currency}
+                      onChange={(e) =>
+                        setInvestmentDraft((prev) => ({
+                          ...prev,
+                          currency: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="RUB">RUB</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                    </select>
+                    <label htmlFor="investment-create-notes">
+                      Заметки (опционально)
+                    </label>
+                    <input
+                      id="investment-create-notes"
+                      type="text"
+                      value={investmentDraft.notes}
+                      onChange={(e) =>
+                        setInvestmentDraft((prev) => ({
+                          ...prev,
+                          notes: e.target.value,
+                        }))
+                      }
+                    />
+                    {investmentsMessage ? (
+                      <p
+                        className="subtitle"
+                        style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}
+                      >
+                        {investmentsMessage}
+                      </p>
+                    ) : null}
+                    <div className="row" style={{ marginTop: 16 }}>
+                      <button
+                        type="button"
+                        onClick={() => submitCreateInvestment()}
+                      >
+                        Сохранить
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => setIsCreateInvestmentModalOpen(false)}
                       >
                         Отмена
                       </button>

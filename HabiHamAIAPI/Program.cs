@@ -86,6 +86,7 @@ builder.Services.AddScoped<IAdminRolesService, AdminRolesService>();
 builder.Services.AddScoped<IAppPermissionService, AppPermissionService>();
 builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
 builder.Services.AddScoped<IBikeActivitiesService, BikeActivitiesService>();
+builder.Services.AddScoped<IInvestmentsService, InvestmentsService>();
 builder.Services.AddSingleton<IPingService, PingService>();
 builder.Services.Configure<FormOptions>(options =>
 {

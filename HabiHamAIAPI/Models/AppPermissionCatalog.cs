@@ -8,6 +8,7 @@ public static class AppPermissionCatalog
     public const string Habits = "app.habits";
     public const string Todos = "app.todos";
     public const string Profile = "app.profile";
+    public const string Investments = "app.investments";
     public const string AiAssistant = "ai.assistant";
     public const string AdminUsers = "admin.users";
     public const string AdminRoles = "admin.roles";
@@ -25,6 +26,7 @@ public static class AppPermissionCatalog
         new(Habits, "Привычки", "Ежедневные привычки и отметки", "app", 4),
         new(Todos, "Задачи", "Список задач и выполнение", "app", 5),
         new(Profile, "Профиль", "Личные данные и настройки", "app", 6),
+        new(Investments, "Инвестиции", "Портфель и учёт инвестиционных позиций", "app", 7),
         new(AiAssistant, "AI помощник", "Чат с ИИ и связанные функции", "ai", 10),
         new(AdminUsers, "Учётные записи", "Создание и редактирование пользователей", "admin", 20),
         new(AdminRoles, "Роли", "Управление ролями и правами", "admin", 21),
@@ -39,7 +41,7 @@ public static class AppPermissionCatalog
         All.Select(x => x.Code).ToList();
 
     public static readonly IReadOnlyList<string> DefaultAppPermissions =
-        [Workouts, Bike, Progress, Habits, Todos, Profile];
+        [Workouts, Bike, Progress, Habits, Todos, Profile, Investments];
 
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> DefaultRolePermissions =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
