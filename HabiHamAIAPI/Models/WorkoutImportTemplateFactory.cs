@@ -144,7 +144,7 @@ public static class WorkoutImportTemplateFactory
             "day" => "День ног",
             "notes" => "Импортировано из JSON",
             "name" => "Присед со штангой",
-            "meta" => "Комментарий к упражнению",
+            "meta" => "{\"comment\":\"Комментарий к упражнению\",\"muscleGroup\":\"Спина\"}",
             "comment" => "Техника и акцент",
             "sourceexerciseid" => "00000000-0000-0000-0000-000000000000",
             "weight" => "60",

@@ -768,9 +768,9 @@ function AppContent() {
       setCurrentUserPermissions(nextPermissions);
       const defaultTab =
         [
+          { id: 'progress', permission: APP_PERMISSION.Progress },
           { id: 'workouts', permission: APP_PERMISSION.Workouts },
           { id: 'bike', permission: APP_PERMISSION.Bike },
-          { id: 'progress', permission: APP_PERMISSION.Progress },
           { id: 'habits', permission: APP_PERMISSION.Habits },
           { id: 'todos', permission: APP_PERMISSION.Todos },
           { id: 'investments', permission: APP_PERMISSION.Investments },
@@ -3844,9 +3844,9 @@ function AppContent() {
   const sidebarNavTabs = useMemo(
     () =>
       [
+        { id: 'progress', label: 'Мой прогресс', permission: APP_PERMISSION.Progress },
         { id: 'workouts', label: 'Силовые', permission: APP_PERMISSION.Workouts },
         { id: 'bike', label: 'Вело', permission: APP_PERMISSION.Bike },
-        { id: 'progress', label: 'Мой прогресс', permission: APP_PERMISSION.Progress },
         { id: 'habits', label: 'Привычки', permission: APP_PERMISSION.Habits },
         { id: 'todos', label: 'Задачи', permission: APP_PERMISSION.Todos },
         {
