@@ -10,9 +10,11 @@ import com.habiham.tracking.domain.CATEGORY_ALL_KEY
 import com.habiham.tracking.domain.CategoryFilterOption
 import com.habiham.tracking.domain.CategoryGroup
 import com.habiham.tracking.domain.activeHabitCategoryGroup
+import com.habiham.tracking.domain.activeHabitsOnly
 import com.habiham.tracking.domain.buildHabitCategoryGroups
 import com.habiham.tracking.domain.habitCategoryFilterOptions
 import com.habiham.tracking.domain.habitsAllCategoryGroup
+import com.habiham.tracking.domain.masteredHabitsInView
 import com.habiham.tracking.domain.habitCreatedIsoDate
 import com.habiham.tracking.domain.nextHabitCheckinStatus
 import com.habiham.tracking.domain.resolveHabitStatusForDate
@@ -39,6 +41,7 @@ data class HabitsUiState(
     val isSaving: Boolean = false,
     val error: String? = null,
     val showCreateDialog: Boolean = false,
+    val editingHabit: HabitOverviewDto? = null,
     val pendingDeleteHabit: HabitOverviewDto? = null,
 )
 
@@ -56,15 +59,25 @@ class HabitsViewModel(
 
     fun categoryFilterOptions(): List<CategoryFilterOption> {
         val state = _uiState.value
+        val active = activeHabitsOnly(state.habits)
         return habitCategoryFilterOptions(
-            allGroup = habitsAllCategoryGroup(state.habits),
-            groups = buildHabitCategoryGroups(state.habits, state.categories),
+            allGroup = habitsAllCategoryGroup(active),
+            groups = buildHabitCategoryGroups(active, state.categories),
         )
     }
 
     fun activeCategoryGroup(): CategoryGroup<HabitOverviewDto>? {
         val state = _uiState.value
-        return activeHabitCategoryGroup(state.habits, state.categories, state.categoryTabKey)
+        return activeHabitCategoryGroup(
+            activeHabitsOnly(state.habits),
+            state.categories,
+            state.categoryTabKey,
+        )
+    }
+
+    fun masteredHabitsForView(): List<HabitOverviewDto> {
+        val state = _uiState.value
+        return masteredHabitsInView(state.habits, state.categoryTabKey)
     }
 
     fun onCategoryTabChange(key: String) {
@@ -114,7 +127,8 @@ class HabitsViewModel(
             repository.loadHabitsOverview(session).fold(
                 onSuccess = { habits ->
                     _uiState.update { state ->
-                        val validKeys = buildHabitCategoryGroups(habits, state.categories)
+                        val active = activeHabitsOnly(habits)
+                        val validKeys = buildHabitCategoryGroups(active, state.categories)
                             .map { it.tabKey }
                             .toSet() + CATEGORY_ALL_KEY
                         val categoryKey = if (state.categoryTabKey in validKeys || habits.isEmpty()) {
@@ -136,9 +150,13 @@ class HabitsViewModel(
     private fun reloadCheckins() {
         viewModelScope.launch {
             val state = _uiState.value
-            val visible = activeHabitCategoryGroup(state.habits, state.categories, state.categoryTabKey)
-                ?.items
-                .orEmpty()
+            val active = activeHabitCategoryGroup(
+                activeHabitsOnly(state.habits),
+                state.categories,
+                state.categoryTabKey,
+            )?.items.orEmpty()
+            val mastered = masteredHabitsInView(state.habits, state.categoryTabKey)
+            val visible = active + mastered
             if (visible.isEmpty()) {
                 _uiState.update { it.copy(checkinsByHabitId = emptyMap()) }
                 return@launch
@@ -175,6 +193,14 @@ class HabitsViewModel(
         _uiState.update { it.copy(showCreateDialog = false) }
     }
 
+    fun openEditDialog(habit: HabitOverviewDto) {
+        _uiState.update { it.copy(editingHabit = habit, error = null) }
+    }
+
+    fun closeEditDialog() {
+        _uiState.update { it.copy(editingHabit = null) }
+    }
+
     fun requestDelete(habit: HabitOverviewDto) {
         _uiState.update { it.copy(pendingDeleteHabit = habit) }
     }
@@ -201,16 +227,44 @@ class HabitsViewModel(
         }
     }
 
-    fun createHabit(name: String, categoryId: String?) {
+    fun createHabit(name: String, categoryId: String?, daysToMaster: Int) {
         if (name.isBlank()) {
             _uiState.update { it.copy(error = "Укажите название привычки.") }
             return
         }
+        if (daysToMaster !in 0..999) {
+            _uiState.update { it.copy(error = "Дней до освоения: от 0 до 999.") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, error = null) }
-            repository.createHabit(session, name, categoryId).fold(
+            repository.createHabit(session, name, categoryId, daysToMaster).fold(
                 onSuccess = {
                     _uiState.update { it.copy(isSaving = false, showCreateDialog = false) }
+                    loadOverview()
+                },
+                onFailure = { err ->
+                    _uiState.update { it.copy(isSaving = false, error = err.message) }
+                },
+            )
+        }
+    }
+
+    fun updateHabit(name: String, categoryId: String?, daysToMaster: Int) {
+        val habit = _uiState.value.editingHabit ?: return
+        if (name.isBlank()) {
+            _uiState.update { it.copy(error = "Укажите название привычки.") }
+            return
+        }
+        if (daysToMaster !in 0..999) {
+            _uiState.update { it.copy(error = "Дней до освоения: от 0 до 999.") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, error = null) }
+            repository.updateHabit(session, habit.id, name, categoryId, daysToMaster).fold(
+                onSuccess = {
+                    _uiState.update { it.copy(isSaving = false, editingHabit = null) }
                     loadOverview()
                 },
                 onFailure = { err ->

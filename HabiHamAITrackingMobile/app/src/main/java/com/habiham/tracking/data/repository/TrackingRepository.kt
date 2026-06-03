@@ -2,6 +2,7 @@ package com.habiham.tracking.data.repository
 
 import com.habiham.tracking.data.api.AuthenticatedApiFactory
 import com.habiham.tracking.data.model.CreateHabitRequest
+import com.habiham.tracking.data.model.UpdateHabitRequest
 import com.habiham.tracking.data.model.CreateTodoRequest
 import com.habiham.tracking.data.model.HabitCheckinDto
 import com.habiham.tracking.data.model.HabitOverviewDto
@@ -56,8 +57,32 @@ class TrackingRepository(
         session: StoredSession,
         name: String,
         categoryId: String?,
-    ): Result<HabitOverviewDto> = apiCall(apiFactory, session) {
-        it.createHabit(CreateHabitRequest(name = name.trim(), categoryId = categoryId))
+        daysToMaster: Int = 21,
+    ): Result<Unit> = apiCall(apiFactory, session) {
+        it.createHabit(
+            CreateHabitRequest(
+                name = name.trim(),
+                categoryId = categoryId,
+                daysToMaster = daysToMaster,
+            ),
+        )
+    }
+
+    suspend fun updateHabit(
+        session: StoredSession,
+        habitId: String,
+        name: String,
+        categoryId: String?,
+        daysToMaster: Int,
+    ): Result<Unit> = apiCall(apiFactory, session) {
+        it.updateHabit(
+            habitId = habitId,
+            body = UpdateHabitRequest(
+                name = name.trim(),
+                categoryId = categoryId,
+                daysToMaster = daysToMaster,
+            ),
+        )
     }
 
     suspend fun deleteHabit(session: StoredSession, habitId: String): Result<Unit> =

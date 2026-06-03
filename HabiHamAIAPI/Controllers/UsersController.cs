@@ -60,6 +60,11 @@ public sealed class UsersController : ControllerBase
     public Task<IActionResult> CreateMyHabit([FromBody] CreateUserHabitRequest request, CancellationToken cancellationToken) =>
         _service.CreateMyHabitAsync(User, request, cancellationToken);
 
+    [HttpPut("me/habits/{habitId:guid}")]
+    [RequirePermission(AppPermissionCatalog.Habits)]
+    public Task<IActionResult> UpdateMyHabit(Guid habitId, [FromBody] UpdateUserHabitRequest request, CancellationToken cancellationToken) =>
+        _service.UpdateMyHabitAsync(User, habitId, request, cancellationToken);
+
     [HttpDelete("me/habits/{habitId:guid}")]
     [RequirePermission(AppPermissionCatalog.Habits)]
     public Task<IActionResult> DeleteMyHabit(Guid habitId, CancellationToken cancellationToken) =>

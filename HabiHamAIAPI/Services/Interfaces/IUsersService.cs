@@ -16,6 +16,7 @@ public interface IUsersService
     // Habits
     Task<IActionResult> GetMyHabitsOverviewAsync(ClaimsPrincipal principal, DateOnly? asOfDate, CancellationToken cancellationToken);
     Task<IActionResult> CreateMyHabitAsync(ClaimsPrincipal principal, CreateUserHabitRequest request, CancellationToken cancellationToken);
+    Task<IActionResult> UpdateMyHabitAsync(ClaimsPrincipal principal, Guid habitId, UpdateUserHabitRequest request, CancellationToken cancellationToken);
     Task<IActionResult> DeleteMyHabitAsync(ClaimsPrincipal principal, Guid habitId, CancellationToken cancellationToken);
     Task<IActionResult> GetMyHabitCheckinsAsync(ClaimsPrincipal principal, Guid habitId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
     Task<IActionResult> UpsertMyHabitCheckinAsync(ClaimsPrincipal principal, Guid habitId, UpsertUserHabitCheckinRequest request, CancellationToken cancellationToken);

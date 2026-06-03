@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.habiham.tracking.data.model.HabitOverviewDto
 import com.habiham.tracking.data.model.UserCategoryDto
+import com.habiham.tracking.domain.CATEGORY_ALL_KEY
 import com.habiham.tracking.domain.habitDisplayDates
 import com.habiham.tracking.domain.resolveHabitStatusForDate
 import com.habiham.tracking.ui.components.CategoryFilterRow
@@ -65,6 +66,7 @@ fun HabitsTab(
     val activeGroup = viewModel.activeCategoryGroup()
     val categoryOptions = viewModel.categoryFilterOptions()
     val displayHabits = activeGroup?.items.orEmpty()
+    val masteredHabits = viewModel.masteredHabitsForView()
     val habitAnalytics = remember(state.checkinsByHabitId, displayHabits, state.dateFrom, state.dateTo) {
         computeHabitPeriodAnalytics(
             habits = displayHabits,
@@ -167,16 +169,30 @@ fun HabitsTab(
                     )
                 }
             }
-            displayHabits.isEmpty() -> {
+            displayHabits.isEmpty() && masteredHabits.isEmpty() -> {
                 item {
                     Text(
-                        "Нет привычек в выбранной категории.",
+                        if (state.habits.any { it.isMastered }) {
+                            "Все привычки в категории освоены — см. блок ниже."
+                        } else {
+                            "Нет привычек в выбранной категории."
+                        },
                         modifier = Modifier.padding(horizontal = 16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             else -> {
+                if (displayHabits.isEmpty() && masteredHabits.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Все привычки в категории освоены — отметки в блоке ниже.",
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 items(displayHabits, key = { it.id }) { habit ->
                     HabitCard(
                         habit = habit,
@@ -184,23 +200,69 @@ fun HabitsTab(
                         dateFrom = state.dateFrom,
                         dateTo = state.dateTo,
                         showCategory = activeGroup?.showCategoryColumn == true,
+                        compact = false,
                         canMarkYesterday = viewModel.canMarkYesterday(habit),
                         onCycleYesterday = { viewModel.cycleCheckin(habit, yesterdayIso()) },
                         onCycleToday = { viewModel.cycleCheckin(habit, todayIso()) },
+                        onEdit = { viewModel.openEditDialog(habit) },
                         onDelete = { viewModel.requestDelete(habit) },
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
             }
         }
+
+        if (masteredHabits.isNotEmpty()) {
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    SectionTitle(
+                        text = "Освоенные привычки (${masteredHabits.size})",
+                    )
+                }
+            }
+            items(masteredHabits, key = { "mastered-${it.id}" }) { habit ->
+                HabitCard(
+                    habit = habit,
+                    statusMap = state.checkinsByHabitId[habit.id].orEmpty(),
+                    dateFrom = state.dateFrom,
+                    dateTo = state.dateTo,
+                    showCategory = activeGroup?.showCategoryColumn == true ||
+                        state.categoryTabKey == CATEGORY_ALL_KEY,
+                    compact = false,
+                    showEdit = false,
+                    showDelete = false,
+                    canMarkYesterday = viewModel.canMarkYesterday(habit),
+                    onCycleYesterday = { viewModel.cycleCheckin(habit, yesterdayIso()) },
+                    onCycleToday = { viewModel.cycleCheckin(habit, todayIso()) },
+                    onEdit = {},
+                    onDelete = {},
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+        }
     }
 
     if (state.showCreateDialog) {
-        CreateHabitDialog(
+        HabitEditorDialog(
+            title = "Новая привычка",
             categories = state.categories,
             isSaving = state.isSaving,
             onDismiss = viewModel::closeCreateDialog,
             onConfirm = viewModel::createHabit,
+        )
+    }
+
+    state.editingHabit?.let { habit ->
+        HabitEditorDialog(
+            title = "Редактировать привычку",
+            initialName = habit.name,
+            initialCategoryId = habit.categoryId,
+            initialDaysToMaster = habit.daysToMaster.toString(),
+            masteredHint = habit.isMastered,
+            categories = state.categories,
+            isSaving = state.isSaving,
+            onDismiss = viewModel::closeEditDialog,
+            onConfirm = viewModel::updateHabit,
         )
     }
 
@@ -229,7 +291,11 @@ private fun HabitCard(
     canMarkYesterday: Boolean,
     onCycleYesterday: () -> Unit,
     onCycleToday: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
+    compact: Boolean = false,
+    showEdit: Boolean = true,
+    showDelete: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val today = todayIso()
@@ -241,7 +307,26 @@ private fun HabitCard(
     val periodDates = habitDisplayDates(habit, dateFrom, dateTo)
 
     HabiHamListCard(modifier = modifier) {
-        Text(habit.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                habit.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            if (habit.isMastered) {
+                Text(
+                    "Освоена",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
         if (showCategory) {
             Text(
                 habit.categoryName ?: "—",
@@ -249,7 +334,14 @@ private fun HabitCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text("Серия: ${habit.currentStreakDays} дн.", style = MaterialTheme.typography.bodySmall)
+        if (!compact) {
+            Text("Серия: ${habit.currentStreakDays} дн.", style = MaterialTheme.typography.bodySmall)
+            Text(
+                habitMasteryLabel(habit),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -265,7 +357,7 @@ private fun HabitCard(
                 HabitStatusDot(status = todayStatus, onClick = onCycleToday)
             }
         }
-        if (periodDates.isNotEmpty()) {
+        if (!compact && periodDates.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             Text("Период", style = MaterialTheme.typography.labelSmall)
             Row(
@@ -282,27 +374,56 @@ private fun HabitCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onDelete) { Text("Удалить") }
+        if (showEdit || showDelete) {
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (showEdit) {
+                    OutlinedButton(onClick = onEdit) { Text("Изменить") }
+                }
+                if (showDelete) {
+                    OutlinedButton(onClick = onDelete) { Text("Удалить") }
+                }
+            }
+        }
     }
 }
 
+private fun habitMasteryLabel(habit: HabitOverviewDto): String =
+    when {
+        habit.isMastered -> "Освоена"
+        habit.daysToMaster > 0 -> "До освоения: ${habit.currentStreakDays} / ${habit.daysToMaster} дн."
+        else -> "Освоение: вручную"
+    }
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CreateHabitDialog(
+fun HabitEditorDialog(
+    title: String,
     categories: List<UserCategoryDto>,
     isSaving: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, categoryId: String?) -> Unit,
+    onConfirm: (name: String, categoryId: String?, daysToMaster: Int) -> Unit,
+    initialName: String = "",
+    initialCategoryId: String? = null,
+    initialDaysToMaster: String = "21",
+    masteredHint: Boolean = false,
 ) {
-    var name by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableStateOf<String?>(null) }
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var selectedCategoryId by remember(initialCategoryId) { mutableStateOf(initialCategoryId) }
+    var daysToMaster by remember(initialDaysToMaster) { mutableStateOf(initialDaysToMaster) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Новая привычка") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (masteredHint) {
+                    Text(
+                        "Привычка уже освоена",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -328,10 +449,24 @@ fun CreateHabitDialog(
                         }
                     }
                 }
+                OutlinedTextField(
+                    value = daysToMaster,
+                    onValueChange = { daysToMaster = it.filter { ch -> ch.isDigit() }.take(3) },
+                    label = { Text("Дней подряд до освоения") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = habihamTextFieldColors(),
+                )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name, selectedCategoryId) }, enabled = !isSaving) {
+            TextButton(
+                onClick = {
+                    val days = daysToMaster.toIntOrNull() ?: 21
+                    onConfirm(name, selectedCategoryId, days)
+                },
+                enabled = !isSaving,
+            ) {
                 Text("Сохранить")
             }
         },

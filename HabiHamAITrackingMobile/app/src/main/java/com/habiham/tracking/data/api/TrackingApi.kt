@@ -1,6 +1,7 @@
 package com.habiham.tracking.data.api
 
 import com.habiham.tracking.data.model.CreateHabitRequest
+import com.habiham.tracking.data.model.UpdateHabitRequest
 import com.habiham.tracking.data.model.CreateTodoRequest
 import com.habiham.tracking.data.model.HabitCheckinDto
 import com.habiham.tracking.data.model.HabitOverviewDto
@@ -35,7 +36,13 @@ interface TrackingApi {
     suspend fun getHabitsOverview(): List<HabitOverviewDto>
 
     @POST("users/me/habits")
-    suspend fun createHabit(@Body body: CreateHabitRequest): HabitOverviewDto
+    suspend fun createHabit(@Body body: CreateHabitRequest): List<HabitOverviewDto>
+
+    @PUT("users/me/habits/{habitId}")
+    suspend fun updateHabit(
+        @Path("habitId") habitId: String,
+        @Body body: UpdateHabitRequest,
+    ): List<HabitOverviewDto>
 
     @DELETE("users/me/habits/{habitId}")
     suspend fun deleteHabit(@Path("habitId") habitId: String): Response<Unit>

@@ -630,8 +630,67 @@ button:active {
   white-space: nowrap;
 }
 
+.habit-table__mastery {
+  min-width: 88px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.habit-table__mastery--done {
+  color: var(--accent, #2d8a4e);
+  font-weight: 600;
+}
+
 .habit-table__mark {
   width: 56px;
+}
+
+.habit-row-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.habits-mastered-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+}
+
+.habits-mastered-section__title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.habits-mastered-section__count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted, #888);
+}
+
+.habit-table__name-text {
+  display: inline;
+}
+
+.habit-table__mastered-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  color: var(--accent, #2d8a4e);
+  background: color-mix(in srgb, var(--accent, #2d8a4e) 18%, transparent);
+  vertical-align: middle;
+}
+
+.users-table-wrap--habits-mastered .habit-analytics-table--mastered tbody tr {
+  opacity: 0.92;
 }
 
 .habit-table__actions {
@@ -950,6 +1009,94 @@ button:active {
   font-size: 12px;
 }
 
+.workout-exercise-history-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.workout-exercise-history-hints span {
+  white-space: nowrap;
+}
+
+.workout-set-index-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  flex: 0 0 52px;
+  min-width: 52px;
+  padding-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.workout-set-prev {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.exercise-picker-combobox {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 0;
+  height: auto;
+}
+
+.exercise-picker-combobox input {
+  width: 100%;
+  margin-top: 0;
+}
+
+.exercise-picker-combobox__list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--surface-elevated, #1a1a1f);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.exercise-picker-combobox__list li {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.exercise-picker-combobox__list li:hover,
+.exercise-picker-combobox__list li:focus {
+  background: rgba(230, 57, 70, 0.12);
+  color: #fff;
+}
+
+.exercise-picker-combobox__empty {
+  cursor: default;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.exercise-picker-combobox__empty:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
 .chat-messages {
   min-height: 220px;
   max-height: 420px;
@@ -1231,7 +1378,21 @@ button:active {
   box-shadow: inset 3px 0 0 var(--danger);
 }
 
+.todos-table tbody tr.todos-table__row--done {
+  background: linear-gradient(
+    90deg,
+    rgba(63, 185, 80, 0.18) 0%,
+    rgba(63, 185, 80, 0.06) 48%,
+    transparent 100%
+  );
+  box-shadow: inset 3px 0 0 var(--success);
+}
+
 .todos-table tbody tr.todos-table__row--overdue:hover td {
+  background: transparent;
+}
+
+.todos-table tbody tr.todos-table__row--done:hover td {
   background: transparent;
 }
 
@@ -1254,8 +1415,17 @@ button:active {
   font-variant-numeric: tabular-nums;
 }
 
+.todos-table__title--done {
+  color: var(--success);
+}
+
 .todos-table__status--overdue {
   color: var(--danger);
+  font-weight: 600;
+}
+
+.todos-table__status--done {
+  color: var(--success);
   font-weight: 600;
 }
 
@@ -2358,6 +2528,11 @@ button {
     align-items: stretch;
   }
 
+  .exercise-picker-combobox {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
   .row.row--inline,
   .row.row--inline-nowrap {
     flex-direction: row;
@@ -2606,6 +2781,16 @@ button {
       var(--surface-input) 100%
     );
     box-shadow: inset 3px 0 0 var(--danger);
+  }
+
+  .todos-table.users-table tbody tr.todos-table__row--done {
+    border-color: rgba(63, 185, 80, 0.45);
+    background: linear-gradient(
+      180deg,
+      rgba(63, 185, 80, 0.14) 0%,
+      var(--surface-input) 100%
+    );
+    box-shadow: inset 3px 0 0 var(--success);
   }
 
   .todos-table.users-table tbody tr:last-child {

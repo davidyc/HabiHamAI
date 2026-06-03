@@ -112,6 +112,22 @@ fun activeHabitCategoryGroup(
     return groups.find { it.tabKey == categoryTabKey } ?: allGroup
 }
 
+fun activeHabitsOnly(habits: List<HabitOverviewDto>): List<HabitOverviewDto> =
+    habits.filter { !it.isMastered }
+
+fun masteredHabitsInView(
+    habits: List<HabitOverviewDto>,
+    categoryTabKey: String,
+): List<HabitOverviewDto> {
+    val mastered = habits.filter { it.isMastered }
+    if (mastered.isEmpty()) return emptyList()
+    if (categoryTabKey == CATEGORY_ALL_KEY) return mastered
+    return mastered.filter { h ->
+        val key = h.categoryId?.takeIf { it.isNotBlank() } ?: CATEGORY_NONE_KEY
+        key == categoryTabKey
+    }
+}
+
 fun buildTodoCategoryGroups(
     todos: List<TodoItemDto>,
     categories: List<UserCategoryDto>,

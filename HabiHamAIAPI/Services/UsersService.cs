@@ -215,6 +215,8 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
                 CategoryId = x.CategoryId,
                 CategoryName = x.Category != null ? x.Category.Name : null,
                 IsActive = x.IsActive,
+                IsMastered = x.IsMastered,
+                DaysToMaster = x.DaysToMaster,
                 SortOrder = x.SortOrder,
                 CreatedAtUtc = x.CreatedAtUtc,
                 UpdatedAtUtc = x.UpdatedAtUtc
@@ -252,15 +254,7 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
                 .Select(x => x.Date)
                 .ToList();
 
-            var doneSet = new HashSet<DateOnly>(doneDates);
-
-            var current = 0;
-            var d = date;
-            while (doneSet.Contains(d))
-            {
-                current++;
-                d = d.AddDays(-1);
-            }
+            var current = HabitMastery.ComputeCurrentStreakDays(doneDates, date);
 
             var lastDoneDate = doneDates.Count > 0 ? doneDates.Max() : (DateOnly?)null;
             var todayCheckin = habitCheckins.FirstOrDefault(x => x.Date == date);
@@ -274,6 +268,8 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
                 CategoryId = h.CategoryId,
                 CategoryName = h.CategoryName,
                 IsActive = h.IsActive,
+                IsMastered = h.IsMastered,
+                DaysToMaster = h.DaysToMaster,
                 CreatedAtUtc = h.CreatedAtUtc,
                 CurrentStreakDays = current,
                 IsDoneToday = isDoneToday,
@@ -281,6 +277,19 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
                 LastDoneDate = lastDoneDate
             };
         }).ToList();
+
+        await ApplyHabitMasteryUpdatesAsync(
+            user.Id,
+            response.Select(x => (x.Id, x.DaysToMaster, x.IsMastered, x.CurrentStreakDays)).ToList(),
+            cancellationToken);
+
+        foreach (var item in response)
+        {
+            if (HabitMastery.ShouldMarkMastered(item.IsMastered, item.DaysToMaster, item.CurrentStreakDays))
+            {
+                item.IsMastered = true;
+            }
+        }
 
         return new OkObjectResult(response);
     }
@@ -313,6 +322,12 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
             }
         }
 
+        var daysToMaster = request.DaysToMaster ?? HabitMastery.DefaultDaysToMaster;
+        if (!HabitMastery.TryValidateDaysToMaster(daysToMaster, out var daysError))
+        {
+            return new BadRequestObjectResult(new { message = daysError });
+        }
+
         var maxSortOrder = await _dbContext.UserHabits
             .AsNoTracking()
             .Where(x => x.UserId == user.Id)
@@ -328,12 +343,66 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
             CategoryId = request.CategoryId,
             Name = name,
             IsActive = true,
+            IsMastered = false,
+            DaysToMaster = daysToMaster,
             SortOrder = maxSortOrder + 1,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
 
         _dbContext.UserHabits.Add(habit);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await GetMyHabitsOverviewAsync(principal, null, cancellationToken);
+    }
+
+    public async Task<IActionResult> UpdateMyHabitAsync(
+        ClaimsPrincipal principal,
+        Guid habitId,
+        UpdateUserHabitRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(principal, cancellationToken);
+        if (user is null)
+        {
+            return new UnauthorizedObjectResult(new { message = "User is not authorized." });
+        }
+
+        var habit = await _dbContext.UserHabits
+            .FirstOrDefaultAsync(x => x.Id == habitId && x.UserId == user.Id && x.IsActive, cancellationToken);
+        if (habit is null)
+        {
+            return new NotFoundObjectResult(new { message = "Habit not found." });
+        }
+
+        var name = (request.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
+        {
+            return new BadRequestObjectResult(new { message = "Habit name is invalid." });
+        }
+
+        if (request.CategoryId.HasValue)
+        {
+            var categoryExists = await _dbContext.UserCategories
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == request.CategoryId.Value && x.IsActive, cancellationToken);
+            if (!categoryExists)
+            {
+                return new BadRequestObjectResult(new { message = "Category not found or inactive." });
+            }
+        }
+
+        if (!HabitMastery.TryValidateDaysToMaster(request.DaysToMaster, out var daysError))
+        {
+            return new BadRequestObjectResult(new { message = daysError });
+        }
+
+        var now = DateTime.UtcNow;
+        habit.Name = name;
+        habit.CategoryId = request.CategoryId;
+        habit.DaysToMaster = request.DaysToMaster;
+        habit.UpdatedAtUtc = now;
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return await GetMyHabitsOverviewAsync(principal, null, cancellationToken);
@@ -469,6 +538,19 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var asOfDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        var doneDates = await _dbContext.UserHabitCheckins
+            .AsNoTracking()
+            .Where(x => x.UserId == user.Id && x.HabitId == habitId && x.Status == UserHabitCheckinStatus.Done)
+            .Select(x => x.Date)
+            .ToListAsync(cancellationToken);
+        var streak = HabitMastery.ComputeCurrentStreakDays(doneDates, asOfDate);
+        await ApplyHabitMasteryUpdatesAsync(
+            user.Id,
+            [(habitId, habit.DaysToMaster, habit.IsMastered, streak)],
+            cancellationToken);
+
         return new OkObjectResult(new { message = "OK" });
     }
 
@@ -816,6 +898,30 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
         {
             row.ValuesJson = JsonSerializer.Serialize(values);
         }
+    }
+
+    private async Task ApplyHabitMasteryUpdatesAsync(
+        Guid userId,
+        IReadOnlyList<(Guid HabitId, int DaysToMaster, bool IsMastered, int CurrentStreakDays)> items,
+        CancellationToken cancellationToken)
+    {
+        var habitIds = items
+            .Where(x => HabitMastery.ShouldMarkMastered(x.IsMastered, x.DaysToMaster, x.CurrentStreakDays))
+            .Select(x => x.HabitId)
+            .ToList();
+        if (habitIds.Count == 0)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        await _dbContext.UserHabits
+            .Where(x => x.UserId == userId && habitIds.Contains(x.Id) && !x.IsMastered)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(x => x.IsMastered, true)
+                    .SetProperty(x => x.UpdatedAtUtc, now),
+                cancellationToken);
     }
 
     private static string? NormalizeOrNull(string? value, int maxLength)

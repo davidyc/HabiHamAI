@@ -61,6 +61,15 @@ function AppContent() {
     AdminAiTestChat: 'admin.ai_test_chat',
     AdminDialogs: 'admin.dialogs',
   };
+  const EXERCISE_MUSCLE_GROUP_OPTIONS = [
+    'Грудь',
+    'Спина',
+    'Ноги',
+    'Плечи',
+    'Руки',
+    'Пресс',
+    'Ягодицы',
+  ];
   const ADMIN_SUBTAB_PERMISSION = {
     'users-manage': APP_PERMISSION.AdminUsers,
     roles: APP_PERMISSION.AdminRoles,
@@ -146,6 +155,14 @@ function AppContent() {
       return 'habit-status-cell habit-status-cell--failed';
     }
     return 'habit-status-cell habit-status-cell--none';
+  };
+  const isHabitMastered = (habit) => Boolean(habit?.isMastered);
+  const habitMasteryLabel = (habit) => {
+    if (habit?.isMastered) return 'Освоена';
+    const target = Number(habit?.daysToMaster ?? 0);
+    if (!target) return '—';
+    const streak = Number(habit?.currentStreakDays ?? 0);
+    return `${streak} / ${target} дн.`;
   };
   const habitStatusLabel = (status) => {
     if (status === 'partial') return 'частично';
@@ -276,12 +293,24 @@ function AppContent() {
     useState('');
   const [newCatalogExerciseName, setNewCatalogExerciseName] = useState('');
   const [newCatalogExerciseMeta, setNewCatalogExerciseMeta] = useState('');
+  const [newCatalogExerciseMuscleGroup, setNewCatalogExerciseMuscleGroup] =
+    useState('');
+  const [exerciseCatalogSearch, setExerciseCatalogSearch] = useState('');
+  const [exerciseCatalogSort, setExerciseCatalogSort] = useState({
+    key: 'name',
+    dir: 'asc',
+  });
   const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] =
     useState(false);
+  const [editingCatalogExerciseId, setEditingCatalogExerciseId] = useState('');
   const [programCode, setProgramCode] = useState('');
   const [programDay, setProgramDay] = useState('');
   const [programNotes, setProgramNotes] = useState('');
   const [programExercisesDraft, setProgramExercisesDraft] = useState([]);
+  const [programExercisePickerSearch, setProgramExercisePickerSearch] =
+    useState('');
+  const [programExercisePickerOpen, setProgramExercisePickerOpen] =
+    useState(false);
   const [isProgramModalOpen, setIsProgramModalOpen] = useState(false);
   const [isProgramDeleteModalOpen, setIsProgramDeleteModalOpen] =
     useState(false);
@@ -327,6 +356,7 @@ function AppContent() {
   const [habitsOverview, setHabitsOverview] = useState([]);
   const [habitsNewName, setHabitsNewName] = useState('');
   const [habitsNewCategoryId, setHabitsNewCategoryId] = useState('');
+  const [habitsNewDaysToMaster, setHabitsNewDaysToMaster] = useState('21');
   const [habitDatePeriodPreset, setHabitDatePeriodPreset] = useState('7');
   const [habitFilterDateFrom, setHabitFilterDateFrom] = useState(
     () => getRollingWeekRange().from,
@@ -337,8 +367,13 @@ function AppContent() {
   /** habitId → Set of ISO dates with check-in */
   const [habitsCheckinsByHabitId, setHabitsCheckinsByHabitId] = useState({});
   const [isCreateHabitModalOpen, setIsCreateHabitModalOpen] = useState(false);
+  const [editingHabit, setEditingHabit] = useState(null);
+  const [habitsEditName, setHabitsEditName] = useState('');
+  const [habitsEditCategoryId, setHabitsEditCategoryId] = useState('');
+  const [habitsEditDaysToMaster, setHabitsEditDaysToMaster] = useState('21');
   const [pendingDeleteHabit, setPendingDeleteHabit] = useState(null);
   const [pendingDeleteTodo, setPendingDeleteTodo] = useState(null);
+  const [pendingCompleteTodo, setPendingCompleteTodo] = useState(null);
   const [habitsCategoryTabKey, setHabitsCategoryTabKey] = useState('__all__');
 
   // Прогресс: задачи/ToDo
@@ -463,6 +498,7 @@ function AppContent() {
     () => getRollingWeekRange().to,
   );
   const [historyWorkoutLogs, setHistoryWorkoutLogs] = useState([]);
+  const [workoutHistoryForStats, setWorkoutHistoryForStats] = useState([]);
   const [bikeActivities, setBikeActivities] = useState([]);
   const [bikeDatePeriodPreset, setBikeDatePeriodPreset] = useState('7');
   const [bikeDateFrom, setBikeDateFrom] = useState(
@@ -1832,11 +1868,16 @@ function AppContent() {
     const name = String(habitsNewName ?? '').trim();
     if (!name) return setErrorView('Укажи название привычки.');
     const categoryId = habitsNewCategoryId || null;
+    const daysRaw = String(habitsNewDaysToMaster ?? '').trim();
+    const daysToMaster = daysRaw === '' ? 21 : Number(daysRaw);
+    if (!Number.isFinite(daysToMaster) || daysToMaster < 0 || daysToMaster > 999) {
+      return setErrorView('Дней до освоения: число от 0 до 999 (0 — без автоматической отметки).');
+    }
 
     const result = await request(
       'POST',
       '/users/me/habits',
-      { name, categoryId },
+      { name, categoryId, daysToMaster },
       accessToken,
     );
     handleResult(result);
@@ -1844,8 +1885,49 @@ function AppContent() {
 
     setHabitsNewName('');
     setHabitsNewCategoryId('');
+    setHabitsNewDaysToMaster('21');
     setIsCreateHabitModalOpen(false);
     await loadHabitsOverview(accessToken);
+  }
+
+  function openEditHabitModal(habit) {
+    if (!habit?.id) return;
+    setEditingHabit(habit);
+    setHabitsEditName(String(habit.name ?? ''));
+    setHabitsEditCategoryId(
+      habit.categoryId ? String(habit.categoryId) : '',
+    );
+    setHabitsEditDaysToMaster(String(habit.daysToMaster ?? 21));
+  }
+
+  async function saveHabitEdit() {
+    const habitId = editingHabit?.id;
+    if (!accessToken || !habitId) return;
+    const name = String(habitsEditName ?? '').trim();
+    if (!name) return setErrorView('Укажи название привычки.');
+    const categoryId = habitsEditCategoryId || null;
+    const daysRaw = String(habitsEditDaysToMaster ?? '').trim();
+    const daysToMaster = daysRaw === '' ? 21 : Number(daysRaw);
+    if (!Number.isFinite(daysToMaster) || daysToMaster < 0 || daysToMaster > 999) {
+      return setErrorView('Дней до освоения: число от 0 до 999.');
+    }
+
+    const result = await request(
+      'PUT',
+      `/users/me/habits/${habitId}`,
+      { name, categoryId, daysToMaster },
+      accessToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+
+    setEditingHabit(null);
+    await loadHabitsOverview(accessToken);
+    const habitsToRefresh =
+      activeHabitsCategoryGroup?.items?.length > 0
+        ? activeHabitsCategoryGroup.items
+        : habitsOverview;
+    await loadHabitsCategoryCheckins(habitsToRefresh, accessToken);
   }
 
   async function confirmDeleteHabit() {
@@ -2022,6 +2104,14 @@ function AppContent() {
     await loadTodos(accessToken);
   }
 
+  async function confirmCompleteTodo() {
+    const todoId = pendingCompleteTodo?.id;
+    if (!accessToken || !todoId) return;
+
+    setPendingCompleteTodo(null);
+    await upsertTodoDone(todoId, true);
+  }
+
   async function upsertTodoDone(todoId, isDone) {
     if (!accessToken || !todoId) return;
     const body = isDone
@@ -2046,6 +2136,20 @@ function AppContent() {
       }
       return { key, dir: 'asc' };
     });
+  }
+
+  function cycleExerciseCatalogSort(key) {
+    setExerciseCatalogSort((prev) => {
+      if (prev.key === key) {
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, dir: 'asc' };
+    });
+  }
+
+  function exerciseCatalogSortAria(key) {
+    if (exerciseCatalogSort.key !== key) return 'none';
+    return exerciseCatalogSort.dir === 'asc' ? 'ascending' : 'descending';
   }
 
   function compareTodoItems(a, b, key, dir) {
@@ -2130,6 +2234,84 @@ function AppContent() {
     setHistoryWorkoutLogs(sortedLogs);
   }
 
+  async function loadWorkoutHistoryForStats(token = accessToken) {
+    if (!token) return;
+    const result = await request(
+      'GET',
+      '/users/me/workouts/history',
+      null,
+      token,
+    );
+    if (!result.ok) return;
+    const logs = Array.isArray(result.data) ? result.data : [];
+    const sortedLogs = [...logs].sort((a, b) => {
+      const timeA = Date.parse(a?.date || a?._date || '') || 0;
+      const timeB = Date.parse(b?.date || b?._date || '') || 0;
+      return timeB - timeA;
+    });
+    setWorkoutHistoryForStats(sortedLogs);
+  }
+
+  function normalizeExerciseName(name) {
+    return String(name || '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function formatWorkoutSetPair(setItem) {
+    const weight = String(setItem?.weight ?? '').trim();
+    const reps = String(setItem?.reps ?? '').trim();
+    if (weight && reps) return `${weight}×${reps}`;
+    if (weight) return `${weight} кг`;
+    if (reps) return `${reps} повт.`;
+    return '';
+  }
+
+  function formatWorkoutSetsSummary(sets) {
+    const parts = (sets || [])
+      .map((setItem) => formatWorkoutSetPair(setItem))
+      .filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : '—';
+  }
+
+  function buildExerciseHistoryInsights(sessions) {
+    const byName = new Map();
+    const sorted = [...sessions].sort((a, b) => {
+      const timeA = Date.parse(a?.date || a?._date || '') || 0;
+      const timeB = Date.parse(b?.date || b?._date || '') || 0;
+      return timeB - timeA;
+    });
+
+    for (const session of sorted) {
+      const sessionDate = session.date || session._date;
+      for (const exercise of session.exercises || []) {
+        const key = normalizeExerciseName(exercise.name);
+        if (!key) continue;
+
+        let entry = byName.get(key);
+        if (!entry) {
+          entry = { lastSession: null };
+          byName.set(key, entry);
+        }
+
+        const sets = exercise.sets || [];
+
+        if (!entry.lastSession) {
+          entry.lastSession = {
+            date: sessionDate,
+            sets: sets.map((setItem) => ({
+              weight: setItem.weight || '',
+              reps: setItem.reps || '',
+              rpe: setItem.rpe || '',
+            })),
+          };
+        }
+      }
+    }
+
+    return byName;
+  }
+
   async function loadWorkoutExerciseCatalog(token = accessToken) {
     if (!token) return;
     const result = await request(
@@ -2156,36 +2338,102 @@ function AppContent() {
     }
   }
 
-  async function createCatalogExercise() {
+  function buildCatalogExerciseMeta(comment, muscleGroup, existingRawMeta = '') {
+    const c = (comment || '').trim();
+    const m = (muscleGroup || '').trim();
+    const parsed = parseProgramExerciseMeta(existingRawMeta);
+    if (parsed.sourceExerciseId) {
+      return JSON.stringify({
+        sourceExerciseId: parsed.sourceExerciseId,
+        comment: c,
+        muscleGroup: m,
+      });
+    }
+    return c || m ? JSON.stringify({ comment: c, muscleGroup: m }) : '';
+  }
+
+  function openCreateCatalogExerciseModal() {
+    setEditingCatalogExerciseId('');
+    setNewCatalogExerciseName('');
+    setNewCatalogExerciseMeta('');
+    setNewCatalogExerciseMuscleGroup('');
+    setIsCreateExerciseModalOpen(true);
+  }
+
+  function openEditCatalogExerciseModal(exercise) {
+    if (!exercise) return;
+    const parsed = parseProgramExerciseMeta(exercise.meta);
+    setEditingCatalogExerciseId(exercise.id || '');
+    setNewCatalogExerciseName(exercise.name || '');
+    setNewCatalogExerciseMuscleGroup(parsed.muscleGroup || '');
+    setNewCatalogExerciseMeta(
+      parsed.isStructured ? parsed.comment : parsed.legacy,
+    );
+    setIsCreateExerciseModalOpen(true);
+  }
+
+  function closeCatalogExerciseModal() {
+    setIsCreateExerciseModalOpen(false);
+    setEditingCatalogExerciseId('');
+    setNewCatalogExerciseName('');
+    setNewCatalogExerciseMeta('');
+    setNewCatalogExerciseMuscleGroup('');
+  }
+
+  async function saveCatalogExercise() {
     if (!accessToken) return;
     const name = (newCatalogExerciseName || '').trim();
     if (!name) return setErrorView('Укажи название упражнения.');
 
-    const seedCode = `catalog::${slugifyProgramCode(name)}-${Date.now()}`;
-    const result = await request(
-      'POST',
-      '/users/me/workouts',
-      {
-        sessionCode: seedCode,
-        date: new Date().toISOString().slice(0, 10),
-        day: `Каталог: ${name}`,
-        notes: 'Служебная запись для каталога упражнений',
-        exercises: [
-          {
-            name,
-            meta: (newCatalogExerciseMeta || '').trim(),
-            sets: [],
-          },
-        ],
-      },
-      accessToken,
+    const existingExercise = editingCatalogExerciseId
+      ? workoutExerciseCatalog.find(
+          (x) => String(x.id) === String(editingCatalogExerciseId),
+        )
+      : null;
+    const meta = buildCatalogExerciseMeta(
+      newCatalogExerciseMeta,
+      newCatalogExerciseMuscleGroup,
+      existingExercise?.meta || '',
     );
-    handleResult(result);
-    if (!result.ok) return;
 
-    setNewCatalogExerciseName('');
-    setNewCatalogExerciseMeta('');
-    setIsCreateExerciseModalOpen(false);
+    if (editingCatalogExerciseId) {
+      const result = await request(
+        'PUT',
+        `/users/me/workouts/exercises/${editingCatalogExerciseId}`,
+        {
+          name,
+          meta,
+          sets: [],
+        },
+        accessToken,
+      );
+      handleResult(result);
+      if (!result.ok) return;
+    } else {
+      const seedCode = `catalog::${slugifyProgramCode(name)}-${Date.now()}`;
+      const result = await request(
+        'POST',
+        '/users/me/workouts',
+        {
+          sessionCode: seedCode,
+          date: new Date().toISOString().slice(0, 10),
+          day: `Каталог: ${name}`,
+          notes: 'Служебная запись для каталога упражнений',
+          exercises: [
+            {
+              name,
+              meta,
+              sets: [],
+            },
+          ],
+        },
+        accessToken,
+      );
+      handleResult(result);
+      if (!result.ok) return;
+    }
+
+    closeCatalogExerciseModal();
     await loadWorkoutExerciseCatalog(accessToken);
   }
 
@@ -2230,6 +2478,7 @@ function AppContent() {
         isStructured: false,
         sourceExerciseId: '',
         comment: '',
+        muscleGroup: '',
         legacy: '',
       };
     }
@@ -2239,7 +2488,9 @@ function AppContent() {
       if (
         parsed &&
         typeof parsed === 'object' &&
-        ('sourceExerciseId' in parsed || 'comment' in parsed)
+        ('sourceExerciseId' in parsed ||
+          'comment' in parsed ||
+          'muscleGroup' in parsed)
       ) {
         return {
           isStructured: true,
@@ -2247,6 +2498,7 @@ function AppContent() {
             ? String(parsed.sourceExerciseId)
             : '',
           comment: parsed?.comment ? String(parsed.comment) : '',
+          muscleGroup: parsed?.muscleGroup ? String(parsed.muscleGroup) : '',
           legacy: '',
         };
       }
@@ -2258,6 +2510,7 @@ function AppContent() {
       isStructured: false,
       sourceExerciseId: '',
       comment: '',
+      muscleGroup: '',
       legacy: raw,
     };
   }
@@ -2272,6 +2525,13 @@ function AppContent() {
         comment: '',
       },
     ]);
+    setProgramExercisePickerSearch('');
+    setProgramExercisePickerOpen(false);
+  }
+
+  function selectProgramExerciseForPicker(exercise) {
+    setProgramExercisePickerSearch(exercise.name || '');
+    setProgramExercisePickerOpen(false);
   }
 
   function removeProgramExercise(exerciseId) {
@@ -2318,6 +2578,8 @@ function AppContent() {
     setProgramDay('');
     setProgramNotes('');
     setProgramExercisesDraft([]);
+    setProgramExercisePickerSearch('');
+    setProgramExercisePickerOpen(false);
     setIsProgramModalOpen(false);
   }
 
@@ -2327,6 +2589,8 @@ function AppContent() {
     setProgramDay('');
     setProgramNotes('');
     setProgramExercisesDraft([]);
+    setProgramExercisePickerSearch('');
+    setProgramExercisePickerOpen(false);
     setIsProgramModalOpen(true);
   }
 
@@ -2342,11 +2606,15 @@ function AppContent() {
         name: x.name || '',
       })),
     );
+    setProgramExercisePickerSearch('');
+    setProgramExercisePickerOpen(false);
     setIsProgramModalOpen(true);
   }
 
   function closeProgramModal() {
     setIsProgramModalOpen(false);
+    setProgramExercisePickerSearch('');
+    setProgramExercisePickerOpen(false);
     setEditingProgramId('');
   }
 
@@ -2648,6 +2916,7 @@ function AppContent() {
   }
 
   function startWorkoutFromProgram(program) {
+    loadWorkoutHistoryForStats();
     setCurrentWorkout({
       sessionCode: `workout::${Date.now()}`,
       day: program.day || 'Тренировка',
@@ -2668,6 +2937,7 @@ function AppContent() {
   }
 
   function createWorkoutFromScratch() {
+    loadWorkoutHistoryForStats();
     setCurrentWorkout({
       sessionCode: `workout::${Date.now()}`,
       day: 'Новая тренировка',
@@ -2883,6 +3153,7 @@ function AppContent() {
         setCurrentWorkout(mapServerSessionToCurrentWorkout(fromList));
       }
     }
+    loadWorkoutHistoryForStats();
     setIsActiveWorkoutModalOpen(true);
   }
 
@@ -3695,6 +3966,19 @@ function AppContent() {
     loadWorkoutExerciseCatalog();
   }, [tab, accessToken]);
   useEffect(() => {
+    if (tab !== 'workouts' || workoutsSubTab !== 'strength' || !accessToken) {
+      return;
+    }
+    if (strengthSubTab !== 'my-workout' && !isActiveWorkoutModalOpen) return;
+    loadWorkoutHistoryForStats();
+  }, [
+    tab,
+    workoutsSubTab,
+    strengthSubTab,
+    isActiveWorkoutModalOpen,
+    accessToken,
+  ]);
+  useEffect(() => {
     if (
       tab !== 'workouts' ||
       workoutsSubTab !== 'strength' ||
@@ -3785,9 +4069,18 @@ function AppContent() {
     return getIsoDateRange(effectiveFrom, to);
   };
 
+  const habitsActiveOverview = useMemo(
+    () => habitsOverview.filter((h) => !isHabitMastered(h)),
+    [habitsOverview],
+  );
+  const habitsMasteredOverview = useMemo(
+    () => habitsOverview.filter((h) => isHabitMastered(h)),
+    [habitsOverview],
+  );
+
   const habitsByCategory = useMemo(() => {
     const groups = new Map();
-    for (const h of habitsOverview) {
+    for (const h of habitsActiveOverview) {
       const key = h.categoryId ? String(h.categoryId) : '__none__';
       if (!groups.has(key)) {
         groups.set(key, {
@@ -3823,7 +4116,7 @@ function AppContent() {
         if (!b.categoryId) return -1;
         return categorySortOrder(a.categoryId) - categorySortOrder(b.categoryId);
       });
-  }, [habitsOverview, userCategories]);
+  }, [habitsActiveOverview, userCategories]);
 
   const todoStatusCounts = useMemo(() => {
     const open = todos.filter((t) => !t.doneDate).length;
@@ -3907,7 +4200,7 @@ function AppContent() {
   );
 
   const habitsAllCategoryGroup = useMemo(() => {
-    if (habitsOverview.length === 0) return null;
+    if (habitsActiveOverview.length === 0) return null;
     return {
       tabKey: '__all__',
       categoryId: null,
@@ -3915,11 +4208,27 @@ function AppContent() {
       tabLabel: 'Все',
       showHeader: false,
       showCategoryColumn: true,
-      doneCount: habitsOverview.filter((x) => x.isDoneToday).length,
-      totalCount: habitsOverview.length,
-      items: habitsOverview,
+      doneCount: habitsActiveOverview.filter((x) => x.isDoneToday).length,
+      totalCount: habitsActiveOverview.length,
+      items: habitsActiveOverview,
     };
-  }, [habitsOverview]);
+  }, [habitsActiveOverview]);
+
+  const masteredHabitsInView = useMemo(() => {
+    if (habitsMasteredOverview.length === 0) return [];
+    if (habitsCategoryTabKey === '__all__') return habitsMasteredOverview;
+    return habitsMasteredOverview.filter((h) => {
+      const key = h.categoryId ? String(h.categoryId) : '__none__';
+      return key === habitsCategoryTabKey;
+    });
+  }, [habitsMasteredOverview, habitsCategoryTabKey]);
+
+  const masteredHabitsShowCategoryColumn = useMemo(
+    () =>
+      habitsCategoryTabKey === '__all__' ||
+      masteredHabitsInView.some((h) => h.categoryId),
+    [habitsCategoryTabKey, masteredHabitsInView],
+  );
 
   const habitsCategoryFilterOptions = useMemo(() => {
     const options = [];
@@ -3956,7 +4265,7 @@ function AppContent() {
   }, [todosAllCategoryGroup, todosByCategory]);
 
   const activeHabitsCategoryGroup = useMemo(() => {
-    if (habitsOverview.length === 0) return null;
+    if (habitsActiveOverview.length === 0) return null;
     if (habitsCategoryTabKey === '__all__') {
       return habitsAllCategoryGroup;
     }
@@ -3968,7 +4277,7 @@ function AppContent() {
       habitsAllCategoryGroup
     );
   }, [
-    habitsOverview.length,
+    habitsActiveOverview.length,
     habitsByCategory,
     habitsCategoryTabKey,
     habitsAllCategoryGroup,
@@ -3977,7 +4286,10 @@ function AppContent() {
   useEffect(() => {
     if (tab !== 'habits' || !hasPermission(APP_PERMISSION.Habits) || !accessToken)
       return;
-    const habits = activeHabitsCategoryGroup?.items ?? [];
+    const habits = [
+      ...(activeHabitsCategoryGroup?.items ?? []),
+      ...masteredHabitsInView,
+    ];
     void loadHabitsCategoryCheckins(habits, accessToken);
   }, [
     tab,
@@ -3986,6 +4298,7 @@ function AppContent() {
     habitFilterDateFrom,
     habitFilterDateTo,
     activeHabitsCategoryGroup,
+    masteredHabitsInView,
   ]);
 
   const activeTodosCategoryGroup = useMemo(() => {
@@ -4055,7 +4368,7 @@ function AppContent() {
   ]);
 
   useEffect(() => {
-    if (habitsOverview.length === 0) {
+    if (habitsActiveOverview.length === 0 && habitsMasteredOverview.length === 0) {
       setHabitsCategoryTabKey('__all__');
       return;
     }
@@ -4064,7 +4377,7 @@ function AppContent() {
       const keys = habitsByCategory.map((g) => g.tabKey);
       return keys.includes(prev) ? prev : '__all__';
     });
-  }, [habitsByCategory, habitsOverview.length]);
+  }, [habitsByCategory, habitsActiveOverview.length, habitsMasteredOverview.length]);
   useEffect(() => {
     if (todosFilteredByStatus.length === 0) {
       setTodosCategoryTabKey('__all__');
@@ -4083,12 +4396,48 @@ function AppContent() {
       null,
     [workoutPrograms, selectedProgramCode],
   );
-  const selectedCatalogExercise = useMemo(
-    () =>
+  const filteredWorkoutExerciseCatalog = useMemo(() => {
+    const query = exerciseCatalogSearch.trim().toLowerCase();
+    let items = workoutExerciseCatalog;
+    if (query) {
+      items = items.filter((exercise) =>
+        String(exercise.name || '')
+          .toLowerCase()
+          .includes(query),
+      );
+    }
+    if (exerciseCatalogSort.key === 'name') {
+      const mult = exerciseCatalogSort.dir === 'asc' ? 1 : -1;
+      items = [...items].sort(
+        (a, b) =>
+          mult *
+          String(a.name ?? '').localeCompare(String(b.name ?? ''), 'ru'),
+      );
+    }
+    return items;
+  }, [workoutExerciseCatalog, exerciseCatalogSearch, exerciseCatalogSort]);
+  const filteredProgramExerciseCatalog = useMemo(() => {
+    const query = programExercisePickerSearch.trim().toLowerCase();
+    if (!query) return workoutExerciseCatalog;
+    return workoutExerciseCatalog.filter((exercise) =>
+      String(exercise.name || '')
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [workoutExerciseCatalog, programExercisePickerSearch]);
+  const selectedCatalogExercise = useMemo(() => {
+    const trimmed = programExercisePickerSearch.trim();
+    if (!trimmed) return null;
+    return (
       workoutExerciseCatalog.find(
-        (x) => String(x.id) === String(selectedCatalogExerciseId),
-      ) || null,
-    [workoutExerciseCatalog, selectedCatalogExerciseId],
+        (x) =>
+          String(x.name || '').trim().toLowerCase() === trimmed.toLowerCase(),
+      ) || null
+    );
+  }, [workoutExerciseCatalog, programExercisePickerSearch]);
+  const exerciseHistoryInsights = useMemo(
+    () => buildExerciseHistoryInsights(workoutHistoryForStats),
+    [workoutHistoryForStats],
   );
   const filteredWeightTrackerEntries = useMemo(
     () =>
@@ -5065,11 +5414,7 @@ function AppContent() {
                               программах и тренировках.
                             </p>
                             <div className="row">
-                              <button
-                                onClick={() =>
-                                  setIsCreateExerciseModalOpen(true)
-                                }
-                              >
+                              <button onClick={openCreateCatalogExerciseModal}>
                                 Создать упражнение
                               </button>
                               <button
@@ -5098,11 +5443,45 @@ function AppContent() {
                               onChange={handleExercisesJsonImportChange}
                               style={{ display: 'none' }}
                             />
+                            <div className="row filter-toolbar">
+                              <label>
+                                Поиск
+                                <input
+                                  type="search"
+                                  value={exerciseCatalogSearch}
+                                  onChange={(e) =>
+                                    setExerciseCatalogSearch(e.target.value)
+                                  }
+                                  placeholder="По названию упражнения"
+                                />
+                              </label>
+                            </div>
                             <div className="users-table-wrap">
                               <table className="users-table">
                                 <thead>
                                   <tr>
-                                    <th>Упражнение</th>
+                                    <th aria-sort={exerciseCatalogSortAria('name')}>
+                                      <button
+                                        type="button"
+                                        className="table-sort-btn"
+                                        onClick={() =>
+                                          cycleExerciseCatalogSort('name')
+                                        }
+                                      >
+                                        Упражнение
+                                        <span
+                                          className="table-sort-btn__icon"
+                                          aria-hidden="true"
+                                        >
+                                          {exerciseCatalogSort.key === 'name'
+                                            ? exerciseCatalogSort.dir === 'asc'
+                                              ? '↑'
+                                              : '↓'
+                                            : '↕'}
+                                        </span>
+                                      </button>
+                                    </th>
+                                    <th>Группа мышц</th>
                                     <th>Комментарий</th>
                                     <th>Действия</th>
                                   </tr>
@@ -5110,39 +5489,64 @@ function AppContent() {
                                 <tbody>
                                   {workoutExerciseCatalog.length === 0 && (
                                     <tr>
-                                      <td colSpan="3">
+                                      <td colSpan="4">
                                         Пока нет упражнений в базе.
                                       </td>
                                     </tr>
                                   )}
-                                  {workoutExerciseCatalog.map((exercise) => {
-                                    const parsedMeta = parseProgramExerciseMeta(
-                                      exercise.meta,
-                                    );
-                                    return (
-                                      <tr key={exercise.id}>
-                                        <td>{exercise.name}</td>
-                                        <td>
-                                          {!parsedMeta.isStructured
-                                            ? parsedMeta.legacy || '-'
-                                            : '-'}
-                                        </td>
-                                        <td>
-                                          <button
-                                            className="danger-btn danger-btn--icon"
-                                            onClick={() =>
-                                              openDeleteCatalogExerciseModal(
-                                                exercise.id,
-                                              )
-                                            }
-                                            title="Удалить"
-                                          >
-                                            ×
-                                          </button>
+                                  {workoutExerciseCatalog.length > 0 &&
+                                    filteredWorkoutExerciseCatalog.length ===
+                                      0 && (
+                                      <tr>
+                                        <td colSpan="4">
+                                          Ничего не найдено по запросу «
+                                          {exerciseCatalogSearch.trim()}».
                                         </td>
                                       </tr>
-                                    );
-                                  })}
+                                    )}
+                                  {filteredWorkoutExerciseCatalog.map(
+                                    (exercise) => {
+                                      const parsedMeta = parseProgramExerciseMeta(
+                                        exercise.meta,
+                                      );
+                                      const comment = parsedMeta.isStructured
+                                        ? parsedMeta.comment
+                                        : parsedMeta.legacy;
+                                      return (
+                                        <tr key={exercise.id}>
+                                          <td>{exercise.name}</td>
+                                          <td>{parsedMeta.muscleGroup || '-'}</td>
+                                          <td>{comment || '-'}</td>
+                                          <td>
+                                            <div className="todo-row-actions">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  openEditCatalogExerciseModal(
+                                                    exercise,
+                                                  )
+                                                }
+                                                title="Редактировать"
+                                              >
+                                                ✏️
+                                              </button>
+                                              <button
+                                                className="danger-btn danger-btn--icon"
+                                                onClick={() =>
+                                                  openDeleteCatalogExerciseModal(
+                                                    exercise.id,
+                                                  )
+                                                }
+                                                title="Удалить"
+                                              >
+                                                ×
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    },
+                                  )}
                                 </tbody>
                               </table>
                             </div>
@@ -5811,6 +6215,7 @@ function AppContent() {
                               onClick={() => {
                                 setHabitsNewName('');
                                 setHabitsNewCategoryId('');
+                                setHabitsNewDaysToMaster('21');
                                 setIsCreateHabitModalOpen(true);
                               }}
                             >
@@ -5822,7 +6227,7 @@ function AppContent() {
                             <div className="workout-empty" style={{ marginTop: 12 }}>
                               Привычек пока нет. Нажмите «Добавить привычку».
                             </div>
-                          ) : activeHabitsCategoryGroup ? (
+                          ) : (
                             <div className="habits-panel" style={{ marginTop: 12 }}>
                               {habitsCategoryFilterOptions.length > 1 ? (
                                 <FilterSelect
@@ -5832,7 +6237,7 @@ function AppContent() {
                                   onChange={setHabitsCategoryTabKey}
                                   options={habitsCategoryFilterOptions}
                                 />
-                              ) : activeHabitsCategoryGroup.showHeader ? (
+                              ) : activeHabitsCategoryGroup?.showHeader ? (
                                 <div className="category-group__header">
                                   <h4 className="category-group__title">
                                     {activeHabitsCategoryGroup.categoryName}
@@ -5885,15 +6290,16 @@ function AppContent() {
                                 </span>
                               </div>
 
+                              {activeHabitsCategoryGroup?.items?.length > 0 ? (
                               <div
                                 className="users-table-wrap users-table-wrap--habits"
                                 role="tabpanel"
                                 aria-label={
                                   activeHabitsCategoryGroup.tabKey === '__all__'
-                                    ? 'Привычки: все категории'
+                                    ? 'Активные привычки: все категории'
                                     : activeHabitsCategoryGroup.tabLabel
-                                      ? `Привычки: ${activeHabitsCategoryGroup.tabLabel}`
-                                      : 'Привычки без категории'
+                                      ? `Активные привычки: ${activeHabitsCategoryGroup.tabLabel}`
+                                      : 'Активные привычки без категории'
                                 }
                               >
                                 <table className="users-table habit-analytics-table">
@@ -5904,6 +6310,7 @@ function AppContent() {
                                         <th>Категория</th>
                                       ) : null}
                                       <th>Серия</th>
+                                      <th>Освоение</th>
                                       <th>Вчера</th>
                                       <th>Сегодня</th>
                                       <th>Период</th>
@@ -5955,6 +6362,19 @@ function AppContent() {
                                             data-label="Серия"
                                           >
                                             {h.currentStreakDays ?? 0} дн.
+                                          </td>
+                                          <td
+                                            className={`habit-table__mastery${h.isMastered ? ' habit-table__mastery--done' : ''}`}
+                                            data-label="Освоение"
+                                            title={
+                                              h.isMastered
+                                                ? 'Привычка освоена'
+                                                : Number(h.daysToMaster) > 0
+                                                  ? `Нужна серия ${h.daysToMaster} дн. подряд (done)`
+                                                  : 'Авто-освоение отключено'
+                                            }
+                                          >
+                                            {habitMasteryLabel(h)}
                                           </td>
                                           <td
                                             className="habit-table__mark"
@@ -6042,19 +6462,31 @@ function AppContent() {
                                             className="habit-table__actions"
                                             data-label="Действия"
                                           >
-                                            <button
-                                              type="button"
-                                              className="danger-btn danger-btn--icon"
-                                              title="Удалить привычку"
-                                              onClick={() =>
-                                                setPendingDeleteHabit({
-                                                  id: h.id,
-                                                  name: h.name,
-                                                })
-                                              }
-                                            >
-                                              ×
-                                            </button>
+                                            <div className="habit-row-actions">
+                                              <button
+                                                type="button"
+                                                className="icon-action-btn"
+                                                title="Редактировать"
+                                                aria-label={`Редактировать: ${h.name}`}
+                                                onClick={() => openEditHabitModal(h)}
+                                              >
+                                                ✏️
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="icon-action-btn icon-action-btn--delete"
+                                                title="Удалить привычку"
+                                                aria-label={`Удалить: ${h.name}`}
+                                                onClick={() =>
+                                                  setPendingDeleteHabit({
+                                                    id: h.id,
+                                                    name: h.name,
+                                                  })
+                                                }
+                                              >
+                                                ×
+                                              </button>
+                                            </div>
                                           </td>
                                         </tr>
                                       );
@@ -6062,8 +6494,188 @@ function AppContent() {
                                   </tbody>
                                 </table>
                               </div>
+                              ) : (
+                                <p className="subtitle" style={{ margin: '12px 0 0' }}>
+                                  {habitsMasteredOverview.length > 0
+                                    ? 'Все привычки в этой категории освоены — отметки ниже.'
+                                    : 'Нет активных привычек в выбранной категории.'}
+                                </p>
+                              )}
+
+                              {masteredHabitsInView.length > 0 ? (
+                                <section
+                                  className="habits-mastered-section"
+                                  aria-label="Освоенные привычки"
+                                >
+                                  <h4 className="habits-mastered-section__title">
+                                    Освоенные привычки
+                                    <span className="habits-mastered-section__count">
+                                      {masteredHabitsInView.length}
+                                    </span>
+                                  </h4>
+                                  <div className="users-table-wrap users-table-wrap--habits users-table-wrap--habits-mastered">
+                                    <table className="users-table habit-analytics-table habit-analytics-table--mastered">
+                                      <thead>
+                                        <tr>
+                                          <th>Привычка</th>
+                                          {(activeHabitsCategoryGroup?.showCategoryColumn ??
+                                            masteredHabitsShowCategoryColumn) ? (
+                                            <th>Категория</th>
+                                          ) : null}
+                                          <th>Серия</th>
+                                          <th>Освоение</th>
+                                          <th>Вчера</th>
+                                          <th>Сегодня</th>
+                                          <th>Период</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {masteredHabitsInView.map((h) => {
+                                          const statusByDate =
+                                            habitsCheckinsByHabitId[String(h.id)] ??
+                                            {};
+                                          const today = getTodayIsoDate();
+                                          const yesterday = getIsoDateDaysAgo(1);
+                                          const created = habitCreatedIsoDate(h);
+                                          const canMarkYesterday =
+                                            !created || created <= yesterday;
+                                          const yesterdayStatus = canMarkYesterday
+                                            ? resolveHabitStatusForDate(
+                                                statusByDate,
+                                                h,
+                                                yesterday,
+                                                null,
+                                              )
+                                            : null;
+                                          const todayStatus = resolveHabitTodayStatus(
+                                            statusByDate,
+                                            h,
+                                            today,
+                                          );
+                                          const displayDates = getHabitDisplayDates(h);
+                                          const showCategoryColumn =
+                                            activeHabitsCategoryGroup?.showCategoryColumn ??
+                                            masteredHabitsShowCategoryColumn;
+                                          return (
+                                            <tr key={h.id}>
+                                              <td
+                                                className="habit-table__name"
+                                                data-label="Привычка"
+                                              >
+                                                {h.name}
+                                              </td>
+                                              {showCategoryColumn ? (
+                                                <td
+                                                  className="habit-table__category"
+                                                  data-label="Категория"
+                                                >
+                                                  {h.categoryName || '—'}
+                                                </td>
+                                              ) : null}
+                                              <td
+                                                className="habit-table__streak"
+                                                data-label="Серия"
+                                              >
+                                                {h.currentStreakDays ?? 0} дн.
+                                              </td>
+                                              <td
+                                                className="habit-table__mastery habit-table__mastery--done"
+                                                data-label="Освоение"
+                                                title="Привычка освоена"
+                                              >
+                                                {habitMasteryLabel(h)}
+                                              </td>
+                                              <td
+                                                className="habit-table__mark"
+                                                data-label="Вчера"
+                                              >
+                                                {canMarkYesterday ? (
+                                                  <button
+                                                    type="button"
+                                                    className="habit-today-btn"
+                                                    title={`Вчера: ${habitStatusLabel(yesterdayStatus)}. Нажмите для смены`}
+                                                    aria-label={`${h.name}, вчера: ${habitStatusLabel(yesterdayStatus)}`}
+                                                    onClick={() =>
+                                                      cycleHabitCheckinStatus(
+                                                        h,
+                                                        yesterday,
+                                                      )
+                                                    }
+                                                  >
+                                                    <span
+                                                      className={habitStatusCellClass(
+                                                        yesterdayStatus,
+                                                      )}
+                                                    />
+                                                  </button>
+                                                ) : (
+                                                  <span
+                                                    className="habit-status-cell habit-status-cell--none habit-status-cell--readonly"
+                                                    title="Привычка создана сегодня"
+                                                    aria-hidden="true"
+                                                  />
+                                                )}
+                                              </td>
+                                              <td
+                                                className="habit-table__mark"
+                                                data-label="Сегодня"
+                                              >
+                                                <button
+                                                  type="button"
+                                                  className="habit-today-btn"
+                                                  title={`Сегодня: ${habitStatusLabel(todayStatus)}. Нажмите для смены`}
+                                                  aria-label={`${h.name}, сегодня: ${habitStatusLabel(todayStatus)}`}
+                                                  onClick={() =>
+                                                    cycleHabitCheckinStatus(h, today)
+                                                  }
+                                                >
+                                                  <span
+                                                    className={habitStatusCellClass(
+                                                      todayStatus,
+                                                    )}
+                                                  />
+                                                </button>
+                                              </td>
+                                              <td
+                                                className="habit-table__period"
+                                                data-label="Период"
+                                              >
+                                                {displayDates.length === 0 ? (
+                                                  <span className="subtitle">
+                                                    Укажите период
+                                                  </span>
+                                                ) : (
+                                                  <div
+                                                    className="habit-analytics-track"
+                                                    role="img"
+                                                    aria-label={`${h.name}: отметки за период`}
+                                                  >
+                                                    {displayDates.map((d) => {
+                                                      const status =
+                                                        statusByDate[d] ?? null;
+                                                      return (
+                                                        <span
+                                                          key={`${h.id}-${d}`}
+                                                          className={habitStatusCellClass(
+                                                            status,
+                                                          )}
+                                                          title={`${d}: ${habitStatusLabel(status)}`}
+                                                        />
+                                                      );
+                                                    })}
+                                                  </div>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </section>
+                              ) : null}
                             </div>
-                          ) : null}
+                          )}
                         </>
                     </section>
                   </section>
@@ -6267,13 +6879,15 @@ function AppContent() {
                                         <tr
                                           key={t.id}
                                           className={
-                                            overdue
-                                              ? 'todos-table__row--overdue'
-                                              : undefined
+                                            isDone
+                                              ? 'todos-table__row--done'
+                                              : overdue
+                                                ? 'todos-table__row--overdue'
+                                                : undefined
                                           }
                                         >
                                           <td
-                                            className="todos-table__title"
+                                            className={`todos-table__title${isDone ? ' todos-table__title--done' : ''}`}
                                             data-label="Задача"
                                           >
                                             {t.title}
@@ -6298,7 +6912,7 @@ function AppContent() {
                                             {t.dueDate || '—'}
                                           </td>
                                           <td
-                                            className={`todos-table__status${overdue ? ' todos-table__status--overdue' : ''}`}
+                                            className={`todos-table__status${isDone ? ' todos-table__status--done' : overdue ? ' todos-table__status--overdue' : ''}`}
                                             data-label="Статус"
                                           >
                                             {isDone
@@ -6308,50 +6922,38 @@ function AppContent() {
                                                 : 'Открыто'}
                                           </td>
                                           <td className="todos-table__actions">
-                                            <div className="todo-row-actions">
-                                              {!isDone ? (
+                                            {!isDone ? (
+                                              <div className="todo-row-actions">
                                                 <button
                                                   type="button"
                                                   className="icon-action-btn icon-action-btn--done"
                                                   title="Отметить выполненным"
                                                   aria-label="Отметить выполненным"
                                                   onClick={() =>
-                                                    upsertTodoDone(t.id, true)
+                                                    setPendingCompleteTodo({
+                                                      id: t.id,
+                                                      title: t.title,
+                                                    })
                                                   }
                                                 >
                                                   ✓
                                                 </button>
-                                              ) : (
                                                 <button
                                                   type="button"
-                                                  className="icon-action-btn icon-action-btn--undo"
-                                                  title="Отменить выполнение"
-                                                  aria-label="Отменить выполнение"
+                                                  className="icon-action-btn icon-action-btn--delete"
+                                                  title="Удалить"
+                                                  aria-label="Удалить задачу"
                                                   onClick={() =>
-                                                    upsertTodoDone(t.id, false)
+                                                    setPendingDeleteTodo({
+                                                      id: t.id,
+                                                      title: t.title,
+                                                    })
                                                   }
                                                 >
-                                                  <span
-                                                    className="icon-action-btn__slash-circle"
-                                                    aria-hidden="true"
-                                                  />
+                                                  ×
                                                 </button>
-                                              )}
-                                              <button
-                                                type="button"
-                                                className="icon-action-btn icon-action-btn--delete"
-                                                title="Удалить"
-                                                aria-label="Удалить задачу"
-                                                onClick={() =>
-                                                  setPendingDeleteTodo({
-                                                    id: t.id,
-                                                    title: t.title,
-                                                  })
-                                                }
-                                              >
-                                                ×
-                                              </button>
-                                            </div>
+                                              </div>
+                                            ) : null}
                                           </td>
                                         </tr>
                                       );
@@ -7976,22 +8578,61 @@ function AppContent() {
                           rows={3}
                           placeholder="Комментарий к программе"
                         />
+                        <label>Упражнение</label>
                         <div className="row">
-                          <select
-                            value={selectedCatalogExerciseId}
-                            onChange={(e) =>
-                              setSelectedCatalogExerciseId(e.target.value)
-                            }
-                          >
-                            <option value="">
-                              Выбери упражнение из общего списка
-                            </option>
-                            {workoutExerciseCatalog.map((exercise) => (
-                              <option key={exercise.id} value={exercise.id}>
-                                {exercise.name}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="exercise-picker-combobox">
+                            <input
+                              type="text"
+                              role="combobox"
+                              aria-expanded={programExercisePickerOpen}
+                              aria-autocomplete="list"
+                              value={programExercisePickerSearch}
+                              onChange={(e) => {
+                                setProgramExercisePickerSearch(e.target.value);
+                                setProgramExercisePickerOpen(true);
+                              }}
+                              onFocus={() => setProgramExercisePickerOpen(true)}
+                              onBlur={() => {
+                                window.setTimeout(
+                                  () => setProgramExercisePickerOpen(false),
+                                  150,
+                                );
+                              }}
+                              placeholder="Начни вводить название упражнения"
+                            />
+                            {programExercisePickerOpen &&
+                            filteredProgramExerciseCatalog.length > 0 ? (
+                              <ul
+                                className="exercise-picker-combobox__list"
+                                role="listbox"
+                              >
+                                {filteredProgramExerciseCatalog.map(
+                                  (exercise) => (
+                                    <li
+                                      key={exercise.id}
+                                      role="option"
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() =>
+                                        selectProgramExerciseForPicker(exercise)
+                                      }
+                                    >
+                                      {exercise.name}
+                                    </li>
+                                  ),
+                                )}
+                              </ul>
+                            ) : null}
+                            {programExercisePickerOpen &&
+                            programExercisePickerSearch.trim() &&
+                            filteredProgramExerciseCatalog.length === 0 ? (
+                              <ul className="exercise-picker-combobox__list">
+                                <li className="exercise-picker-combobox__empty">
+                                  Ничего не найдено по запросу «
+                                  {programExercisePickerSearch.trim()}»
+                                </li>
+                              </ul>
+                            ) : null}
+                          </div>
                           <button
                             type="button"
                             onClick={() =>
@@ -8333,6 +8974,68 @@ function AppContent() {
                   </ModalShell>
                 )}
 
+                {tab === 'habits' && editingHabit && (
+                  <ModalShell
+                    open={Boolean(editingHabit)}
+                    onClose={() => setEditingHabit(null)}
+                    titleId="habit-edit-title"
+                  >
+                    <h3 id="habit-edit-title">Редактировать привычку</h3>
+                    {editingHabit.isMastered ? (
+                      <p className="subtitle" style={{ marginTop: 0 }}>
+                        Привычка уже освоена — можно менять название, категорию и
+                        порог для справки.
+                      </p>
+                    ) : null}
+                    <label htmlFor="habit-edit-name">Название</label>
+                    <input
+                      id="habit-edit-name"
+                      type="text"
+                      value={habitsEditName}
+                      onChange={(e) => setHabitsEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void saveHabitEdit();
+                      }}
+                    />
+                    <label htmlFor="habit-edit-category">Категория</label>
+                    <select
+                      id="habit-edit-category"
+                      value={habitsEditCategoryId}
+                      onChange={(e) => setHabitsEditCategoryId(e.target.value)}
+                    >
+                      <option value="">Без категории</option>
+                      {userCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <label htmlFor="habit-edit-days-to-master">
+                      Дней подряд до освоения
+                    </label>
+                    <input
+                      id="habit-edit-days-to-master"
+                      type="number"
+                      min={0}
+                      max={999}
+                      value={habitsEditDaysToMaster}
+                      onChange={(e) => setHabitsEditDaysToMaster(e.target.value)}
+                    />
+                    <div className="row" style={{ marginTop: 16 }}>
+                      <button type="button" onClick={() => saveHabitEdit()}>
+                        Сохранить
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => setEditingHabit(null)}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </ModalShell>
+                )}
+
                 {tab === 'habits' && isCreateHabitModalOpen && (
                   <ModalShell
                     open={isCreateHabitModalOpen}
@@ -8364,6 +9067,22 @@ function AppContent() {
                         </option>
                       ))}
                     </select>
+                    <label htmlFor="habit-create-days-to-master">
+                      Дней подряд до освоения
+                    </label>
+                    <input
+                      id="habit-create-days-to-master"
+                      type="number"
+                      min={0}
+                      max={999}
+                      value={habitsNewDaysToMaster}
+                      onChange={(e) => setHabitsNewDaysToMaster(e.target.value)}
+                      placeholder="21"
+                    />
+                    <p className="subtitle" style={{ marginTop: 4 }}>
+                      Сколько дней подряд со статусом «выполнено» нужно для отметки
+                      «освоена». 0 — не считать автоматически.
+                    </p>
                     <div className="row" style={{ marginTop: 16 }}>
                       <button type="button" onClick={() => createHabit()}>
                         Добавить
@@ -8573,6 +9292,44 @@ function AppContent() {
                       >
                         Отмена
                       </button>
+                    </div>
+                  </ModalShell>
+                )}
+
+                {tab === 'todos' && pendingCompleteTodo && (
+                  <ModalShell
+                    open={Boolean(pendingCompleteTodo)}
+                    onClose={() => setPendingCompleteTodo(null)}
+                    titleId="todo-complete-confirm-title"
+                  >
+                    <div className="confirm-modal">
+                      <h3
+                        id="todo-complete-confirm-title"
+                        className="confirm-modal__title"
+                      >
+                        Действительно готово?
+                      </h3>
+                      <p className="confirm-modal__detail">
+                        <span className="confirm-modal__label">Задача</span>
+                        <span className="confirm-modal__value">
+                          {pendingCompleteTodo.title || '—'}
+                        </span>
+                      </p>
+                      <div className="confirm-modal__actions">
+                        <button
+                          type="button"
+                          onClick={() => confirmCompleteTodo()}
+                        >
+                          Да
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setPendingCompleteTodo(null)}
+                        >
+                          Нет
+                        </button>
+                      </div>
                     </div>
                   </ModalShell>
                 )}
@@ -8976,6 +9733,10 @@ function AppContent() {
                             )}
                             {currentWorkout.exercises.flatMap(
                               (exercise, exIdx) => {
+                                const exerciseInsights =
+                                  exerciseHistoryInsights.get(
+                                    normalizeExerciseName(exercise.name),
+                                  );
                                 const setsCollapsed = Boolean(
                                   activeWorkoutCollapsedExerciseIds[
                                     exercise.id
@@ -8998,6 +9759,22 @@ function AppContent() {
                                           <b>{exercise.name || '—'}</b>
                                           {' · '}
                                           <span>{exercise.meta || '—'}</span>
+                                          {exerciseInsights?.lastSession ? (
+                                            <div className="workout-exercise-history-hints">
+                                              <span>
+                                                Прошлый раз (
+                                                {formatWorkoutDateLabel(
+                                                  exerciseInsights.lastSession
+                                                    .date,
+                                                ) || '—'}
+                                                ):{' '}
+                                                {formatWorkoutSetsSummary(
+                                                  exerciseInsights.lastSession
+                                                    .sets,
+                                                )}
+                                              </span>
+                                            </div>
+                                          ) : null}
                                           {setsCollapsed ? (
                                             <span
                                               className="subtitle"
@@ -9081,11 +9858,28 @@ function AppContent() {
                                     <td colSpan="2">
                                       <div className="workout-sets">
                                         {exercise.sets.map(
-                                          (setItem, setIdx) => (
+                                          (setItem, setIdx) => {
+                                            const lastSet =
+                                              exerciseInsights?.lastSession
+                                                ?.sets?.[setIdx];
+                                            const lastSetHint =
+                                              formatWorkoutSetPair(lastSet);
+                                            return (
                                             <div
                                               key={`${exercise.id}-active-set-${setIdx}`}
                                               className="row workout-set-row"
                                             >
+                                              <div className="workout-set-index-col">
+                                                <span>{setIdx + 1}</span>
+                                                {lastSetHint ? (
+                                                  <span
+                                                    className="workout-set-prev"
+                                                    title="Прошлый раз"
+                                                  >
+                                                    {lastSetHint}
+                                                  </span>
+                                                ) : null}
+                                              </div>
                                               <div className="workout-set-weight-control">
                                                 <input
                                                   type="number"
@@ -9292,7 +10086,8 @@ function AppContent() {
                                                 ×
                                               </button>
                                             </div>
-                                          ),
+                                            );
+                                          },
                                         )}
                                       </div>
                                       <div className="row">
@@ -9728,9 +10523,13 @@ function AppContent() {
                   isCreateExerciseModalOpen && (
                     <ModalShell
                       open={isCreateExerciseModalOpen}
-                      onClose={() => setIsCreateExerciseModalOpen(false)}
+                      onClose={closeCatalogExerciseModal}
                     >
-                      <h3>Создать упражнение</h3>
+                      <h3>
+                        {editingCatalogExerciseId
+                          ? 'Редактировать упражнение'
+                          : 'Создать упражнение'}
+                      </h3>
                       <label>Название упражнения</label>
                       <input
                         value={newCatalogExerciseName}
@@ -9739,6 +10538,20 @@ function AppContent() {
                         }
                         placeholder="Например: Жим лежа"
                       />
+                      <label>Группа мышц (опционально)</label>
+                      <input
+                        list="exercise-muscle-groups"
+                        value={newCatalogExerciseMuscleGroup}
+                        onChange={(e) =>
+                          setNewCatalogExerciseMuscleGroup(e.target.value)
+                        }
+                        placeholder="Например: Спина"
+                      />
+                      <datalist id="exercise-muscle-groups">
+                        {EXERCISE_MUSCLE_GROUP_OPTIONS.map((group) => (
+                          <option key={group} value={group} />
+                        ))}
+                      </datalist>
                       <label>Комментарий (опционально)</label>
                       <input
                         value={newCatalogExerciseMeta}
@@ -9748,10 +10561,12 @@ function AppContent() {
                         placeholder="Например: гриф + 20 кг"
                       />
                       <div className="row">
-                        <button onClick={createCatalogExercise}>Создать</button>
+                        <button onClick={saveCatalogExercise}>
+                          {editingCatalogExerciseId ? 'Сохранить' : 'Создать'}
+                        </button>
                         <button
                           className="ghost-btn"
-                          onClick={() => setIsCreateExerciseModalOpen(false)}
+                          onClick={closeCatalogExerciseModal}
                         >
                           Отмена
                         </button>

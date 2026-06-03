@@ -9,6 +9,13 @@ public sealed class UserHabit
     public string Name { get; set; } = string.Empty;
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Привычка освоена (достижение сохраняется, даже если серия прервётся).</summary>
+    public bool IsMastered { get; set; }
+
+    /// <summary>Дней подряд со статусом done для автоматической отметки «освоена»; 0 — не считать автоматически.</summary>
+    public int DaysToMaster { get; set; } = 21;
+
     public int SortOrder { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }

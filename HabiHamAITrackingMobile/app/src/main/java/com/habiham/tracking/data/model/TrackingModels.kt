@@ -23,12 +23,22 @@ data class HabitOverviewDto(
     val isDoneToday: Boolean = false,
     val todayStatus: String? = null,
     val lastDoneDate: String? = null,
+    val isMastered: Boolean = false,
+    val daysToMaster: Int = 21,
 )
 
 @JsonClass(generateAdapter = true)
 data class CreateHabitRequest(
     val name: String,
     val categoryId: String? = null,
+    val daysToMaster: Int = 21,
+)
+
+@JsonClass(generateAdapter = true)
+data class UpdateHabitRequest(
+    val name: String,
+    val categoryId: String? = null,
+    val daysToMaster: Int = 21,
 )
 
 @JsonClass(generateAdapter = true)

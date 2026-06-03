@@ -321,6 +321,8 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.CategoryId).HasColumnName("category_id");
             entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
             entity.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true).IsRequired();
+            entity.Property(x => x.IsMastered).HasColumnName("is_mastered").HasDefaultValue(false).IsRequired();
+            entity.Property(x => x.DaysToMaster).HasColumnName("days_to_master").HasDefaultValue(21).IsRequired();
             entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
