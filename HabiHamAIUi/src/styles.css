@@ -710,6 +710,10 @@ button:active {
   background: var(--surface-input);
 }
 
+.progress-analytics-section {
+  margin-top: 12px;
+}
+
 .tracking-analytics-panel__title {
   margin: 0 0 4px;
   font-size: 14px;

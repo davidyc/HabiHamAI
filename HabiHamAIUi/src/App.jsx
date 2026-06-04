@@ -3874,6 +3874,27 @@ function AppContent() {
     [currentUserPermissions, hasAdminAccess],
   );
 
+  const progressSubTabs = useMemo(() => {
+    const tabs = [{ id: 'weight-tracker', label: 'Вес' }];
+    if (hasPermission(APP_PERMISSION.Habits)) {
+      tabs.push({ id: 'habits', label: 'Привычки' });
+    }
+    if (hasPermission(APP_PERMISSION.Todos)) {
+      tabs.push({ id: 'todos', label: 'Задачи' });
+    }
+    return tabs;
+  }, [currentUserPermissions]);
+
+  useEffect(() => {
+    if (tab !== 'progress') return;
+    if (
+      progressSubTabs.length > 0 &&
+      !progressSubTabs.some((item) => item.id === progressSubTab)
+    ) {
+      setProgressSubTab(progressSubTabs[0].id);
+    }
+  }, [tab, progressSubTab, progressSubTabs]);
+
   const visibleAdminSubTabs = useMemo(
     () =>
       Object.entries(ADMIN_SUBTAB_PERMISSION)
@@ -4018,11 +4039,21 @@ function AppContent() {
     loadWeeklyTrainingReviews(aiToken);
   }, [tab, workoutsSubTab, aiToken]);
   useEffect(() => {
-    if (tab !== 'habits' || !accessToken) return;
+    if (
+      (tab !== 'habits' && tab !== 'progress') ||
+      !accessToken ||
+      !hasPermission(APP_PERMISSION.Habits)
+    )
+      return;
     void loadHabitsOverview(accessToken);
   }, [tab, accessToken]);
   useEffect(() => {
-    if (tab !== 'todos' || !accessToken) return;
+    if (
+      (tab !== 'todos' && tab !== 'progress') ||
+      !accessToken ||
+      !hasPermission(APP_PERMISSION.Todos)
+    )
+      return;
     void loadTodos(accessToken);
   }, [tab, accessToken, todoFilterDateFrom, todoFilterDateTo]);
   useEffect(() => {
@@ -4282,21 +4313,28 @@ function AppContent() {
   ]);
 
   useEffect(() => {
-    if (tab !== 'habits' || !hasPermission(APP_PERMISSION.Habits) || !accessToken)
+    if (!hasPermission(APP_PERMISSION.Habits) || !accessToken) return;
+    if (tab === 'habits') {
+      const habits = [
+        ...(activeHabitsCategoryGroup?.items ?? []),
+        ...masteredHabitsInView,
+      ];
+      void loadHabitsCategoryCheckins(habits, accessToken);
       return;
-    const habits = [
-      ...(activeHabitsCategoryGroup?.items ?? []),
-      ...masteredHabitsInView,
-    ];
-    void loadHabitsCategoryCheckins(habits, accessToken);
+    }
+    if (tab === 'progress' && progressSubTab === 'habits') {
+      void loadHabitsCategoryCheckins(habitsActiveOverview, accessToken);
+    }
   }, [
     tab,
+    progressSubTab,
     accessToken,
     habitsCategoryTabKey,
     habitFilterDateFrom,
     habitFilterDateTo,
     activeHabitsCategoryGroup,
     masteredHabitsInView,
+    habitsActiveOverview,
   ]);
 
   const activeTodosCategoryGroup = useMemo(() => {
@@ -4364,6 +4402,42 @@ function AppContent() {
     todoStatusFilter,
     todosCategoryTabKey,
   ]);
+
+  const progressHabitPeriodAnalytics = useMemo(() => {
+    const habits = habitsActiveOverview;
+    if (habits.length === 0) return null;
+    const today = getTodayIsoDate();
+    return computeHabitPeriodAnalytics({
+      habits,
+      checkinsByHabitId: habitsCheckinsByHabitId,
+      filterRange: habitFilterRange,
+      getDisplayDates: getHabitDisplayDates,
+      resolveStatus: (statusMap, habit, date) =>
+        resolveHabitStatusForDate(
+          statusMap,
+          habit,
+          date,
+          date === today ? 'todayStatus' : null,
+        ),
+    });
+  }, [
+    habitsActiveOverview,
+    habitsCheckinsByHabitId,
+    habitFilterRange,
+    habitFilterDateFrom,
+    habitFilterDateTo,
+  ]);
+
+  const progressTodoPeriodAnalytics = useMemo(() => {
+    if (todos.length === 0) return null;
+    return computeTodoPeriodAnalytics({
+      todos,
+      filterFrom: todoFilterDateFrom,
+      filterTo: todoFilterDateTo,
+      getToday: getTodayIsoDate,
+      getDateRange: getIsoDateRange,
+    });
+  }, [todos, todoFilterDateFrom, todoFilterDateTo]);
 
   useEffect(() => {
     if (habitsActiveOverview.length === 0 && habitsMasteredOverview.length === 0) {
@@ -5965,8 +6039,28 @@ function AppContent() {
                     <section className="card full-span">
                       <h3>Мой прогресс</h3>
                       <p className="subtitle">
-                        История веса с синхронизацией профиля и AI-тренера.
+                        Вес, привычки и задачи — сводная аналитика за выбранный
+                        период.
                       </p>
+                      {progressSubTabs.length > 1 ? (
+                        <SegmentTabs
+                          variant="primary"
+                          ariaLabel="Разделы прогресса"
+                        >
+                          {progressSubTabs.map((item) => (
+                            <SegmentTab
+                              key={item.id}
+                              active={progressSubTab === item.id}
+                              onClick={() => setProgressSubTab(item.id)}
+                            >
+                              {item.label}
+                            </SegmentTab>
+                          ))}
+                        </SegmentTabs>
+                      ) : null}
+
+                      {progressSubTab === 'weight-tracker' && (
+                        <>
                           <div className="row profile-row">
                             <div>
                               <label>Дата</label>
@@ -6191,6 +6285,75 @@ function AppContent() {
                               </tbody>
                             </table>
                           </div>
+                        </>
+                      )}
+
+                      {progressSubTab === 'habits' &&
+                        hasPermission(APP_PERMISSION.Habits) && (
+                          <div className="progress-analytics-section">
+                            <p className="subtitle">
+                              Сводка по всем активным привычкам. Отметки и
+                              управление — на вкладке «Привычки».
+                            </p>
+                            <h4 style={{ margin: '12px 0 8px', fontSize: 14 }}>
+                              Период
+                            </h4>
+                            <DatePeriodFilter
+                              preset={habitDatePeriodPreset}
+                              onPresetChange={setHabitDatePeriodPreset}
+                              from={habitFilterDateFrom}
+                              to={habitFilterDateTo}
+                              onFromChange={setHabitFilterDateFrom}
+                              onToChange={setHabitFilterDateTo}
+                              options={HABIT_DATE_PERIOD_OPTIONS}
+                              onApplyPreset={(v) =>
+                                applyHabitFilterPreset(Number(v))
+                              }
+                            />
+                            {habitsActiveOverview.length === 0 ? (
+                              <div className="workout-empty" style={{ marginTop: 12 }}>
+                                Активных привычек пока нет. Добавьте их на вкладке
+                                «Привычки».
+                              </div>
+                            ) : (
+                              <HabitPeriodAnalyticsPanel
+                                summary={progressHabitPeriodAnalytics}
+                              />
+                            )}
+                          </div>
+                        )}
+
+                      {progressSubTab === 'todos' &&
+                        hasPermission(APP_PERMISSION.Todos) && (
+                          <div className="progress-analytics-section">
+                            <p className="subtitle">
+                              Сводка по всем задачам за период. Создание и
+                              отметки — на вкладке «Задачи».
+                            </p>
+                            <h4 style={{ margin: '12px 0 8px', fontSize: 14 }}>
+                              Период
+                            </h4>
+                            <DatePeriodFilter
+                              preset={todoDatePeriodPreset}
+                              onPresetChange={setTodoDatePeriodPreset}
+                              from={todoFilterDateFrom}
+                              to={todoFilterDateTo}
+                              onFromChange={setTodoFilterDateFrom}
+                              onToChange={setTodoFilterDateTo}
+                              options={TODO_DATE_PERIOD_OPTIONS}
+                              onApplyPreset={applyTodoFilterPreset}
+                            />
+                            {todos.length === 0 ? (
+                              <div className="workout-empty" style={{ marginTop: 12 }}>
+                                Задач пока нет. Добавьте их на вкладке «Задачи».
+                              </div>
+                            ) : (
+                              <TodoPeriodAnalyticsPanel
+                                summary={progressTodoPeriodAnalytics}
+                              />
+                            )}
+                          </div>
+                        )}
                     </section>
                   </section>
                 )}
