@@ -22,6 +22,8 @@ import {
   SubNavGroup,
   SubNavTab,
 } from './shared/ui/SegmentTabs';
+import MarketChartPreview from './shared/ui/MarketChartPreview';
+import InvestmentPortfolioPanel from './shared/ui/InvestmentPortfolioPanel';
 import {
   computeHabitPeriodAnalytics,
   computeTodoPeriodAnalytics,
@@ -525,6 +527,7 @@ function AppContent() {
     currency: 'RUB',
     notes: '',
   });
+  const [investmentsView, setInvestmentsView] = useState('chart');
   const planningImportInputRef = useRef(null);
   const exercisesImportInputRef = useRef(null);
   const bikeTcxImportRef = useRef(null);
@@ -4001,11 +4004,6 @@ function AppContent() {
     loadBikeActivities();
   }, [tab, accessToken, bikeDateFrom, bikeDateTo]);
   useEffect(() => {
-    if (tab !== 'investments' || !accessToken) return;
-    if (!hasPermission(APP_PERMISSION.Investments)) return;
-    loadInvestments();
-  }, [tab, accessToken, currentUserPermissions]);
-  useEffect(() => {
     if (tab !== 'workouts' || !hasAiAccess || !aiToken) return;
     loadAiAssistants(aiToken);
   }, [tab, hasAiAccess, aiToken]);
@@ -4696,9 +4694,6 @@ function AppContent() {
                     }
                     if (id === 'bike') {
                       loadBikeActivities();
-                    }
-                    if (id === 'investments') {
-                      loadInvestments();
                     }
                     if (id === 'ai') {
                       loadAiAssistants(aiToken);
@@ -6497,7 +6492,7 @@ function AppContent() {
                               ) : (
                                 <p className="subtitle" style={{ margin: '12px 0 0' }}>
                                   {habitsMasteredOverview.length > 0
-                                    ? 'Все привычки в этой категории освоены — отметки ниже.'
+                                    ? 'Все привычки в этой категории освоены — список ниже.'
                                     : 'Нет активных привычек в выбранной категории.'}
                                 </p>
                               )}
@@ -6524,8 +6519,6 @@ function AppContent() {
                                           ) : null}
                                           <th>Серия</th>
                                           <th>Освоение</th>
-                                          <th>Вчера</th>
-                                          <th>Сегодня</th>
                                           <th>Период</th>
                                         </tr>
                                       </thead>
@@ -6534,24 +6527,6 @@ function AppContent() {
                                           const statusByDate =
                                             habitsCheckinsByHabitId[String(h.id)] ??
                                             {};
-                                          const today = getTodayIsoDate();
-                                          const yesterday = getIsoDateDaysAgo(1);
-                                          const created = habitCreatedIsoDate(h);
-                                          const canMarkYesterday =
-                                            !created || created <= yesterday;
-                                          const yesterdayStatus = canMarkYesterday
-                                            ? resolveHabitStatusForDate(
-                                                statusByDate,
-                                                h,
-                                                yesterday,
-                                                null,
-                                              )
-                                            : null;
-                                          const todayStatus = resolveHabitTodayStatus(
-                                            statusByDate,
-                                            h,
-                                            today,
-                                          );
                                           const displayDates = getHabitDisplayDates(h);
                                           const showCategoryColumn =
                                             activeHabitsCategoryGroup?.showCategoryColumn ??
@@ -6584,57 +6559,6 @@ function AppContent() {
                                                 title="Привычка освоена"
                                               >
                                                 {habitMasteryLabel(h)}
-                                              </td>
-                                              <td
-                                                className="habit-table__mark"
-                                                data-label="Вчера"
-                                              >
-                                                {canMarkYesterday ? (
-                                                  <button
-                                                    type="button"
-                                                    className="habit-today-btn"
-                                                    title={`Вчера: ${habitStatusLabel(yesterdayStatus)}. Нажмите для смены`}
-                                                    aria-label={`${h.name}, вчера: ${habitStatusLabel(yesterdayStatus)}`}
-                                                    onClick={() =>
-                                                      cycleHabitCheckinStatus(
-                                                        h,
-                                                        yesterday,
-                                                      )
-                                                    }
-                                                  >
-                                                    <span
-                                                      className={habitStatusCellClass(
-                                                        yesterdayStatus,
-                                                      )}
-                                                    />
-                                                  </button>
-                                                ) : (
-                                                  <span
-                                                    className="habit-status-cell habit-status-cell--none habit-status-cell--readonly"
-                                                    title="Привычка создана сегодня"
-                                                    aria-hidden="true"
-                                                  />
-                                                )}
-                                              </td>
-                                              <td
-                                                className="habit-table__mark"
-                                                data-label="Сегодня"
-                                              >
-                                                <button
-                                                  type="button"
-                                                  className="habit-today-btn"
-                                                  title={`Сегодня: ${habitStatusLabel(todayStatus)}. Нажмите для смены`}
-                                                  aria-label={`${h.name}, сегодня: ${habitStatusLabel(todayStatus)}`}
-                                                  onClick={() =>
-                                                    cycleHabitCheckinStatus(h, today)
-                                                  }
-                                                >
-                                                  <span
-                                                    className={habitStatusCellClass(
-                                                      todayStatus,
-                                                    )}
-                                                  />
-                                                </button>
                                               </td>
                                               <td
                                                 className="habit-table__period"
@@ -6974,136 +6898,40 @@ function AppContent() {
                     <section className="card full-span">
                       <h3>Инвестиции</h3>
                       <p className="subtitle">
-                        Портфель и учёт позиций. Раздел в разработке — данные
-                        пока загружаются с сервера-заглушки.
+                        Портфель, учёт позиций и графики для анализа.
                       </p>
-                      {investmentSummary?.isStub ? (
-                        <p className="subtitle" style={{ marginTop: 4 }}>
-                          Сводка и список позиций пока пустые.
-                        </p>
+                      <SegmentTabs
+                        variant="compact"
+                        className="segment-tabs--narrow"
+                        ariaLabel="Разделы инвестиций"
+                      >
+                        <SegmentTab
+                          active={investmentsView === 'chart'}
+                          onClick={() => setInvestmentsView('chart')}
+                        >
+                          График
+                        </SegmentTab>
+                        <SegmentTab
+                          active={investmentsView === 'portfolio'}
+                          onClick={() => setInvestmentsView('portfolio')}
+                        >
+                          Портфель
+                        </SegmentTab>
+                      </SegmentTabs>
+
+                      {investmentsView === 'chart' ? (
+                        <MarketChartPreview
+                          accessToken={accessToken}
+                          request={request}
+                        />
                       ) : null}
-                      <div className="tracking-analytics-stats">
-                        <div className="tracking-analytics-stat">
-                          <span className="tracking-analytics-stat__label">
-                            Вложено
-                          </span>
-                          <span className="tracking-analytics-stat__value">
-                            {formatMoney(
-                              investmentSummary?.totalInvested ?? 0,
-                              investmentSummary?.currency,
-                            )}
-                          </span>
-                        </div>
-                        <div className="tracking-analytics-stat">
-                          <span className="tracking-analytics-stat__label">
-                            Текущая стоимость
-                          </span>
-                          <span className="tracking-analytics-stat__value">
-                            {formatMoney(
-                              investmentSummary?.totalCurrentValue ?? 0,
-                              investmentSummary?.currency,
-                            )}
-                          </span>
-                        </div>
-                        <div className="tracking-analytics-stat">
-                          <span className="tracking-analytics-stat__label">
-                            P/L
-                          </span>
-                          <span className="tracking-analytics-stat__value">
-                            {formatMoney(
-                              investmentSummary?.totalProfitLoss ?? 0,
-                              investmentSummary?.currency,
-                            )}
-                          </span>
-                          <span className="tracking-analytics-stat__hint">
-                            {Number.isFinite(
-                              Number(investmentSummary?.totalProfitLossPercent),
-                            )
-                              ? `${Number(investmentSummary.totalProfitLossPercent).toFixed(2)}%`
-                              : '0%'}
-                          </span>
-                        </div>
-                        <div className="tracking-analytics-stat">
-                          <span className="tracking-analytics-stat__label">
-                            Позиций
-                          </span>
-                          <span className="tracking-analytics-stat__value">
-                            {investmentSummary?.positionsCount ?? 0}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="row">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            resetInvestmentDraft();
-                            setInvestmentsMessage('');
-                            setIsCreateInvestmentModalOpen(true);
-                          }}
-                        >
-                          Добавить позицию
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => loadInvestments()}
-                        >
-                          Обновить
-                        </button>
-                      </div>
-                      {investmentsMessage ? (
-                        <p
-                          className="subtitle"
-                          style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}
-                        >
-                          {investmentsMessage}
-                        </p>
+
+                      {investmentsView === 'portfolio' ? (
+                        <InvestmentPortfolioPanel
+                          accessToken={accessToken}
+                          request={request}
+                        />
                       ) : null}
-                      <div className="users-table-wrap" style={{ marginTop: 12 }}>
-                        <table className="users-table">
-                          <thead>
-                            <tr>
-                              <th>Тикер</th>
-                              <th>Название</th>
-                              <th>Тип</th>
-                              <th>Кол-во</th>
-                              <th>Ср. цена</th>
-                              <th>Текущая</th>
-                              <th>Валюта</th>
-                              <th>Заметки</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {investments.length === 0 && (
-                              <tr>
-                                <td colSpan="8">
-                                  Позиций пока нет. Нажмите «Добавить позицию».
-                                </td>
-                              </tr>
-                            )}
-                            {investments.map((row) => (
-                              <tr key={row.id}>
-                                <td>{row.ticker || '—'}</td>
-                                <td>{row.name || '—'}</td>
-                                <td>
-                                  {formatInvestmentAssetType(row.assetType)}
-                                </td>
-                                <td>{row.quantity ?? '—'}</td>
-                                <td>
-                                  {formatMoney(row.averagePrice, row.currency)}
-                                </td>
-                                <td>
-                                  {row.currentPrice != null
-                                    ? formatMoney(row.currentPrice, row.currency)
-                                    : '—'}
-                                </td>
-                                <td>{row.currency || 'RUB'}</td>
-                                <td>{row.notes || '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
                     </section>
                   </section>
                 )}

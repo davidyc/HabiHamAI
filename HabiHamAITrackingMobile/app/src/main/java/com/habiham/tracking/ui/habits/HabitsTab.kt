@@ -186,7 +186,7 @@ fun HabitsTab(
                 if (displayHabits.isEmpty() && masteredHabits.isNotEmpty()) {
                     item {
                         Text(
-                            "Все привычки в категории освоены — отметки в блоке ниже.",
+                            "Все привычки в категории освоены — список в блоке ниже.",
                             modifier = Modifier.padding(horizontal = 16.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -231,9 +231,10 @@ fun HabitsTab(
                     compact = false,
                     showEdit = false,
                     showDelete = false,
+                    showDayMarks = false,
                     canMarkYesterday = viewModel.canMarkYesterday(habit),
-                    onCycleYesterday = { viewModel.cycleCheckin(habit, yesterdayIso()) },
-                    onCycleToday = { viewModel.cycleCheckin(habit, todayIso()) },
+                    onCycleYesterday = {},
+                    onCycleToday = {},
                     onEdit = {},
                     onDelete = {},
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -296,6 +297,7 @@ private fun HabitCard(
     compact: Boolean = false,
     showEdit: Boolean = true,
     showDelete: Boolean = true,
+    showDayMarks: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val today = todayIso()
@@ -342,19 +344,21 @@ private fun HabitCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Вчера", style = MaterialTheme.typography.labelSmall)
-                if (canMarkYesterday) {
-                    HabitStatusDot(status = yesterdayStatus, onClick = onCycleYesterday)
-                } else {
-                    HabitStatusDot(status = null)
+        if (showDayMarks) {
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Вчера", style = MaterialTheme.typography.labelSmall)
+                    if (canMarkYesterday) {
+                        HabitStatusDot(status = yesterdayStatus, onClick = onCycleYesterday)
+                    } else {
+                        HabitStatusDot(status = null)
+                    }
                 }
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Сегодня", style = MaterialTheme.typography.labelSmall)
-                HabitStatusDot(status = todayStatus, onClick = onCycleToday)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Сегодня", style = MaterialTheme.typography.labelSmall)
+                    HabitStatusDot(status = todayStatus, onClick = onCycleToday)
+                }
             }
         }
         if (!compact && periodDates.isNotEmpty()) {

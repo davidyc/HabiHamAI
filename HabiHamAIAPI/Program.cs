@@ -14,6 +14,7 @@ using HabiHamAIAPI.Services;
 using HabiHamAIAPI.Services.Ai;
 using HabiHamAIAPI.Services.Mcp;
 using HabiHamAIAPI.Services.Telegram;
+using HabiHamAIAPI.Services.Tradernet;
 using ModelContextProtocol.AspNetCore;
 using Telegram.Bot;
 
@@ -29,6 +30,13 @@ var telegramBotToken = (Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.Configure<KernestalOptions>(builder.Configuration.GetSection("Kernestal"));
+builder.Services.Configure<TradernetOptions>(builder.Configuration.GetSection("Tradernet"));
+builder.Services.PostConfigure<TradernetOptions>(options =>
+{
+    options.PublicKey = Environment.GetEnvironmentVariable("TRADERNET_PUBLIC_KEY") ?? options.PublicKey;
+    options.PrivateKey = Environment.GetEnvironmentVariable("TRADERNET_PRIVATE_KEY") ?? options.PrivateKey;
+    options.Domain = Environment.GetEnvironmentVariable("TRADERNET_DOMAIN") ?? options.Domain;
+});
 builder.Services.Configure<TrainerMcpOptions>(builder.Configuration.GetSection("TrainerMcp"));
 builder.Services.Configure<TelegramBotOptions>(builder.Configuration.GetSection("Telegram"));
 builder.Services.PostConfigure<TelegramBotOptions>(options =>
@@ -87,6 +95,9 @@ builder.Services.AddScoped<IAppPermissionService, AppPermissionService>();
 builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
 builder.Services.AddScoped<IBikeActivitiesService, BikeActivitiesService>();
 builder.Services.AddScoped<IInvestmentsService, InvestmentsService>();
+builder.Services.AddHttpClient<TradernetApiClient>();
+builder.Services.AddSingleton<RefbookCatalogService>();
+builder.Services.AddScoped<IMarketDataService, MarketDataService>();
 builder.Services.AddSingleton<IPingService, PingService>();
 builder.Services.Configure<FormOptions>(options =>
 {
