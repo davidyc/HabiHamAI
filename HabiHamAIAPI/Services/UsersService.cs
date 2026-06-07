@@ -228,7 +228,7 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
         const int streakWindowDays = 365 * 3;
         var from = date.AddDays(-streakWindowDays);
 
-        // NOTE: Npgsql/EF иногда плохо переводит DateOnly-предикаты в SQL.
+        // NOTE: EF иногда плохо переводит DateOnly-предикаты в SQL.
         // Поэтому достаем все check-in'ы пользователя и фильтруем по окну на клиенте.
         var checkinsAll = await _dbContext.UserHabitCheckins
             .AsNoTracking()

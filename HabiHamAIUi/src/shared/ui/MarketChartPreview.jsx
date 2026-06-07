@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import './MarketChartPreview.css';
 
 const PRESET_TICKERS = [
@@ -104,26 +104,49 @@ function demoBasePrice(ticker) {
   return 145;
 }
 
-export default function MarketChartPreview({ accessToken, request }) {
+function filterPresets(query, exchange) {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) {
+    return [];
+  }
+
+  return PRESET_TICKERS.filter((item) => {
+    const ticker = item.id.toLowerCase();
+    const name = item.name.toLowerCase();
+    const matchesQuery = ticker.includes(q) || name.includes(q);
+    if (!matchesQuery) {
+      return false;
+    }
+
+    switch (exchange) {
+      case 'KASE':
+        return ticker.endsWith('.kz') && !ticker.includes('.aix.');
+      case 'AIX':
+        return ticker.includes('.aix.');
+      case 'USA':
+        return ticker.endsWith('.us');
+      case 'MCX':
+        return ticker.endsWith('.ru');
+      default:
+        return true;
+    }
+  }).map((item) => ({
+    ticker: item.id,
+    name: item.name,
+    exchange: exchange || '',
+  }));
+}
+
+export default function MarketChartPreview() {
   const [ticker, setTicker] = useState('HSBK.KZ');
   const [interval, setInterval] = useState('1d');
   const [period, setPeriod] = useState('3m');
   const [candles, setCandles] = useState([]);
-  const [dataSource, setDataSource] = useState('demo');
-  const [statusMessage, setStatusMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [marketStatus, setMarketStatus] = useState(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchExchange, setSearchExchange] = useState('KASE');
   const [searchResults, setSearchResults] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
   const [searchMessage, setSearchMessage] = useState('');
-
-  const requestRef = useRef(request);
-  const accessTokenRef = useRef(accessToken);
-  requestRef.current = request;
-  accessTokenRef.current = accessToken;
 
   const preset =
     PRESET_TICKERS.find((t) => t.id === ticker) ?? {
@@ -140,162 +163,25 @@ export default function MarketChartPreview({ accessToken, request }) {
       Math.round(periodMeta.days * (interval === '1h' ? 6 : 0.7)),
     );
     setCandles(buildDemoCandles(ticker, count, demoBasePrice(ticker)));
-    setDataSource('demo');
   }, [ticker, interval, period, periodMeta.days]);
 
   useEffect(() => {
-    if (!accessToken) {
-      applyDemoCandles();
-      return;
-    }
-    let cancelled = false;
-    const req = requestRef.current;
-    if (typeof req !== 'function') {
-      return;
-    }
-    req('GET', '/users/me/market/status', null, accessToken).then((result) => {
-      if (!cancelled && result.ok) {
-        setMarketStatus(result.data);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, applyDemoCandles]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const q = searchQuery.trim();
-    if (q.length < 2) {
-      setSearchResults([]);
-      setSearchMessage('');
-      setSearchLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const timer = window.setTimeout(async () => {
-      const token = accessTokenRef.current;
-      const req = requestRef.current;
-      if (!token || typeof req !== 'function') {
-        if (!cancelled) {
-          setSearchMessage('Войдите в аккаунт для поиска тикеров.');
-        }
-        return;
-      }
-
-      if (!cancelled) {
-        setSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      const results = filterPresets(searchQuery, searchExchange);
+      setSearchResults(results);
+      if (searchQuery.trim().length >= 2 && results.length === 0) {
+        setSearchMessage('Ничего не найдено среди пресетов. Выберите тикер из списка.');
+      } else {
         setSearchMessage('');
       }
+    }, 200);
 
-      const params = new URLSearchParams({ q });
-      if (searchExchange) {
-        params.set('exchange', searchExchange);
-      }
-
-      const result = await req(
-        'GET',
-        `/users/me/market/search?${params.toString()}`,
-        null,
-        token,
-      );
-
-      if (cancelled) return;
-
-      setSearchLoading(false);
-      if (result.ok && Array.isArray(result.data?.results)) {
-        setSearchResults(result.data.results);
-        if (result.data.results.length === 0) {
-          setSearchMessage('Ничего не найдено. Попробуйте другой запрос или рынок.');
-        }
-        return;
-      }
-
-      setSearchResults([]);
-      setSearchMessage(result.data?.message || 'Ошибка поиска тикеров.');
-    }, 400);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [searchQuery, searchExchange, accessToken]);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, searchExchange]);
 
   useEffect(() => {
-    let cancelled = false;
-    const token = accessTokenRef.current;
-    const req = requestRef.current;
-
-    async function loadCandles() {
-      if (!token || typeof req !== 'function') {
-        if (!cancelled) {
-          applyDemoCandles();
-          setStatusMessage('Войдите в аккаунт для загрузки котировок с сервера.');
-        }
-        return;
-      }
-
-      if (!cancelled) {
-        setLoading(true);
-        setStatusMessage('');
-      }
-
-      const qs = new URLSearchParams({ ticker, interval, period });
-      const result = await req(
-        'GET',
-        `/users/me/market/candles?${qs.toString()}`,
-        null,
-        token,
-      );
-
-      if (cancelled) return;
-
-      if (
-        result.ok &&
-        Array.isArray(result.data?.candles) &&
-        result.data.candles.length > 0
-      ) {
-        setCandles(
-          result.data.candles.map((c) => ({
-            date: c.date || '',
-            open: Number(c.open),
-            high: Number(c.high),
-            low: Number(c.low),
-            close: Number(c.close),
-            volume: c.volume,
-          })),
-        );
-        setDataSource(result.data.source || 'tradernet');
-        setStatusMessage('');
-        setLoading(false);
-        return;
-      }
-
-      if (result.status === 503) {
-        applyDemoCandles();
-        setStatusMessage(
-          result.data?.message ||
-            'Ключи Tradernet не заданы на сервере — показаны демо-данные.',
-        );
-        setLoading(false);
-        return;
-      }
-
-      applyDemoCandles();
-      setStatusMessage(
-        result.data?.message ||
-          'Не удалось загрузить свечи. Проверьте тикер или ключи API.',
-      );
-      setLoading(false);
-    }
-
-    loadCandles();
-    return () => {
-      cancelled = true;
-    };
-  }, [ticker, interval, period, accessToken, reloadNonce, applyDemoCandles]);
+    applyDemoCandles();
+  }, [ticker, interval, period, reloadNonce, applyDemoCandles]);
 
   const layout = useMemo(() => {
     if (candles.length === 0) return null;
@@ -358,12 +244,6 @@ export default function MarketChartPreview({ accessToken, request }) {
   }, [candles]);
 
   const currency = tickerCurrency(ticker);
-  const badgeLabel =
-    dataSource === 'tradernet'
-      ? 'Tradernet'
-      : loading
-        ? 'Загрузка…'
-        : 'Демо';
 
   return (
     <div className="market-chart-preview">
@@ -374,26 +254,11 @@ export default function MarketChartPreview({ accessToken, request }) {
             <span className="market-chart-preview__name">{preset.name}</span>
           </h4>
           <p className="subtitle market-chart-preview__hint">
-            Свечи для анализа через Freedom / Tradernet API. Ключи хранятся только
-            на сервере.
+            Демо-свечи для визуального анализа. Данные сгенерированы локально, не
+            являются котировками.
           </p>
-          {marketStatus?.connected ? (
-            <p className="subtitle market-chart-preview__hint" style={{ marginTop: 4 }}>
-              API: подключено ({marketStatus.domain})
-            </p>
-          ) : marketStatus?.configured === false ? (
-            <p className="subtitle market-chart-preview__hint" style={{ marginTop: 4 }}>
-              API: ключи не заданы в .env — демо-график.
-            </p>
-          ) : null}
         </div>
-        <span
-          className={`market-chart-preview__badge${
-            dataSource === 'tradernet' ? ' market-chart-preview__badge--live' : ''
-          }`}
-        >
-          {badgeLabel}
-        </span>
+        <span className="market-chart-preview__badge">Демо</span>
       </div>
 
       <div className="market-chart-preview__search-block">
@@ -424,53 +289,12 @@ export default function MarketChartPreview({ accessToken, request }) {
             </select>
           </label>
         </div>
-        {searchLoading ? (
-          <p className="subtitle market-chart-preview__search-hint">Поиск…</p>
-        ) : null}
-        {searchMessage && !searchLoading ? (
+        {searchMessage ? (
           <p className="subtitle market-chart-preview__search-hint">{searchMessage}</p>
         ) : null}
-        {searchExchange === 'AIX' && accessToken ? (
+        {searchExchange === 'AIX' ? (
           <p className="subtitle market-chart-preview__search-hint">
             AIX: тикеры вида <code>HSBK.AIX.KZ</code>, не <code>HSBK.KZ</code>.
-            {' '}
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                const token = accessTokenRef.current;
-                const req = requestRef.current;
-                if (!token || typeof req !== 'function') return;
-                const qs = new URLSearchParams();
-                if (document.getElementById('aix-tradeable-only')?.checked) {
-                  qs.set('tradeableOnly', 'true');
-                }
-                req(
-                  'GET',
-                  `/users/me/market/refbook/AIX?${qs.toString()}`,
-                  null,
-                  token,
-                ).then((result) => {
-                  if (!result.ok) return;
-                  const blob = new Blob([JSON.stringify(result.data, null, 2)], {
-                    type: 'application/json',
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'aix-instruments.json';
-                  a.click();
-                  URL.revokeObjectURL(url);
-                });
-              }}
-            >
-              Скачать список AIX (JSON)
-            </a>
-            {' · '}
-            <label style={{ display: 'inline', fontSize: 12 }}>
-              <input type="checkbox" id="aix-tradeable-only" defaultChecked /> только
-              торгуемые
-            </label>
           </p>
         ) : null}
         {searchResults.length > 0 ? (
@@ -553,20 +377,10 @@ export default function MarketChartPreview({ accessToken, request }) {
           type="button"
           className="ghost-btn"
           onClick={() => setReloadNonce((n) => n + 1)}
-          disabled={loading}
         >
-          {loading ? 'Загрузка…' : 'Обновить'}
+          Обновить
         </button>
       </div>
-
-      {statusMessage ? (
-        <p
-          className="subtitle"
-          style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}
-        >
-          {statusMessage}
-        </p>
-      ) : null}
 
       {layout ? (
         <>
@@ -714,13 +528,11 @@ export default function MarketChartPreview({ accessToken, request }) {
 
           <p className="subtitle market-chart-preview__foot">
             {intervalMeta.label} · {periodMeta.label} · {candles.length} свечей
-            · источник: {dataSource === 'tradernet' ? 'Tradernet (live)' : 'демо'}
+            · источник: демо
           </p>
         </>
       ) : (
-        <div className="workout-empty">
-          {loading ? 'Загрузка свечей…' : 'Нет данных для графика.'}
-        </div>
+        <div className="workout-empty">Нет данных для графика.</div>
       )}
     </div>
   );

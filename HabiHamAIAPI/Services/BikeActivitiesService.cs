@@ -142,7 +142,7 @@ public sealed class BikeActivitiesService : IBikeActivitiesService
         var query = _dbContext.UserBikeActivities.AsNoTracking().Where(x => x.UserId == user.Id);
 
         var sportFilter = string.IsNullOrWhiteSpace(sport) ? "Biking" : sport.Trim();
-        query = query.Where(x => EF.Functions.ILike(x.Sport, sportFilter));
+        query = query.Where(x => EF.Functions.Like(x.Sport, sportFilter));
 
         if (from.HasValue)
         {

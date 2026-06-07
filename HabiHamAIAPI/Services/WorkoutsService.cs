@@ -31,7 +31,7 @@ public sealed class WorkoutsService : IWorkoutsService
 
         if (!includeHistory)
         {
-            query = query.Where(x => !EF.Functions.ILike(x.SessionCode, "workout::%") || x.IsActive == true);
+            query = query.Where(x => !EF.Functions.Like(x.SessionCode, "workout::%") || x.IsActive == true);
         }
 
         var sessions = await query
@@ -61,7 +61,7 @@ public sealed class WorkoutsService : IWorkoutsService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == user.Id
-                && EF.Functions.ILike(x.SessionCode, "workout::%")
+                && EF.Functions.Like(x.SessionCode, "workout::%")
                 && x.IsActive != true);
 
         if (from.HasValue)
@@ -102,7 +102,7 @@ public sealed class WorkoutsService : IWorkoutsService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == user.Id
-                && EF.Functions.ILike(x.SessionCode, "workout::%")
+                && EF.Functions.Like(x.SessionCode, "workout::%")
                 && x.IsActive != true)
             .GroupBy(x => x.Day)
             .Select(g => g.Key)
@@ -270,7 +270,7 @@ public sealed class WorkoutsService : IWorkoutsService
             var existingId = existing.Id;
             await _dbContext.WorkoutSessions
                 .Where(x => x.UserId == user.Id
-                    && EF.Functions.ILike(x.SessionCode, "workout::%")
+                    && EF.Functions.Like(x.SessionCode, "workout::%")
                     && x.Id != existingId
                     && x.IsActive)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsActive, false), cancellationToken);

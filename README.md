@@ -1,6 +1,6 @@
 ﻿# HabiHamAI
 
-Веб-приложение: **тренировки** (программы, каталог упражнений, запись подходов, история), **дневник веса**, **профиль**, **AI-чат** с настраиваемыми ассистентами и **админка**; опционально — **Telegram-бот** (webhook, привязка аккаунта, запись веса в дневник). Репозиторий: **HabiHamAIAPI** (ASP.NET Core, PostgreSQL, JWT), **HabiHamAIUi** (React, Vite) и **HabiHamAIMobile** (Kotlin, Compose — вход и история тренировок).
+Веб-приложение: **тренировки** (программы, каталог упражнений, запись подходов, история), **дневник веса**, **профиль**, **AI-чат** с настраиваемыми ассистентами и **админка**; опционально — **Telegram-бот** (webhook, привязка аккаунта, запись веса в дневник). Репозиторий: **HabiHamAIAPI** (ASP.NET Core, Azure SQL, JWT), **HabiHamAIUi** (React, Vite) и **HabiHamAIMobile** (Kotlin, Compose — вход и история тренировок).
 
 ## Репозиторий и локальный запуск
 
@@ -13,7 +13,7 @@
 
 Агент новостей KZ (KASE/AIX) вынесен в отдельный каталог на уровень выше: **`../HabiHamNewsAgent/`** (см. `HabiHamNewsAgent/README.md`).
 
-**Backend:** в каталоге `HabiHamAIAPI` выполните `dotnet run` (профиль `http` в `Properties/launchSettings.json` — по умолчанию **http://localhost:5193**). Нужны PostgreSQL и параметры JWT; при старте применяются миграции. LLM: переменные `OPENAI_*` / секция Kernestal (см. раздел 7 ниже).
+**Backend:** в каталоге `HabiHamAIAPI` выполните `dotnet run` (профиль `http` в `Properties/launchSettings.json` — по умолчанию **http://localhost:5193**). Нужны Azure SQL Database и параметры JWT; при старте применяются миграции. LLM: переменные `OPENAI_*` / секция Kernestal (см. раздел 7 ниже).
 
 **Frontend:** в `HabiHamAIUi` — `npm install`, затем `npm run dev`. Базовый URL API: переменная окружения **`VITE_API_BASE_URL`** или значение по умолчанию `http://localhost:5193` в коде клиента.
 
@@ -38,8 +38,8 @@
 | Слой   | Технологии                                | Примечание                                                                                                                                                                                                      |
 | ------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Клиент | React 18, `react-router-dom`, Vite        | Точка входа: `HabiHamAIUi/src/main.jsx`. Основная логика UI — монолитный **`App.jsx`** (~4k строк): вкладки, модалки, вызовы API. Навигация: **`TopNav.jsx`**. Обёртка модалок: **`shared/ui/ModalShell.jsx`**. |
-| API    | ASP.NET Core, JWT Bearer, EF Core, Npgsql | `HabiHamAIAPI/Program.cs`: миграции при старте, CORS, Swagger.                                                                                                                                                  |
-| БД     | PostgreSQL                                | Схема через миграции в `HabiHamAIAPI/Migrations`.                                                                                                                                                               |
+| API    | ASP.NET Core, JWT Bearer, EF Core, SQL Server | `HabiHamAIAPI/Program.cs`: миграции при старте, CORS, Swagger.                                                                                                                                              |
+| БД     | Azure SQL Database                        | Схема через миграции в `HabiHamAIAPI/Migrations`.                                                                                                                                                               |
 
 Клиент ходит на API по базовому URL: **`import.meta.env.VITE_API_BASE_URL`** или по умолчанию `http://localhost:5193` (см. `App.jsx`). Заголовок авторизации: `Authorization: Bearer <token>`.
 
@@ -254,7 +254,7 @@
 
 | Переменная / настройка                                                             | Назначение                                                                                           |
 | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `DB_CONNECTION_STRING` или `ConnectionStrings:DefaultConnection`                   | PostgreSQL.                                                                                          |
+| `DB_CONNECTION_STRING` или `ConnectionStrings:DefaultConnection`                   | Azure SQL Database (строка подключения ADO.NET / `Microsoft.Data.SqlClient`).                        |
 | `JWT_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE` или `Jwt` в конфиге                        | Подпись JWT.                                                                                         |
 | `OPENAI_*` / `Kernestal`                                                           | LLM endpoint, ключ, модель.                                                                          |
 | `ADMIN_BOOTSTRAP_USERNAME`, `ADMIN_BOOTSTRAP_PASSWORD` или секция `AdminBootstrap` | Создание/обновление администратора при старте.                                                       |

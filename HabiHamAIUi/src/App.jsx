@@ -7083,10 +7083,7 @@ function AppContent() {
                       </SegmentTabs>
 
                       {investmentsView === 'chart' ? (
-                        <MarketChartPreview
-                          accessToken={accessToken}
-                          request={request}
-                        />
+                        <MarketChartPreview />
                       ) : null}
 
                       {investmentsView === 'portfolio' ? (

@@ -37,7 +37,7 @@ public sealed class TrainerDataQueryService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == userId
-                && EF.Functions.ILike(x.SessionCode, "workout::%")
+                && EF.Functions.Like(x.SessionCode, "workout::%")
                 && x.IsActive != true
                 && x.Date >= fromDate
                 && x.Date <= toDate);
@@ -91,7 +91,7 @@ public sealed class TrainerDataQueryService
         var take = Clamp(limit, 1, _options.MaxPrograms);
         var sessions = await _dbContext.WorkoutSessions
             .AsNoTracking()
-            .Where(x => x.UserId == userId && EF.Functions.ILike(x.SessionCode, "program::%"))
+            .Where(x => x.UserId == userId && EF.Functions.Like(x.SessionCode, "program::%"))
             .Include(x => x.Exercises.OrderBy(e => e.Order))
             .ThenInclude(x => x.Sets.OrderBy(s => s.Order))
             .OrderByDescending(x => x.UpdatedAtUtc)
@@ -121,7 +121,7 @@ public sealed class TrainerDataQueryService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == userId
-                && EF.Functions.ILike(x.SessionCode, "workout::%")
+                && EF.Functions.Like(x.SessionCode, "workout::%")
                 && x.IsActive)
             .Include(x => x.Exercises.OrderBy(e => e.Order))
             .ThenInclude(x => x.Sets.OrderBy(s => s.Order))
@@ -169,7 +169,7 @@ public sealed class TrainerDataQueryService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == userId
-                && EF.Functions.ILike(x.Sport, "Biking")
+                && EF.Functions.Like(x.Sport, "Biking")
                 && x.StartTimeUtc >= fromUtc
                 && x.StartTimeUtc < toExclusive)
             .OrderByDescending(x => x.StartTimeUtc)
@@ -316,7 +316,7 @@ public sealed class TrainerDataQueryService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == userId
-                && EF.Functions.ILike(x.SessionCode, "workout::%")
+                && EF.Functions.Like(x.SessionCode, "workout::%")
                 && x.IsActive != true
                 && x.Date >= fromDate
                 && x.Date <= toDate)
@@ -335,7 +335,7 @@ public sealed class TrainerDataQueryService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == userId
-                && EF.Functions.ILike(x.Sport, "Biking")
+                && EF.Functions.Like(x.Sport, "Biking")
                 && x.StartTimeUtc >= fromUtc
                 && x.StartTimeUtc < toExclusive)
             .GroupBy(_ => 1)
@@ -376,7 +376,7 @@ public sealed class TrainerDataQueryService
     {
         if (await _dbContext.WorkoutSessions.AsNoTracking().AnyAsync(
                 x => x.UserId == userId
-                    && EF.Functions.ILike(x.SessionCode, "workout::%")
+                    && EF.Functions.Like(x.SessionCode, "workout::%")
                     && x.IsActive != true
                     && x.Date >= fromDate
                     && x.Date <= toDate,
@@ -389,7 +389,7 @@ public sealed class TrainerDataQueryService
         var toExclusive = DateTime.SpecifyKind(toDate.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
         if (await _dbContext.UserBikeActivities.AsNoTracking().AnyAsync(
                 x => x.UserId == userId
-                    && EF.Functions.ILike(x.Sport, "Biking")
+                    && EF.Functions.Like(x.Sport, "Biking")
                     && x.StartTimeUtc >= fromUtc
                     && x.StartTimeUtc < toExclusive,
                 cancellationToken))
@@ -477,7 +477,7 @@ public sealed class TrainerDataQueryService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == userId
-                && EF.Functions.ILike(x.SessionCode, "workout::%")
+                && EF.Functions.Like(x.SessionCode, "workout::%")
                 && x.IsActive != true
                 && x.Date >= fromDate
                 && x.Date <= toDate)
@@ -496,7 +496,7 @@ public sealed class TrainerDataQueryService
             .AsNoTracking()
             .Where(x =>
                 x.UserId == userId
-                && EF.Functions.ILike(x.Sport, "Biking")
+                && EF.Functions.Like(x.Sport, "Biking")
                 && x.StartTimeUtc >= fromUtc
                 && x.StartTimeUtc < toExclusive)
             .OrderBy(x => x.StartTimeUtc)

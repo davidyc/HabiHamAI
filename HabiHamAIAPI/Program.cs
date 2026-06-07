@@ -14,7 +14,6 @@ using HabiHamAIAPI.Services;
 using HabiHamAIAPI.Services.Ai;
 using HabiHamAIAPI.Services.Mcp;
 using HabiHamAIAPI.Services.Telegram;
-using HabiHamAIAPI.Services.Tradernet;
 using ModelContextProtocol.AspNetCore;
 using Telegram.Bot;
 
@@ -30,13 +29,6 @@ var telegramBotToken = (Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.Configure<KernestalOptions>(builder.Configuration.GetSection("Kernestal"));
-builder.Services.Configure<TradernetOptions>(builder.Configuration.GetSection("Tradernet"));
-builder.Services.PostConfigure<TradernetOptions>(options =>
-{
-    options.PublicKey = Environment.GetEnvironmentVariable("TRADERNET_PUBLIC_KEY") ?? options.PublicKey;
-    options.PrivateKey = Environment.GetEnvironmentVariable("TRADERNET_PRIVATE_KEY") ?? options.PrivateKey;
-    options.Domain = Environment.GetEnvironmentVariable("TRADERNET_DOMAIN") ?? options.Domain;
-});
 builder.Services.Configure<TrainerMcpOptions>(builder.Configuration.GetSection("TrainerMcp"));
 builder.Services.Configure<TelegramBotOptions>(builder.Configuration.GetSection("Telegram"));
 builder.Services.PostConfigure<TelegramBotOptions>(options =>
@@ -95,9 +87,6 @@ builder.Services.AddScoped<IAppPermissionService, AppPermissionService>();
 builder.Services.AddScoped<IWorkoutsService, WorkoutsService>();
 builder.Services.AddScoped<IBikeActivitiesService, BikeActivitiesService>();
 builder.Services.AddScoped<IInvestmentsService, InvestmentsService>();
-builder.Services.AddHttpClient<TradernetApiClient>();
-builder.Services.AddSingleton<RefbookCatalogService>();
-builder.Services.AddScoped<IMarketDataService, MarketDataService>();
 builder.Services.AddSingleton<IPingService, PingService>();
 builder.Services.Configure<FormOptions>(options =>
 {
@@ -116,7 +105,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
         ?? builder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
-    options.UseNpgsql(connectionString);
+    options.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure());
 });
 builder.Services.AddCors(options =>
 {
@@ -191,12 +180,13 @@ using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
-    await BaselineExistingDatabaseForMigrationsAsync(dbContext);
     await dbContext.Database.MigrateAsync();
     await EnsureSystemRolesAsync(dbContext);
     var permissionService = scope.ServiceProvider.GetRequiredService<IAppPermissionService>();
     await permissionService.EnsureCatalogAsync();
     await permissionService.EnsureDefaultRolePermissionsAsync();
+    await DatabaseBootstrap.EnsureTrainerAssistantAsync(dbContext);
+    await DatabaseBootstrap.EnsureDefaultUserCategoriesAsync(dbContext);
 
     var adminSection = builder.Configuration.GetSection("AdminBootstrap");
     var adminUsername = (Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_USERNAME")
@@ -294,76 +284,6 @@ static async Task EnsureSystemRolesAsync(AppDbContext dbContext)
     }
 
     await dbContext.SaveChangesAsync();
-}
-
-static async Task BaselineExistingDatabaseForMigrationsAsync(AppDbContext dbContext)
-{
-    const string efProductVersion = "9.0.9";
-
-    // Migrations that must not be re-applied when the schema already exists (legacy / EnsureCreated DBs).
-    string[] legacyMigrations =
-    [
-        "20260507174221_InitialSchema",
-        "20260509171949_AiAssistantsAndUserSelection",
-        "20260509174148_AiAssistantExtraFields",
-        "20260510152123_UserWeightTracker",
-        "20260510173000_ChatDialogAiAssistant",
-        "20260511120000_TrainerAssistantCodeAndSeed",
-        "20260513152104_TelegramUserLink",
-        "20260513173402_UserBikeActivityImport2",
-        "20260515120000_TrainerAssistantFieldDefinitionsSeed",
-        "20260516120000_TrainerHeightField",
-        "20260518120000_SystemAiFlagsAndTrainerHeightEnsure",
-        "20260522161613_BikeActivitySourceFileStorage",
-        "20260522180000_UserWeeklyTrainingReviews",
-    ];
-
-    await dbContext.Database.ExecuteSqlRawAsync("""
-        CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
-            "MigrationId" character varying(150) NOT NULL,
-            "ProductVersion" character varying(32) NOT NULL,
-            CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
-        );
-        """);
-
-    // Full legacy schema: users + ai_assistants already present but history incomplete.
-    var hasUsers = await TableExistsAsync(dbContext, "users");
-    var hasAiAssistants = await TableExistsAsync(dbContext, "ai_assistants");
-    var hasLegacySchema = hasUsers && hasAiAssistants;
-
-    if (!hasLegacySchema)
-    {
-        return;
-    }
-
-    foreach (var migrationId in legacyMigrations)
-    {
-        await dbContext.Database.ExecuteSqlRawAsync(
-            """
-            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-            SELECT {0}, {1}
-            WHERE NOT EXISTS (
-                SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = {0}
-            )
-            """,
-            migrationId,
-            efProductVersion);
-    }
-}
-
-static async Task<bool> TableExistsAsync(AppDbContext dbContext, string tableName)
-{
-    // No trailing semicolon: SqlQueryRaw wraps the SQL and ";" breaks Npgsql parsing.
-    return await dbContext.Database
-        .SqlQueryRaw<bool>(
-            """
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables
-                WHERE table_schema = 'public' AND table_name = {0}
-            ) AS "Value"
-            """,
-            tableName)
-        .SingleAsync();
 }
 
 static void LoadDotEnv()

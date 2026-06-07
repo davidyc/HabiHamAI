@@ -26,12 +26,6 @@ services:
         value: https://api.openai.com
       - key: OPENAI_MODEL
         value: gpt-4
-      - key: TRADERNET_PUBLIC_KEY
-        sync: false
-      - key: TRADERNET_PRIVATE_KEY
-        sync: false
-      - key: TRADERNET_DOMAIN
-        value: freedom24.com
 
   - type: web
     name: habihamai-ui
