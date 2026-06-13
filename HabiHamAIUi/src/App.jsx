@@ -16,6 +16,7 @@ import FilterSelect, {
   STANDARD_DATE_PERIOD_OPTIONS,
   TODO_DATE_PERIOD_OPTIONS,
 } from './shared/ui/FilterSelect';
+import HabitStatusDropdown from './shared/ui/HabitStatusDropdown';
 import {
   SegmentTab,
   SegmentTabs,
@@ -138,13 +139,6 @@ function AppContent() {
       if (date && status) map[date] = status;
     }
     return map;
-  };
-  const HABIT_STATUS_CYCLE = [null, 'partial', 'done', 'failed'];
-  const nextHabitCheckinStatus = (current) => {
-    const normalized = current || null;
-    const idx = HABIT_STATUS_CYCLE.indexOf(normalized);
-    const nextIdx = idx < 0 ? 0 : (idx + 1) % HABIT_STATUS_CYCLE.length;
-    return HABIT_STATUS_CYCLE[nextIdx];
   };
   const habitStatusCellClass = (status) => {
     if (status === 'partial') {
@@ -368,6 +362,7 @@ function AppContent() {
   );
   /** habitId → Set of ISO dates with check-in */
   const [habitsCheckinsByHabitId, setHabitsCheckinsByHabitId] = useState({});
+  const [habitRowSavingId, setHabitRowSavingId] = useState(null);
   const [isCreateHabitModalOpen, setIsCreateHabitModalOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState(null);
   const [habitsEditName, setHabitsEditName] = useState('');
@@ -531,10 +526,15 @@ function AppContent() {
   const planningImportInputRef = useRef(null);
   const exercisesImportInputRef = useRef(null);
   const bikeTcxImportRef = useRef(null);
+  const habitStatusSaveRef = useRef(false);
   const isApiLoading = activeApiRequests > 0;
+  const showGlobalApiLoader = isApiLoading && !habitRowSavingId;
 
-  async function request(method, path, body, token) {
-    setActiveApiRequests((prev) => prev + 1);
+  async function request(method, path, body, token, options = {}) {
+    const { silent = false } = options;
+    if (!silent) {
+      setActiveApiRequests((prev) => prev + 1);
+    }
     try {
       const response = await fetch(baseUrl.trim().replace(/\/+$/, '') + path, {
         method,
@@ -553,7 +553,9 @@ function AppContent() {
         data: { message: 'Ошибка сети', detail: String(error) },
       };
     } finally {
-      setActiveApiRequests((prev) => Math.max(0, prev - 1));
+      if (!silent) {
+        setActiveApiRequests((prev) => Math.max(0, prev - 1));
+      }
     }
   }
 
@@ -1852,13 +1854,14 @@ function AppContent() {
     }
   }
 
-  async function loadHabitsOverview(token = accessToken) {
+  async function loadHabitsOverview(token = accessToken, options = {}) {
     if (!token) return;
     const result = await request(
       'GET',
       '/users/me/habits/overview',
       null,
       token,
+      options,
     );
     handleResult(result);
     if (!result.ok) return;
@@ -1950,7 +1953,11 @@ function AppContent() {
     await loadHabitsOverview(accessToken);
   }
 
-  async function loadHabitsCategoryCheckins(habits, token = accessToken) {
+  async function loadHabitsCategoryCheckins(
+    habits,
+    token = accessToken,
+    options = {},
+  ) {
     if (!token) return;
     if (!habits?.length) {
       setHabitsCheckinsByHabitId({});
@@ -1969,6 +1976,7 @@ function AppContent() {
           `/users/me/habits/${h.id}/checkins${suffix}`,
           null,
           token,
+          options,
         );
         if (!result.ok) return [String(h.id), {}];
         return [
@@ -1982,7 +1990,7 @@ function AppContent() {
     setHabitsCheckinsByHabitId(Object.fromEntries(entries));
   }
 
-  async function cycleHabitCheckinStatus(habit, date) {
+  async function setHabitCheckinStatus(habit, date, nextStatus) {
     if (!accessToken || !habit?.id || !date) return;
     const habitKey = String(habit.id);
     const statusMap = habitsCheckinsByHabitId[habitKey] ?? {};
@@ -1991,30 +1999,42 @@ function AppContent() {
       date === today
         ? resolveHabitTodayStatus(statusMap, habit, today)
         : resolveHabitStatusForDate(statusMap, habit, date, null);
-    const next = nextHabitCheckinStatus(current);
+    const next = nextStatus || null;
+    if ((current || null) === next) return;
 
-    const result = next
-      ? await request(
-          'POST',
-          `/users/me/habits/${habit.id}/checkins`,
-          { date, status: next },
-          accessToken,
-        )
-      : await request(
-          'DELETE',
-          `/users/me/habits/${habit.id}/checkins?date=${date}`,
-          null,
-          accessToken,
-        );
-    handleResult(result);
-    if (!result.ok) return;
+    const habitId = String(habit.id);
+    setHabitRowSavingId(habitId);
+    habitStatusSaveRef.current = true;
+    const silent = { silent: true };
+    try {
+      const result = next
+        ? await request(
+            'POST',
+            `/users/me/habits/${habit.id}/checkins`,
+            { date, status: next },
+            accessToken,
+            silent,
+          )
+        : await request(
+            'DELETE',
+            `/users/me/habits/${habit.id}/checkins?date=${date}`,
+            null,
+            accessToken,
+            silent,
+          );
+      handleResult(result);
+      if (!result.ok) return;
 
-    const habitsToRefresh =
-      activeHabitsCategoryGroup?.items?.length > 0
-        ? activeHabitsCategoryGroup.items
-        : habitsOverview;
-    await loadHabitsOverview(accessToken);
-    await loadHabitsCategoryCheckins(habitsToRefresh, accessToken);
+      const habitsToRefresh =
+        activeHabitsCategoryGroup?.items?.length > 0
+          ? activeHabitsCategoryGroup.items
+          : habitsOverview;
+      await loadHabitsOverview(accessToken, silent);
+      await loadHabitsCategoryCheckins(habitsToRefresh, accessToken, silent);
+    } finally {
+      habitStatusSaveRef.current = false;
+      setHabitRowSavingId((prev) => (prev === habitId ? null : prev));
+    }
   }
 
   function applyHabitFilterPreset(days) {
@@ -4314,6 +4334,7 @@ function AppContent() {
 
   useEffect(() => {
     if (!hasPermission(APP_PERMISSION.Habits) || !accessToken) return;
+    if (habitStatusSaveRef.current) return;
     if (tab === 'habits') {
       const habits = [
         ...(activeHabitsCategoryGroup?.items ?? []),
@@ -4597,13 +4618,13 @@ function AppContent() {
 
   return (
     <>
-      {isApiLoading && (
+      {showGlobalApiLoader && (
         <div className="global-api-overlay" aria-hidden="true" />
       )}
       <div
-        className={`global-api-loader${isApiLoading ? ' visible' : ''}`}
+        className={`global-api-loader${showGlobalApiLoader ? ' visible' : ''}`}
         aria-live="polite"
-        aria-hidden={!isApiLoading}
+        aria-hidden={!showGlobalApiLoader}
       >
         <span className="spinner" aria-hidden="true" />
         <span>Загрузка данных...</span>
@@ -6499,6 +6520,31 @@ function AppContent() {
                                         today,
                                       );
                                       const displayDates = getHabitDisplayDates(h);
+                                      const habitTableColSpan =
+                                        activeHabitsCategoryGroup.showCategoryColumn
+                                          ? 8
+                                          : 7;
+                                      if (habitRowSavingId === String(h.id)) {
+                                        return (
+                                          <tr
+                                            key={h.id}
+                                            className="habit-table-row--saving"
+                                            aria-busy="true"
+                                          >
+                                            <td
+                                              colSpan={habitTableColSpan}
+                                              className="habit-table-row-saving"
+                                              data-label="Статус"
+                                            >
+                                              <span
+                                                className="spinner"
+                                                aria-hidden="true"
+                                              />
+                                              <span>Отправка данных...</span>
+                                            </td>
+                                          </tr>
+                                        );
+                                      }
                                       return (
                                         <tr key={h.id}>
                                           <td
@@ -6539,24 +6585,18 @@ function AppContent() {
                                             data-label="Вчера"
                                           >
                                             {canMarkYesterday ? (
-                                              <button
-                                                type="button"
-                                                className="habit-today-btn"
-                                                title={`Вчера: ${habitStatusLabel(yesterdayStatus)}. Нажмите для смены`}
-                                                aria-label={`${h.name}, вчера: ${habitStatusLabel(yesterdayStatus)}`}
-                                                onClick={() =>
-                                                  cycleHabitCheckinStatus(
+                                              <HabitStatusDropdown
+                                                status={yesterdayStatus}
+                                                title={`Вчера: ${habitStatusLabel(yesterdayStatus)}`}
+                                                ariaLabel={`${h.name}, вчера: ${habitStatusLabel(yesterdayStatus)}`}
+                                                onChange={(next) =>
+                                                  setHabitCheckinStatus(
                                                     h,
                                                     yesterday,
+                                                    next,
                                                   )
                                                 }
-                                              >
-                                                <span
-                                                  className={habitStatusCellClass(
-                                                    yesterdayStatus,
-                                                  )}
-                                                />
-                                              </button>
+                                              />
                                             ) : (
                                               <span
                                                 className="habit-status-cell habit-status-cell--none habit-status-cell--readonly"
@@ -6569,21 +6609,18 @@ function AppContent() {
                                             className="habit-table__mark"
                                             data-label="Сегодня"
                                           >
-                                            <button
-                                              type="button"
-                                              className="habit-today-btn"
-                                              title={`Сегодня: ${habitStatusLabel(todayStatus)}. Нажмите для смены`}
-                                              aria-label={`${h.name}, сегодня: ${habitStatusLabel(todayStatus)}`}
-                                              onClick={() =>
-                                                cycleHabitCheckinStatus(h, today)
+                                            <HabitStatusDropdown
+                                              status={todayStatus}
+                                              title={`Сегодня: ${habitStatusLabel(todayStatus)}`}
+                                              ariaLabel={`${h.name}, сегодня: ${habitStatusLabel(todayStatus)}`}
+                                              onChange={(next) =>
+                                                setHabitCheckinStatus(
+                                                  h,
+                                                  today,
+                                                  next,
+                                                )
                                               }
-                                            >
-                                              <span
-                                                className={habitStatusCellClass(
-                                                  todayStatus,
-                                                )}
-                                              />
-                                            </button>
+                                            />
                                           </td>
                                           <td
                                             className="habit-table__period"

@@ -617,6 +617,16 @@ button:active {
   vertical-align: middle;
 }
 
+.users-table-wrap--habits {
+  overflow: visible;
+  max-width: 100%;
+}
+
+.users-table-wrap--habits .habit-analytics-table {
+  width: 100%;
+  table-layout: auto;
+}
+
 .habit-table__name {
   min-width: 140px;
 }
@@ -642,7 +652,22 @@ button:active {
 }
 
 .habit-table__mark {
-  width: 56px;
+  width: 48px;
+}
+
+.habit-table-row--saving {
+  opacity: 0.92;
+}
+
+.habit-table-row-saving {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 8px !important;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .habit-row-actions {
@@ -687,6 +712,10 @@ button:active {
   color: var(--accent, #2d8a4e);
   background: color-mix(in srgb, var(--accent, #2d8a4e) 18%, transparent);
   vertical-align: middle;
+}
+
+.users-table-wrap--habits-mastered {
+  overflow: visible;
 }
 
 .users-table-wrap--habits-mastered .habit-analytics-table--mastered tbody tr {
@@ -2611,120 +2640,6 @@ button {
     gap: 10px 14px;
   }
 
-  .users-table-wrap--habits {
-    overflow-x: hidden;
-    border: none;
-    background: transparent;
-    margin-top: 4px;
-    max-width: 100%;
-  }
-
-  .habit-analytics-table.users-table thead {
-    display: none;
-  }
-
-  .habit-analytics-table.users-table,
-  .habit-analytics-table.users-table tbody {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-  }
-
-  .habit-analytics-table.users-table tbody tr {
-    display: block;
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    margin-bottom: 10px;
-    padding: 10px;
-    border: 1px solid var(--panel-border);
-    border-radius: 12px;
-    background: var(--surface-input);
-    overflow: hidden;
-  }
-
-  .habit-analytics-table.users-table tbody tr:last-child {
-    margin-bottom: 0;
-  }
-
-  .habit-analytics-table.users-table tbody td {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    padding: 4px 0;
-    border-bottom: none;
-    text-align: left;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .habit-analytics-table.users-table tbody td::before {
-    content: attr(data-label);
-    flex-shrink: 0;
-    font-size: 11px;
-    font-weight: 600;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  .habit-analytics-table.users-table tbody td.habit-table__name {
-    display: block;
-    padding-top: 0;
-    padding-bottom: 8px;
-    margin-bottom: 4px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 1.35;
-    min-width: 0;
-  }
-
-  .habit-analytics-table.users-table tbody td.habit-table__name::before {
-    display: none;
-  }
-
-  .habit-analytics-table.users-table tbody td.habit-table__mark {
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .habit-analytics-table.users-table tbody td.habit-table__mark::before {
-    min-width: 52px;
-  }
-
-  .habit-analytics-table.users-table tbody td.habit-table__period .habit-analytics-track {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .habit-analytics-table.users-table tbody td.habit-table__actions {
-    flex-direction: row;
-    justify-content: flex-end;
-    align-items: center;
-    padding-top: 8px;
-    margin-top: 4px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .habit-analytics-table.users-table tbody td.habit-table__actions::before {
-    display: none;
-  }
-
-  .habit-analytics-table.users-table tbody td.habit-table__actions .danger-btn--icon {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
-    font-size: 26px;
-  }
-
   .todos-table__title,
   .todos-table__actions {
     min-width: 0;
@@ -2879,6 +2794,191 @@ button {
 
   .todos-table.users-table tbody td.todos-table__status {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (max-width: 849px) {
+  .users-table-wrap--habits {
+    overflow: visible;
+    border: none;
+    background: transparent;
+    margin-top: 4px;
+    max-width: 100%;
+  }
+
+  .habit-analytics-table.users-table thead {
+    display: none;
+  }
+
+  .habit-analytics-table.users-table,
+  .habit-analytics-table.users-table tbody {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .habit-analytics-table.users-table tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    background: var(--surface-input);
+    overflow: hidden;
+  }
+
+  .habit-analytics-table.users-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .habit-analytics-table.users-table tbody td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: auto;
+    flex: 1 1 auto;
+    max-width: 100%;
+    min-width: 0;
+    padding: 4px 0;
+    border-bottom: none;
+    text-align: left;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .habit-analytics-table.users-table tbody td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__name {
+    flex: 0 0 100%;
+    width: 100%;
+    display: block;
+    padding-top: 0;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+    min-width: 0;
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__name::before {
+    display: none;
+  }
+
+  /* Строка 1: категория, серия, освоение */
+  .habit-analytics-table.users-table tbody td.habit-table__category,
+  .habit-analytics-table.users-table tbody td.habit-table__streak,
+  .habit-analytics-table.users-table tbody td.habit-table__mastery {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Строка 2: вчера, сегодня */
+  .habit-analytics-table.users-table tbody td.habit-table__mark {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__mark::before {
+    min-width: 52px;
+    margin: 0;
+  }
+
+  /* Строка 3: период */
+  .habit-analytics-table.users-table tbody td.habit-table__period {
+    flex: 0 0 100%;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+    padding: 10px 6px 4px;
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__period::before {
+    flex: 0 0 auto;
+  }
+
+  .habit-analytics-table.users-table tbody tr.habit-table-row--saving td.habit-table-row-saving {
+    flex: 0 0 100%;
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    padding: 12px 0 !important;
+    border-bottom: none;
+  }
+
+  .habit-analytics-table.users-table tbody tr.habit-table-row--saving td.habit-table-row-saving::before {
+    display: none;
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__period .habit-analytics-track {
+    flex: 1 1 120px;
+    width: auto;
+    max-width: 100%;
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__actions {
+    flex: 0 0 100%;
+    width: 100%;
+    flex-direction: row;
+    justify-content: stretch;
+    align-items: stretch;
+    padding-top: 8px;
+    margin-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__actions::before {
+    display: none;
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__actions .habit-row-actions {
+    gap: 10px;
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__actions .icon-action-btn {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    height: 48px;
+    border-radius: 10px;
+    font-size: 20px;
+  }
+
+  .habit-analytics-table.users-table tbody td.habit-table__actions .icon-action-btn--delete {
+    font-size: 26px;
+  }
+
+  .habit-analytics-table--mastered.users-table tbody td.habit-table__period {
+    border-bottom: none;
+    padding-bottom: 4px;
   }
 }
 
