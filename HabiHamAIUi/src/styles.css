@@ -2886,16 +2886,24 @@ button {
   .habit-analytics-table.users-table tbody td.habit-table__category,
   .habit-analytics-table.users-table tbody td.habit-table__streak,
   .habit-analytics-table.users-table tbody td.habit-table__mastery {
-    flex: 1 1 0;
+    flex: 1 1 33.333%;
     min-width: 0;
+    max-width: 33.333%;
     padding: 8px 6px 10px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
+  .habit-analytics-table.users-table tbody tr:not(:has(.habit-table__category)) td.habit-table__streak,
+  .habit-analytics-table.users-table tbody tr:not(:has(.habit-table__category)) td.habit-table__mastery {
+    flex: 1 1 50%;
+    max-width: 50%;
+  }
+
   /* Строка 2: вчера, сегодня */
   .habit-analytics-table.users-table tbody td.habit-table__mark {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 1 1 calc(50% - 12px);
+    min-width: calc(50% - 12px);
+    max-width: calc(50% - 12px);
     flex-direction: row;
     align-items: center;
     gap: 10px;
