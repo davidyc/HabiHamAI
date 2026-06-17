@@ -302,6 +302,8 @@ function AppContent() {
   const [profileFirstName, setProfileFirstName] = useState('');
   const [profileLastName, setProfileLastName] = useState('');
   const [profileAiSummary, setProfileAiSummary] = useState('');
+  const [isGeneratingTrainingSummary, setIsGeneratingTrainingSummary] =
+    useState(false);
   const [profileTelegramLinked, setProfileTelegramLinked] = useState(false);
   const [isTelegramLinkModalOpen, setIsTelegramLinkModalOpen] = useState(false);
   const [telegramLinkUrl, setTelegramLinkUrl] = useState('');
@@ -899,7 +901,40 @@ function AppContent() {
       },
     ]);
     await loadDialogs(aiToken, dialogId);
-    await loadMyProfile(aiToken);
+  }
+
+  async function generateTrainingSummary() {
+    const token = aiToken || accessToken;
+    if (!token) {
+      return setErrorView(
+        'Сначала войдите в систему или вставьте JWT-токен в поле AI-токена.',
+      );
+    }
+    if (!hasAiAccess) {
+      return setErrorView('Нет доступа к ИИ-помощнику.');
+    }
+    setIsGeneratingTrainingSummary(true);
+    try {
+      const result = await request(
+        'POST',
+        '/ai/training-summary',
+        {},
+        token,
+      );
+      handleResult(result);
+      if (!result.ok) {
+        const errText =
+          result.data?.message ||
+          (result.status === 502
+            ? 'Сервис ИИ недоступен. Проверьте API-ключ и модель.'
+            : `Ошибка запроса (${result.status}).`);
+        return setErrorView(errText);
+      }
+      setProfileAiSummary(result.data?.summary || '');
+      await loadMyProfile(token);
+    } finally {
+      setIsGeneratingTrainingSummary(false);
+    }
   }
 
   async function submitAiNewDialog() {
@@ -5024,13 +5059,15 @@ function AppContent() {
                           label="Силовые тренировки"
                           ariaLabel="Подразделы силовых тренировок"
                         >
-                          <SubNavTab
-                            level="secondary"
-                            active={strengthSubTab === 'my-workout'}
-                            onClick={() => setStrengthSubTab('my-workout')}
-                          >
-                            Моя тренировка
-                          </SubNavTab>
+                          {showWorkoutAiTrainerNav ? (
+                            <SubNavTab
+                              level="secondary"
+                              active={strengthSubTab === 'ai-trainer'}
+                              onClick={() => setStrengthSubTab('ai-trainer')}
+                            >
+                              ИИ тренер
+                            </SubNavTab>
+                          ) : null}
                           <SubNavTab
                             level="secondary"
                             active={strengthSubTab === 'history'}
@@ -5040,24 +5077,18 @@ function AppContent() {
                           </SubNavTab>
                           <SubNavTab
                             level="secondary"
+                            active={strengthSubTab === 'my-workout'}
+                            onClick={() => setStrengthSubTab('my-workout')}
+                          >
+                            Моя тренировка
+                          </SubNavTab>
+                          <SubNavTab
+                            level="secondary"
                             active={strengthSubTab === 'manage'}
                             onClick={() => setStrengthSubTab('manage')}
                           >
                             Управление тренировкой
                           </SubNavTab>
-                          {showWorkoutAiTrainerNav ? (
-                            <>
-                              <SubNavTab
-                                level="secondary"
-                                active={strengthSubTab === 'ai-trainer'}
-                                onClick={() =>
-                                  setStrengthSubTab('ai-trainer')
-                                }
-                              >
-                                ИИ тренер
-                              </SubNavTab>
-                            </>
-                          ) : null}
                         </SubNavGroup>
                       )}
 
@@ -5075,10 +5106,23 @@ function AppContent() {
                           >
                             <h4 style={{ marginTop: 0 }}>ИИ тренер — чат</h4>
                             <p className="subtitle">
-                              Свободный диалог с помощником «Тренер».
+                              Свободный диалог с помощником «Тренер». Саммари
+                              тренировок обновляется отдельной кнопкой и всегда
+                              доступно тренеру в контексте.
                             </p>
                             {showWorkoutAiTrainerTab ? (
                               <>
+                            <div className="row" style={{ marginBottom: 12 }}>
+                              <button
+                                type="button"
+                                onClick={generateTrainingSummary}
+                                disabled={isGeneratingTrainingSummary}
+                              >
+                                {isGeneratingTrainingSummary
+                                  ? 'Обновляем саммари…'
+                                  : 'Обновить саммари тренировок'}
+                              </button>
+                            </div>
                             <div className="row">
                               <select
                                 value={currentDialogId}
@@ -5798,8 +5842,21 @@ function AppContent() {
                           </span>
                           <div className="profile-field-value profile-ai-summary-text">
                             {profileAiSummary ||
-                              'Появится после ответов ассистента в чате.'}
+                              'Нажмите «Обновить саммари», чтобы ИИ проанализировал ваши тренировки.'}
                           </div>
+                          {hasAiAccess ? (
+                            <div className="row" style={{ marginTop: 8 }}>
+                              <button
+                                type="button"
+                                onClick={generateTrainingSummary}
+                                disabled={isGeneratingTrainingSummary}
+                              >
+                                {isGeneratingTrainingSummary
+                                  ? 'Обновляем саммари…'
+                                  : 'Обновить саммари'}
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                         <div className="profile-readonly-item">
                           <span className="profile-field-label">Telegram</span>

@@ -56,4 +56,8 @@ public sealed class AiController : ControllerBase
     [HttpPut("assistant-extra-fields")]
     public Task<IActionResult> PutAssistantExtraFields([FromBody] UserAiAssistantExtrasPutRequest request, CancellationToken cancellationToken) =>
         _service.PutAssistantExtraFieldsAsync(User, request, cancellationToken);
+
+    [HttpPost("training-summary")]
+    public Task<IActionResult> GenerateTrainingSummary([FromBody] GenerateTrainingSummaryRequest? request, CancellationToken cancellationToken) =>
+        _service.GenerateTrainingSummaryAsync(User, request, cancellationToken);
 }

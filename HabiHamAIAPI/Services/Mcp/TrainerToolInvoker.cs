@@ -75,15 +75,26 @@ public sealed class TrainerToolInvoker : ITrainerToolInvoker
             }),
         Tool(
             "get_weight_entries",
-            "Дневник веса за период.",
+            "Дневник веса за период (дата и вес в кг).",
             new
             {
                 type = "object",
                 properties = new
                 {
-                    from = new { type = "string" },
-                    to = new { type = "string" },
+                    from = new { type = "string", description = "YYYY-MM-DD" },
+                    to = new { type = "string", description = "YYYY-MM-DD" },
                     limit = new { type = "integer", minimum = 1, maximum = 60 }
+                }
+            }),
+        Tool(
+            "get_current_weight",
+            "Текущий вес: из профиля, последняя запись дневника, сводка за 30 дней и недавние записи.",
+            new
+            {
+                type = "object",
+                properties = new
+                {
+                    recentLimit = new { type = "integer", minimum = 1, maximum = 60, description = "Сколько последних записей дневника вернуть (по умолчанию 10)" }
                 }
             }),
         Tool(
@@ -142,6 +153,10 @@ public sealed class TrainerToolInvoker : ITrainerToolInvoker
                 GetString(root, "from"),
                 GetString(root, "to"),
                 GetInt(root, "limit"),
+                cancellationToken),
+            "get_current_weight" => await _data.GetCurrentWeightAsync(
+                userId,
+                GetInt(root, "recentLimit"),
                 cancellationToken),
             "get_weekly_training_summary" => await _data.GetWeeklyTrainingSummaryAsync(
                 userId,

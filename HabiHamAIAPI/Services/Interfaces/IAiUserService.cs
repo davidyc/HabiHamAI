@@ -16,4 +16,5 @@ public interface IAiUserService
     Task<IActionResult> SetAssistantSelectionAsync(ClaimsPrincipal principal, AiAssistantSelectionRequest request, CancellationToken cancellationToken);
     Task<IActionResult> GetAssistantExtraFieldsAsync(ClaimsPrincipal principal, Guid assistantId, CancellationToken cancellationToken);
     Task<IActionResult> PutAssistantExtraFieldsAsync(ClaimsPrincipal principal, UserAiAssistantExtrasPutRequest request, CancellationToken cancellationToken);
+    Task<IActionResult> GenerateTrainingSummaryAsync(ClaimsPrincipal principal, GenerateTrainingSummaryRequest? request, CancellationToken cancellationToken);
 }

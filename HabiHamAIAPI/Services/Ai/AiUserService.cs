@@ -17,18 +17,27 @@ public sealed class AiUserService : IAiUserService
     private const string TrainerToolsSystemAppendix = """
 
         ### ИНСТРУМЕНТЫ (MCP):
-        У тебя есть tools для чтения реальных данных пользователя: силовые тренировки, программы, активная тренировка, велозаезды, дневник веса, профиль, сводка за период (get_weekly_training_summary).
-        Если вопрос про факты, цифры, прогресс или историю — сначала вызови нужные tools, затем отвечай. Не выдумывай веса, подходы и заезды.
+        У тебя есть tools для чтения реальных данных пользователя: силовые тренировки, программы, активная тренировка, велозаезды, вес тела (get_current_weight, get_weight_entries), профиль, сводка за период (get_weekly_training_summary).
+        Если вопрос про факты, цифры, прогресс, вес тела или историю — сначала вызови нужные tools, затем отвечай. Не выдумывай веса, подходы и заезды.
+        По вопросам о весе тела вызывай get_current_weight или get_weight_entries; не путай с весом штанги в упражнениях.
 
         ### ОБЗОР ЗА НЕДЕЛЮ:
         По запросу обзора/итогов за неделю (или последние N дней) сначала вызови get_weekly_training_summary, затем при необходимости get_strength_workout_history или get_bike_activities для деталей.
         Ответ: резюме регулярности и объёма, силовые (прогресс/застой по ключевым упражнениям), вело и вес если есть данные, 2–3 рекомендации на следующую неделю. Сравнивай с previousPeriod в сводке, если она есть.
         """;
 
+    private const string TrainingSummaryGenerationUserPrompt = """
+        Составь подробное саммари тренировочного прогресса пользователя для сохранения в его профиле.
+        Сначала вызови get_weekly_training_summary (14 дней), get_strength_workout_history за последние 90 дней, get_bike_activities, get_current_weight и get_weight_entries — по наличию данных.
+        Включи: регулярность, ключевые упражнения и личные рекорды (вес × повторы, даты), динамику веса, вело-нагрузку, сильные стороны и зоны роста.
+        Формат: структурированный текст на русском, до 4000 символов. Только факты из tools, без выдумок. Без приветствий и вопросов в конце — только саммари.
+        """;
+
     private static readonly Regex UserFieldPlaceholderRegex = new(@"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", RegexOptions.Compiled);
 
     private readonly IKernestalAiService _kernestalAiService;
     private readonly ITrainerAgentService _trainerAgentService;
+    private readonly TrainerDataQueryService _trainerDataQueryService;
     private readonly AppDbContext _dbContext;
     private readonly TrainerMcpOptions _trainerMcpOptions;
     private readonly ILlmModelService _llmModelService;
@@ -36,12 +45,14 @@ public sealed class AiUserService : IAiUserService
     public AiUserService(
         IKernestalAiService kernestalAiService,
         ITrainerAgentService trainerAgentService,
+        TrainerDataQueryService trainerDataQueryService,
         AppDbContext dbContext,
         IOptions<TrainerMcpOptions> trainerMcpOptions,
         ILlmModelService llmModelService)
     {
         _kernestalAiService = kernestalAiService;
         _trainerAgentService = trainerAgentService;
+        _trainerDataQueryService = trainerDataQueryService;
         _dbContext = dbContext;
         _trainerMcpOptions = trainerMcpOptions.Value;
         _llmModelService = llmModelService;
@@ -155,7 +166,6 @@ public sealed class AiUserService : IAiUserService
             _dbContext.ChatMessages.Add(assistantMessage);
             dialog.AiAssistantId = assistantForChat;
             dialog.UpdatedAtUtc = DateTime.UtcNow;
-            currentUser.AiSummary = TruncateForSummary(response, 8000);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             return new OkObjectResult(new
@@ -501,6 +511,61 @@ public sealed class AiUserService : IAiUserService
         return new OkObjectResult(new { message = "Saved.", values = cleaned });
     }
 
+    public async Task<IActionResult> GenerateTrainingSummaryAsync(
+        ClaimsPrincipal principal,
+        GenerateTrainingSummaryRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!_trainerMcpOptions.Enabled)
+        {
+            return new BadRequestObjectResult(new { message = "Trainer tools are disabled." });
+        }
+
+        var currentUser = await ResolveCurrentUserAsync(principal, cancellationToken);
+        if (currentUser is null)
+        {
+            return new UnauthorizedObjectResult(new { message = "User not found." });
+        }
+
+        var trainerId = await _dbContext.AiAssistants
+            .AsNoTracking()
+            .Where(x => x.AssistantCode == "trainer" && x.IsActive)
+            .Select(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (trainerId == Guid.Empty)
+        {
+            return new NotFoundObjectResult(new { message = "Trainer assistant not found." });
+        }
+
+        var modelForChat = await ResolveModelForChatAsync(request?.Model, trainerId, cancellationToken);
+        var messagesForLlm = await BuildMessagesWithSystemPromptAsync(
+            currentUser.Id,
+            trainerId,
+            [new KernestalAiService.AiChatMessage("user", TrainingSummaryGenerationUserPrompt)],
+            cancellationToken);
+
+        try
+        {
+            var response = await _trainerAgentService.CompleteWithToolsAsync(
+                currentUser.Id,
+                trainerId,
+                messagesForLlm,
+                cancellationToken,
+                modelForChat);
+
+            var summary = TruncateForSummary(response, 8000);
+            currentUser.AiSummary = summary;
+            var updatedAtUtc = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return new OkObjectResult(new { summary, updatedAtUtc });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new ObjectResult(new { message = ex.Message }) { StatusCode = StatusCodes.Status502BadGateway };
+        }
+    }
+
     private async Task ClearStaleAssistantSelectionIfNeeded(AppUser user, CancellationToken cancellationToken)
     {
         if (user.SelectedAiAssistantId is null)
@@ -560,6 +625,27 @@ public sealed class AiUserService : IAiUserService
         if (_trainerMcpOptions.Enabled && await IsTrainerAssistantAsync(assistantId, cancellationToken))
         {
             fullSystem += TrainerToolsSystemAppendix;
+            var weightBlock = await _trainerDataQueryService.BuildWeightContextBlockAsync(userId, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(weightBlock))
+            {
+                fullSystem += "\n\n" + weightBlock;
+            }
+
+            var savedSummary = await _dbContext.Users
+                .AsNoTracking()
+                .Where(x => x.Id == userId)
+                .Select(x => x.AiSummary)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(savedSummary))
+            {
+                fullSystem += """
+
+                    ### СОХРАНЁННОЕ САММАРИ ТРЕНИРОВОК:
+                    """ + savedSummary.Trim() + """
+
+                    Используй это саммари как постоянный контекст о тренировках пользователя. При необходимости уточняй актуальные данные через tools.
+                    """;
+            }
         }
 
         var list = new List<KernestalAiService.AiChatMessage> { new("system", fullSystem) };

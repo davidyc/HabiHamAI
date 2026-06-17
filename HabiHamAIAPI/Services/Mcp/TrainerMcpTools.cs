@@ -81,6 +81,13 @@ public sealed class TrainerMcpTools
         CancellationToken cancellationToken = default) =>
         _data.GetWeightEntriesAsync(ResolveUserId(), from, to, limit, cancellationToken);
 
+    [McpServerTool(Name = "get_current_weight")]
+    [Description("Текущий вес: профиль, последняя запись дневника, сводка за 30 дней и недавние записи.")]
+    public Task<string> GetCurrentWeight(
+        [Description("Сколько последних записей дневника вернуть (1–60, по умолчанию 10).")] int? recentLimit = null,
+        CancellationToken cancellationToken = default) =>
+        _data.GetCurrentWeightAsync(ResolveUserId(), recentLimit, cancellationToken);
+
     [McpServerTool(Name = "get_weekly_training_summary")]
     [Description("Сводка тренировок за период (по умолчанию 7 дней): силовые, вело, вес; сравнение с предыдущим таким же периодом.")]
     public Task<string> GetWeeklyTrainingSummary(

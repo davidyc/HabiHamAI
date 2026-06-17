@@ -245,6 +245,110 @@ public sealed class TrainerDataQueryService
         return JsonSerializer.Serialize(new { from = fromDate, to = toDate, entries }, JsonOptions);
     }
 
+    public async Task<string> GetCurrentWeightAsync(Guid userId, int? recentLimit, CancellationToken cancellationToken)
+    {
+        var take = recentLimit.HasValue
+            ? Clamp(recentLimit, 1, _options.MaxWeightEntries)
+            : Math.Min(10, _options.MaxWeightEntries);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var from30 = today.AddDays(-30);
+
+        var profileWeightKg = await _dbContext.Users
+            .AsNoTracking()
+            .Where(x => x.Id == userId)
+            .Select(x => x.WeightKg)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var recentEntries = await _dbContext.UserWeightEntries
+            .AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.Date)
+            .Take(take)
+            .Select(x => new WeightEntryRow(x.Date, x.WeightKg))
+            .ToListAsync(cancellationToken);
+
+        var last30Entries = await LoadWeightEntriesInRangeAsync(userId, from30, today, cancellationToken);
+        var ordered30 = last30Entries.OrderBy(x => x.Date).ToList();
+
+        var payload = new
+        {
+            profileWeightKg,
+            latestDiaryEntry = recentEntries.Count > 0
+                ? new
+                {
+                    date = recentEntries[0].Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    weightKg = recentEntries[0].WeightKg
+                }
+                : null,
+            diaryLast30Days = SummarizeWeightEntries(ordered30),
+            recentEntries = recentEntries
+                .OrderByDescending(x => x.Date)
+                .Select(x => new
+                {
+                    date = x.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    weightKg = x.WeightKg
+                })
+                .ToList(),
+            hint = "profileWeightKg — вес в профиле; дневник — вкладка «Прогресс». Для произвольного периода вызови get_weight_entries."
+        };
+
+        return JsonSerializer.Serialize(payload, JsonOptions);
+    }
+
+    public async Task<string?> BuildWeightContextBlockAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var profileWeightKg = await _dbContext.Users
+            .AsNoTracking()
+            .Where(x => x.Id == userId)
+            .Select(x => x.WeightKg)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var latestEntry = await _dbContext.UserWeightEntries
+            .AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.Date)
+            .Select(x => new WeightEntryRow(x.Date, x.WeightKg))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (profileWeightKg is null && latestEntry is null)
+        {
+            return null;
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var from30 = today.AddDays(-30);
+        var last30 = await LoadWeightEntriesInRangeAsync(userId, from30, today, cancellationToken);
+        var ordered30 = last30.OrderBy(x => x.Date).ToList();
+
+        var lines = new List<string> { "### ВЕС ПОЛЬЗОВАТЕЛЯ (актуально):" };
+
+        if (profileWeightKg is { } pw)
+        {
+            lines.Add($"- В профиле: {pw.ToString(CultureInfo.InvariantCulture)} кг");
+        }
+
+        if (latestEntry is not null)
+        {
+            lines.Add(
+                $"- Последняя запись в дневнике: {latestEntry.Date:yyyy-MM-dd} — {latestEntry.WeightKg.ToString(CultureInfo.InvariantCulture)} кг");
+        }
+
+        if (ordered30.Count > 0)
+        {
+            var first = ordered30[0];
+            var last = ordered30[^1];
+            var min = ordered30.Min(x => x.WeightKg);
+            var max = ordered30.Max(x => x.WeightKg);
+            var change = (double)(last.WeightKg - first.WeightKg);
+            lines.Add(
+                $"- За 30 дней: {ordered30.Count} записей, {min.ToString(CultureInfo.InvariantCulture)}–{max.ToString(CultureInfo.InvariantCulture)} кг, изменение {Round(change):+#0.##;-#0.##;0} кг");
+        }
+
+        lines.Add("Для истории за другой период вызови get_current_weight или get_weight_entries.");
+
+        return string.Join("\n", lines);
+    }
+
     public async Task<string> GetTrainerProfileAsync(
         Guid userId,
         Guid? trainerAssistantId,
