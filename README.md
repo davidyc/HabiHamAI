@@ -114,11 +114,7 @@
 
 | Метод  | Путь                                      | Назначение                                                                                             |
 | ------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| POST   | `/ai/chat`                                | Отправка сообщения: `prompt`, `dialogId`, `assistantId` (опционально — иначе выбранный/тренер/превью). |
-| POST   | `/ai/trainer/weekly-review`               | Обзор за период (`days`, `endingOn`, `assistantId`). По умолчанию `writeToDialog: false` — только БД; при `true` дублируется в чат. Ответ: `reviewId`, `response`, `cached`, `period`. |
-| GET    | `/ai/trainer/weekly-reviews`              | Список сохранённых обзоров пользователя (период, превью текста). |
-| GET    | `/ai/trainer/weekly-reviews/{reviewId}`   | Полный текст обзора по id. |
-| DELETE | `/ai/trainer/weekly-reviews/{reviewId}`   | Удалить сохранённый обзор. |
+| POST   | `/ai/chat`                                | Отправка сообщения: `prompt`, `dialogId`, `assistantId`, `model` (опционально). |
 | GET    | `/ai/dialogs`                             | Список диалогов.                                                                                       |
 | GET    | `/ai/dialogs/{dialogId}/messages`         | Сообщения диалога.                                                                                     |
 | POST   | `/ai/dialogs`                             | Создать диалог.                                                                                        |
@@ -129,7 +125,7 @@
 | GET    | `/ai/assistant-extra-fields?assistantId=` | Схема полей + сохранённые значения пользователя.                                                       |
 | PUT    | `/ai/assistant-extra-fields`              | Сохранить значения доп. полей для ассистента.                                                          |
 
-Провайдер LLM настраивается секцией **Kernestal** и переменными окружения `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` (см. `Program.cs`).
+Провайдер LLM: endpoint и ключ — секция **Kernestal** и `OPENAI_BASE_URL` / `OPENAI_API_KEY`. Список моделей и модель по умолчанию — в админке (**Модели LLM**, API `/admin/llm-models`).
 
 ### 4.5. Админ: пользователи (`/admin/users`, JWT `Admin`)
 
@@ -152,17 +148,26 @@
 | PUT    | `/admin/dialogs/{dialogId}`          | Переименовать.                         |
 | DELETE | `/admin/dialogs/{dialogId}`          | Удалить.                               |
 
-### 4.7. Админ: AI ассистенты (`/admin/ai-assistants`, JWT `Admin`)
+### 4.7. Админ: модели LLM (`/admin/llm-models`, JWT `Admin`)
+
+| Метод  | Путь                     | Назначение                                              |
+| ------ | ------------------------ | ------------------------------------------------------- |
+| GET    | `/admin/llm-models`      | Каталог моделей (идентификатор, подпись, по умолчанию). |
+| POST   | `/admin/llm-models`      | Добавить модель.                                        |
+| PUT    | `/admin/llm-models/{id}` | Обновить подпись, порядок, активность, «по умолчанию».  |
+| DELETE | `/admin/llm-models/{id}` | Удалить (не используемую помощниками).                  |
+
+### 4.8. Админ: AI ассистенты (`/admin/ai-assistants`, JWT `Admin`)
 
 | Метод  | Путь                        | Назначение                                                     |
 | ------ | --------------------------- | -------------------------------------------------------------- |
 | GET    | `/admin/ai-assistants`      | Список.                                                        |
 | GET    | `/admin/ai-assistants/{id}` | Детали.                                                        |
 | POST   | `/admin/ai-assistants`      | Создать.                                                       |
-| PUT    | `/admin/ai-assistants/{id}` | Обновить (имя, промпт, JSON настроек, сортировка, активность). |
+| PUT    | `/admin/ai-assistants/{id}` | Обновить (имя, промпт, модель LLM, JSON настроек, сортировка, активность). |
 | DELETE | `/admin/ai-assistants/{id}` | Удалить.                                                       |
 
-### 4.8. Админ: доп. поля ассистента (`/admin/ai-assistants/{assistantId}/extra-fields`)
+### 4.9. Админ: доп. поля ассистента (`/admin/ai-assistants/{assistantId}/extra-fields`)
 
 | Метод  | Путь                         | Назначение                                                                  |
 | ------ | ---------------------------- | --------------------------------------------------------------------------- |
@@ -222,8 +227,7 @@
 | `manage` + `add`       | Программы      | Список программ (`program::`), создание/редактирование в модалке, удаление, импорт планирования JSON, шаблоны.                                                                                       |
 | `manage` + `exercises` | Упражнения     | Каталог, создание упражнения (через POST тренировки-служебной записи), импорт/экспорт JSON, удаление.                                                                                                |
 | `my-workout`           | Моя тренировка | Выбор программы, старт тренировки, черновик, модалка активной тренировки: поля дня/даты/заметок, упражнения, подходы, сворачивание блоков подходов, смена порядка упражнений, сохранение/завершение. |
-| `weekly-reviews`       | Недельные обзоры | Показывается вместе с ИИ тренером. Кнопка **«Обзор за прошлую неделю»** (календарная пн–вс UTC, `endingOn` = воскресенье прошлой недели); сохранение в БД без записи в чат (`writeToDialog: false`). |
-| `ai-trainer`           | ИИ тренер      | Чат и диалоги как в разделе «ИИ»; без недельных обзоров. |
+| `ai-trainer`           | ИИ тренер      | Чат и диалоги как в разделе «ИИ». |
 | `history`              | История        | Фильтр по датам, список завершённых тренировок, просмотр в модалке, удаление, экспорт JSON сессии.                                                                                                   |
 
 ### 6.4. Вкладка «Мой прогресс»
@@ -256,7 +260,7 @@
 | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `DB_CONNECTION_STRING` или `ConnectionStrings:DefaultConnection`                   | Azure SQL Database (строка подключения ADO.NET / `Microsoft.Data.SqlClient`).                        |
 | `JWT_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE` или `Jwt` в конфиге                        | Подпись JWT.                                                                                         |
-| `OPENAI_*` / `Kernestal`                                                           | LLM endpoint, ключ, модель.                                                                          |
+| `OPENAI_*` / `Kernestal`                                                           | LLM endpoint и API-ключ (`OPENAI_BASE_URL`, `OPENAI_API_KEY`). Модели — в БД / админке.              |
 | `ADMIN_BOOTSTRAP_USERNAME`, `ADMIN_BOOTSTRAP_PASSWORD` или секция `AdminBootstrap` | Создание/обновление администратора при старте.                                                       |
 | `TELEGRAM_BOT_TOKEN` или `Telegram:BotToken`                                       | Токен Telegram-бота; без него интеграция с Telegram не подключается.                                 |
 | `TELEGRAM_BOT_USERNAME` или `Telegram:BotUsername`                                 | Имя бота **без @** (например `MyHabiBot`); нужно для ссылок `t.me/...?start=` из приложения.         |

@@ -13,6 +13,8 @@ public sealed class AiAssistant
     public string? Description { get; set; }
     public string SystemPrompt { get; set; } = string.Empty;
     public string? SettingsJson { get; set; }
+    /// <summary>Модель LLM для этого помощника. Пусто — модель по умолчанию из каталога.</summary>
+    public string? Model { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
 

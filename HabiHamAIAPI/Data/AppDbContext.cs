@@ -15,6 +15,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<AppRolePermission> AppRolePermissions => Set<AppRolePermission>();
     public DbSet<AppUserRoleAssignment> UserRoleAssignments => Set<AppUserRoleAssignment>();
     public DbSet<AiAssistant> AiAssistants => Set<AiAssistant>();
+    public DbSet<LlmModel> LlmModels => Set<LlmModel>();
     public DbSet<AiAssistantFieldDefinition> AiAssistantFieldDefinitions => Set<AiAssistantFieldDefinition>();
     public DbSet<UserAiAssistantExtras> UserAiAssistantExtras => Set<UserAiAssistantExtras>();
     public DbSet<ChatDialog> ChatDialogs => Set<ChatDialog>();
@@ -30,7 +31,6 @@ public sealed class AppDbContext : DbContext
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
     public DbSet<UserBikeActivity> UserBikeActivities => Set<UserBikeActivity>();
     public DbSet<UserBikeActivityTrackPoint> UserBikeActivityTrackPoints => Set<UserBikeActivityTrackPoint>();
-    public DbSet<UserWeeklyTrainingReview> UserWeeklyTrainingReviews => Set<UserWeeklyTrainingReview>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -150,12 +150,28 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(500);
             entity.Property(x => x.SystemPrompt).HasColumnName("system_prompt").IsRequired();
             entity.Property(x => x.SettingsJson).HasColumnName("settings_json");
+            entity.Property(x => x.Model).HasColumnName("model").HasMaxLength(128);
             entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
             entity.Property(x => x.IsActive).HasColumnName("is_active").IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.Property(x => x.AssistantCode).HasColumnName("assistant_code").HasMaxLength(64);
             entity.Property(x => x.IsSystem).HasColumnName("is_system").HasDefaultValue(false).IsRequired();
             entity.HasIndex(x => x.AssistantCode).IsUnique();
+            entity.HasIndex(x => x.SortOrder);
+        });
+
+        modelBuilder.Entity<LlmModel>(entity =>
+        {
+            entity.ToTable("llm_models");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Label).HasColumnName("label").HasMaxLength(200);
+            entity.Property(x => x.IsDefault).HasColumnName("is_default").IsRequired();
+            entity.Property(x => x.IsActive).HasColumnName("is_active").IsRequired();
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => x.Name).IsUnique();
             entity.HasIndex(x => x.SortOrder);
         });
 
@@ -189,30 +205,6 @@ public sealed class AppDbContext : DbContext
             entity.Property(x => x.AiAssistantId).HasColumnName("ai_assistant_id");
             entity.Property(x => x.ValuesJson).HasColumnName("values_json").IsRequired();
             entity.HasIndex(x => new { x.UserId, x.AiAssistantId }).IsUnique();
-            entity.HasOne(x => x.User)
-                .WithMany()
-                .HasForeignKey(x => x.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(x => x.AiAssistant)
-                .WithMany()
-                .HasForeignKey(x => x.AiAssistantId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<UserWeeklyTrainingReview>(entity =>
-        {
-            entity.ToTable("user_weekly_training_reviews");
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.Id).HasColumnName("id");
-            entity.Property(x => x.UserId).HasColumnName("user_id");
-            entity.Property(x => x.AiAssistantId).HasColumnName("ai_assistant_id");
-            entity.Property(x => x.PeriodFrom).HasColumnName("period_from").HasColumnType("date");
-            entity.Property(x => x.PeriodTo).HasColumnName("period_to").HasColumnType("date");
-            entity.Property(x => x.DataFingerprint).HasColumnName("data_fingerprint").HasMaxLength(256).IsRequired();
-            entity.Property(x => x.Content).HasColumnName("content").IsRequired();
-            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
-            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
-            entity.HasIndex(x => new { x.UserId, x.PeriodFrom, x.PeriodTo }).IsUnique();
             entity.HasOne(x => x.User)
                 .WithMany()
                 .HasForeignKey(x => x.UserId)

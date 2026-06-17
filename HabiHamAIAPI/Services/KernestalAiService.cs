@@ -24,7 +24,10 @@ public sealed class KernestalAiService : IKernestalAiService
         _options = options.Value;
     }
 
-    public async Task<string> GetCompletionAsync(IReadOnlyList<AiChatMessage> messages, CancellationToken cancellationToken)
+    public async Task<string> GetCompletionAsync(
+        IReadOnlyList<AiChatMessage> messages,
+        CancellationToken cancellationToken,
+        string? model = null)
     {
         var filtered = messages
             .Where(x => !string.IsNullOrWhiteSpace(x.Content) || x.ToolCalls is { Count: > 0 })
@@ -34,7 +37,7 @@ public sealed class KernestalAiService : IKernestalAiService
             throw new ArgumentException("Messages must not be empty.", nameof(messages));
         }
 
-        var result = await GetCompletionWithToolsAsync(filtered, [], cancellationToken);
+        var result = await GetCompletionWithToolsAsync(filtered, [], cancellationToken, model);
         if (result.HasToolCalls)
         {
             throw new InvalidOperationException("Model requested tools but none were provided.");
@@ -51,7 +54,8 @@ public sealed class KernestalAiService : IKernestalAiService
     public async Task<AiCompletionResult> GetCompletionWithToolsAsync(
         IReadOnlyList<AiChatMessage> messages,
         IReadOnlyList<AiToolDefinition> tools,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? model = null)
     {
         if (messages.Count == 0)
         {
@@ -70,7 +74,7 @@ public sealed class KernestalAiService : IKernestalAiService
         EnsureConfigured();
 
         var request = new KernestalChatRequest(
-            _options.Model,
+            ResolveModel(model),
             messages.Select(ToApiMessage).ToList(),
             tools.Count > 0 ? tools.Select(ToApiTool).ToList() : null);
 
@@ -90,6 +94,12 @@ public sealed class KernestalAiService : IKernestalAiService
             .ToList() ?? [];
 
         return new AiCompletionResult(choice.Content, toolCalls);
+    }
+
+    private string ResolveModel(string? model)
+    {
+        var normalized = (model ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? _options.Model : normalized;
     }
 
     private async Task<KernestalChatResponse?> PostChatAsync(KernestalChatRequest requestBody, CancellationToken cancellationToken)

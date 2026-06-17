@@ -177,26 +177,6 @@ function AppContent() {
   };
   const resolveHabitTodayStatus = (statusMap, habit, today) =>
     resolveHabitStatusForDate(statusMap, habit, today, 'todayStatus');
-  /** Прошлая календарная неделя (пн–вс) в UTC — как на сервере для endingOn. */
-  const getPreviousCalendarWeekUtc = () => {
-    const now = new Date();
-    const today = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
-    const dow = today.getUTCDay();
-    const daysSinceMonday = (dow + 6) % 7;
-    const prevSunday = new Date(today);
-    prevSunday.setUTCDate(today.getUTCDate() - daysSinceMonday - 1);
-    const prevMonday = new Date(prevSunday);
-    prevMonday.setUTCDate(prevSunday.getUTCDate() - 6);
-    const fmt = (d) => d.toISOString().slice(0, 10);
-    return {
-      periodFrom: fmt(prevMonday),
-      periodTo: fmt(prevSunday),
-      endingOn: fmt(prevSunday),
-      days: 7,
-    };
-  };
   const getUtcTodayDate = () => {
     const now = new Date();
     return new Date(
@@ -263,15 +243,6 @@ function AppContent() {
       content: 'Привет! Войди через форму входа и отправь сообщение.',
     },
   ]);
-  const [weeklyTrainingReviews, setWeeklyTrainingReviews] = useState([]);
-  const [isWeeklyReviewModalOpen, setIsWeeklyReviewModalOpen] =
-    useState(false);
-  const [selectedWeeklyReview, setSelectedWeeklyReview] = useState(null);
-  const [weeklyReviewModalLoading, setWeeklyReviewModalLoading] =
-    useState(false);
-  const [weeklyReviewGenerating, setWeeklyReviewGenerating] = useState(false);
-  const [pendingDeleteWeeklyReview, setPendingDeleteWeeklyReview] =
-    useState(null);
   const [workoutSessions, setWorkoutSessions] = useState([]);
   const [workoutsSubTab, setWorkoutsSubTab] = useState('strength');
   const [strengthSubTab, setStrengthSubTab] = useState('manage');
@@ -280,6 +251,14 @@ function AppContent() {
   function openStrengthSubTab(sub) {
     setWorkoutsSubTab('strength');
     setStrengthSubTab(sub);
+  }
+
+  function isWorkoutAiTrainerStrengthTab() {
+    return (
+      tab === 'workouts' &&
+      workoutsSubTab === 'strength' &&
+      strengthSubTab === 'ai-trainer'
+    );
   }
 
   const [progressSubTab, setProgressSubTab] = useState('weight-tracker');
@@ -419,6 +398,17 @@ function AppContent() {
   const [chatAssistantPreviewId, setChatAssistantPreviewId] = useState(null);
   const adminAssistantTestChatPanelRef = useRef(null);
   const [adminAiAssistants, setAdminAiAssistants] = useState([]);
+  const [adminLlmModels, setAdminLlmModels] = useState([]);
+  const [adminLlmModelModalKind, setAdminLlmModelModalKind] = useState(null);
+  const [adminLlmModelDraft, setAdminLlmModelDraft] = useState({
+    id: '',
+    name: '',
+    label: '',
+    sortOrder: 0,
+    isActive: true,
+    isDefault: false,
+  });
+  const [pendingDeleteLlmModelId, setPendingDeleteLlmModelId] = useState(null);
   const [assistantModalKind, setAssistantModalKind] = useState(null);
   const [assistantDraft, setAssistantDraft] = useState({
     id: '',
@@ -426,6 +416,7 @@ function AppContent() {
     description: '',
     systemPrompt: '',
     settingsJson: '',
+    model: '',
     sortOrder: 0,
     isActive: true,
   });
@@ -812,96 +803,10 @@ function AppContent() {
     }
   }
 
-  function formatReviewDateUtc(iso) {
-    if (!iso) return '—';
-    try {
-      return new Date(iso).toLocaleString('ru-RU', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      });
-    } catch {
-      return String(iso);
-    }
-  }
-
-  async function loadWeeklyTrainingReviews(token = aiToken) {
-    if (!token) return;
-    const result = await request(
-      'GET',
-      '/ai/trainer/weekly-reviews',
-      null,
-      token,
-    );
-    handleResult(result);
-    if (result.ok) {
-      setWeeklyTrainingReviews(
-        Array.isArray(result.data?.reviews) ? result.data.reviews : [],
-      );
-    }
-  }
-
-  async function openWeeklyReviewModal(reviewId) {
-    if (!aiToken) return;
-    setIsWeeklyReviewModalOpen(true);
-    setWeeklyReviewModalLoading(true);
-    setSelectedWeeklyReview(null);
-    const result = await request(
-      'GET',
-      `/ai/trainer/weekly-reviews/${reviewId}`,
-      null,
-      aiToken,
-    );
-    setWeeklyReviewModalLoading(false);
-    handleResult(result);
-    if (result.ok) {
-      setSelectedWeeklyReview(result.data);
-    } else {
-      setIsWeeklyReviewModalOpen(false);
-    }
-  }
-
-  function closeWeeklyReviewModal() {
-    setIsWeeklyReviewModalOpen(false);
-    setSelectedWeeklyReview(null);
-    setWeeklyReviewModalLoading(false);
-  }
-
-  function openDeleteWeeklyReviewModal(review) {
-    if (!review?.id) return;
-    setPendingDeleteWeeklyReview({
-      id: review.id,
-      periodFrom: review.periodFrom,
-      periodTo: review.periodTo,
-    });
-  }
-
-  async function confirmDeleteWeeklyReview() {
-    const reviewId = pendingDeleteWeeklyReview?.id;
-    if (!aiToken || !reviewId) return;
-
-    const result = await request(
-      'DELETE',
-      `/ai/trainer/weekly-reviews/${reviewId}`,
-      null,
-      aiToken,
-    );
-    handleResult(result);
-    if (!result.ok) return;
-
-    setPendingDeleteWeeklyReview(null);
-    if (selectedWeeklyReview?.id === reviewId) {
-      closeWeeklyReviewModal();
-    }
-    setWeeklyTrainingReviews((prev) =>
-      prev.filter((x) => x.id !== reviewId),
-    );
-    await loadWeeklyTrainingReviews(aiToken);
-  }
-
   function resolveAssistantIdForTrainerChat() {
     const previewMatch =
       chatAssistantPreviewId &&
-      !(tab === 'workouts' && workoutsSubTab === 'ai-trainer')
+      !isWorkoutAiTrainerStrengthTab()
         ? (aiAssistants.find(
             (x) => String(x.id) === String(chatAssistantPreviewId),
           ) ??
@@ -913,8 +818,7 @@ function AppContent() {
       (x) => x.assistantCode === 'trainer',
     );
     const selectedAssistant = aiAssistants.find((x) => x.selected);
-    const useWorkoutTrainerChat =
-      tab === 'workouts' && workoutsSubTab === 'ai-trainer';
+    const useWorkoutTrainerChat = isWorkoutAiTrainerStrengthTab();
     return (
       previewMatch?.id ??
       (useWorkoutTrainerChat && trainerAssistant
@@ -926,44 +830,6 @@ function AppContent() {
       trainerAssistant?.id ??
       null
     );
-  }
-
-  async function requestPreviousWeekWeeklyReview() {
-    if (!aiToken)
-      return setErrorView(
-        'Сначала войдите в систему или вставьте JWT-токен в поле AI-токена.',
-      );
-    if (weeklyReviewGenerating) return;
-
-    const { endingOn } = getPreviousCalendarWeekUtc();
-    const trainerAssistant = aiAssistants.find(
-      (x) => x.assistantCode === 'trainer',
-    );
-
-    setWeeklyReviewGenerating(true);
-    const result = await request(
-      'POST',
-      '/ai/trainer/weekly-review',
-      {
-        days: 7,
-        endingOn,
-        writeToDialog: false,
-        assistantId: trainerAssistant?.id ?? null,
-      },
-      aiToken,
-    );
-    setWeeklyReviewGenerating(false);
-    handleResult(result);
-    if (!result.ok) return;
-
-    await loadWeeklyTrainingReviews(aiToken);
-    if (result.data?.generated) {
-      await loadMyProfile(aiToken);
-    }
-    const reviewId = result.data?.reviewId;
-    if (reviewId) {
-      await openWeeklyReviewModal(reviewId);
-    }
   }
 
   async function sendChat(overridePrompt) {
@@ -979,7 +845,7 @@ function AppContent() {
 
     const previewMatch =
       chatAssistantPreviewId &&
-      !(tab === 'workouts' && workoutsSubTab === 'ai-trainer')
+      !isWorkoutAiTrainerStrengthTab()
         ? (aiAssistants.find(
             (x) => String(x.id) === String(chatAssistantPreviewId),
           ) ??
@@ -991,8 +857,7 @@ function AppContent() {
       (x) => x.assistantCode === 'trainer',
     );
     const selectedAssistant = aiAssistants.find((x) => x.selected);
-    const useWorkoutTrainerChat =
-      tab === 'workouts' && workoutsSubTab === 'ai-trainer';
+    const useWorkoutTrainerChat = isWorkoutAiTrainerStrengthTab();
     const assistantIdForChat =
       previewMatch?.id ??
       (useWorkoutTrainerChat && trainerAssistant
@@ -1092,6 +957,113 @@ function AppContent() {
     setAiAssistants(list);
   }
 
+  async function loadAdminLlmModels() {
+    const result = await request(
+      'GET',
+      '/admin/llm-models',
+      null,
+      adminToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    setAdminLlmModels(Array.isArray(result.data) ? result.data : []);
+  }
+
+  function openLlmModelCreateModal() {
+    setAdminLlmModelDraft({
+      id: '',
+      name: '',
+      label: '',
+      sortOrder: adminLlmModels.length
+        ? Math.max(...adminLlmModels.map((x) => x.sortOrder || 0)) + 10
+        : 0,
+      isActive: true,
+      isDefault: adminLlmModels.length === 0,
+    });
+    setAdminLlmModelModalKind('create');
+  }
+
+  function openLlmModelEditModal(row) {
+    setAdminLlmModelDraft({
+      id: row.id,
+      name: row.name || '',
+      label: row.label || '',
+      sortOrder: row.sortOrder ?? 0,
+      isActive: Boolean(row.isActive),
+      isDefault: Boolean(row.isDefault),
+    });
+    setAdminLlmModelModalKind('edit');
+  }
+
+  async function submitLlmModelModal() {
+    const name = (adminLlmModelDraft.name || '').trim();
+    if (!name && adminLlmModelModalKind === 'create') {
+      return setErrorView('Укажи идентификатор модели.');
+    }
+
+    const body =
+      adminLlmModelModalKind === 'create'
+        ? {
+            name,
+            label: (adminLlmModelDraft.label || '').trim() || null,
+            sortOrder: Number(adminLlmModelDraft.sortOrder) || 0,
+            isActive: Boolean(adminLlmModelDraft.isActive),
+            isDefault: Boolean(adminLlmModelDraft.isDefault),
+          }
+        : {
+            label: (adminLlmModelDraft.label || '').trim() || null,
+            sortOrder: Number(adminLlmModelDraft.sortOrder) || 0,
+            isActive: Boolean(adminLlmModelDraft.isActive),
+            isDefault: Boolean(adminLlmModelDraft.isDefault),
+          };
+
+    let result;
+    if (adminLlmModelModalKind === 'create') {
+      result = await request('POST', '/admin/llm-models', body, adminToken);
+    } else if (
+      adminLlmModelModalKind === 'edit' &&
+      adminLlmModelDraft.id
+    ) {
+      result = await request(
+        'PUT',
+        `/admin/llm-models/${adminLlmModelDraft.id}`,
+        body,
+        adminToken,
+      );
+    } else {
+      return;
+    }
+
+    handleResult(result);
+    if (!result.ok) return;
+    setAdminLlmModelModalKind(null);
+    await loadAdminLlmModels();
+  }
+
+  async function deleteLlmModel(id) {
+    const result = await request(
+      'DELETE',
+      `/admin/llm-models/${id}`,
+      null,
+      adminToken,
+    );
+    handleResult(result);
+    if (!result.ok) return;
+    setPendingDeleteLlmModelId(null);
+    await loadAdminLlmModels();
+  }
+
+  function formatLlmModelOptionLabel(row) {
+    if (!row) return '';
+    return row.label ? `${row.label} (${row.name})` : row.name;
+  }
+
+  const adminActiveLlmModels = adminLlmModels.filter((m) => m.isActive);
+  const adminDefaultLlmModel =
+    adminLlmModels.find((m) => m.isDefault)?.name ||
+    adminActiveLlmModels[0]?.name ||
+    '';
+
   async function selectAiAssistant(assistantId) {
     const r = await request(
       'PUT',
@@ -1121,6 +1093,7 @@ function AppContent() {
     handleResult(result);
     if (!result.ok) return;
     setAdminAiAssistants(Array.isArray(result.data) ? result.data : []);
+    await loadAdminLlmModels();
   }
 
   function openAssistantCreateModal() {
@@ -1131,6 +1104,7 @@ function AppContent() {
       description: '',
       systemPrompt: '',
       settingsJson: '',
+      model: '',
       sortOrder: adminAiAssistants.length
         ? Math.max(...adminAiAssistants.map((x) => x.sortOrder || 0)) + 1
         : 0,
@@ -1146,6 +1120,7 @@ function AppContent() {
       description: row.description || '',
       systemPrompt: row.systemPrompt || '',
       settingsJson: row.settingsJson || '',
+      model: row.model || '',
       sortOrder: row.sortOrder ?? 0,
       isActive: Boolean(row.isActive),
     });
@@ -1164,6 +1139,7 @@ function AppContent() {
       description: (assistantDraft.description || '').trim() || null,
       systemPrompt,
       settingsJson: (assistantDraft.settingsJson || '').trim() || null,
+      model: (assistantDraft.model || '').trim() || null,
       sortOrder: Number(assistantDraft.sortOrder) || 0,
       isActive: Boolean(assistantDraft.isActive),
     };
@@ -2565,6 +2541,18 @@ function AppContent() {
     setProgramExercisesDraft((prev) =>
       prev.map((x) => (x.id === exerciseId ? { ...x, comment } : x)),
     );
+  }
+
+  function moveProgramExercise(exerciseId, direction) {
+    setProgramExercisesDraft((prev) => {
+      const idx = prev.findIndex((x) => x.id === exerciseId);
+      if (idx < 0) return prev;
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return next;
+    });
   }
 
   async function saveProgramToDb() {
@@ -3972,6 +3960,8 @@ function AppContent() {
     () => aiAssistants.find((x) => x?.assistantCode === 'trainer') ?? null,
     [aiAssistants],
   );
+  const showWorkoutAiTrainerNav =
+    hasAiAccess && Boolean(workoutTrainerAssistant);
   const showWorkoutAiTrainerTab = Boolean(workoutTrainerAssistant?.selected);
 
   /** Пока открыта модалка доп. полей ИИ — подтягиваем вес / рост / возраст из профиля, не затирая сохранённые значения, если в профиле пусто. */
@@ -4049,15 +4039,15 @@ function AppContent() {
     loadAiAssistants(aiToken);
   }, [tab, hasAiAccess, aiToken]);
   useEffect(() => {
-    if (tab !== 'workouts' || workoutsSubTab !== 'ai-trainer') return;
+    if (
+      tab !== 'workouts' ||
+      workoutsSubTab !== 'strength' ||
+      strengthSubTab !== 'ai-trainer'
+    )
+      return;
     if (!aiToken) return;
     loadDialogs(aiToken);
-  }, [tab, workoutsSubTab, aiToken]);
-  useEffect(() => {
-    if (tab !== 'workouts' || workoutsSubTab !== 'weekly-reviews') return;
-    if (!aiToken) return;
-    loadWeeklyTrainingReviews(aiToken);
-  }, [tab, workoutsSubTab, aiToken]);
+  }, [tab, workoutsSubTab, strengthSubTab, aiToken]);
   useEffect(() => {
     if (
       (tab !== 'habits' && tab !== 'progress') ||
@@ -4079,18 +4069,13 @@ function AppContent() {
   useEffect(() => {
     if (tab !== 'workouts') return;
     if (
-      (workoutsSubTab === 'ai-trainer' || workoutsSubTab === 'weekly-reviews') &&
-      showWorkoutAiTrainerTab
-    ) {
-      return;
-    }
-    if (
-      workoutsSubTab === 'ai-trainer' ||
-      workoutsSubTab === 'weekly-reviews'
+      workoutsSubTab === 'strength' &&
+      strengthSubTab === 'ai-trainer' &&
+      !showWorkoutAiTrainerNav
     ) {
       openStrengthSubTab('my-workout');
     }
-  }, [tab, workoutsSubTab, showWorkoutAiTrainerTab]);
+  }, [tab, workoutsSubTab, strengthSubTab, showWorkoutAiTrainerNav]);
   const habitFilterRange = useMemo(() => {
     const from =
       habitFilterDateFrom <= habitFilterDateTo
@@ -4797,6 +4782,7 @@ function AppContent() {
                       loadUsers();
                       loadAdminDialogs();
                       loadAdminAiAssistants();
+                      loadAdminLlmModels();
                       loadAdminCategories();
                       loadAdminRoles();
                       loadAdminPermissionsCatalog();
@@ -5030,24 +5016,6 @@ function AppContent() {
                           Силовые тренировки
                         </SegmentTab>
                         ) : null}
-                        {showWorkoutAiTrainerTab ? (
-                          <>
-                            <SegmentTab
-                              active={workoutsSubTab === 'weekly-reviews'}
-                              onClick={() =>
-                                setWorkoutsSubTab('weekly-reviews')
-                              }
-                            >
-                              Недельные обзоры
-                            </SegmentTab>
-                            <SegmentTab
-                              active={workoutsSubTab === 'ai-trainer'}
-                              onClick={() => setWorkoutsSubTab('ai-trainer')}
-                            >
-                              ИИ тренер
-                            </SegmentTab>
-                          </>
-                        ) : null}
                       </SegmentTabs>
 
                       {workoutsSubTab === 'strength' &&
@@ -5077,225 +5045,25 @@ function AppContent() {
                           >
                             Управление тренировкой
                           </SubNavTab>
+                          {showWorkoutAiTrainerNav ? (
+                            <>
+                              <SubNavTab
+                                level="secondary"
+                                active={strengthSubTab === 'ai-trainer'}
+                                onClick={() =>
+                                  setStrengthSubTab('ai-trainer')
+                                }
+                              >
+                                ИИ тренер
+                              </SubNavTab>
+                            </>
+                          ) : null}
                         </SubNavGroup>
                       )}
 
-                      {workoutsSubTab === 'weekly-reviews' &&
-                        showWorkoutAiTrainerTab && (
-                          <div
-                            className="weekly-reviews-panel"
-                            style={{
-                              marginTop: 16,
-                              paddingTop: 16,
-                              borderTop:
-                                '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
-                            }}
-                          >
-                            <h4 style={{ marginTop: 0 }}>Недельные обзоры</h4>
-                            <p className="subtitle">
-                              ИИ анализирует прошлую календарную неделю (пн–вс,
-                              UTC), сохраняет текст в журнал. Чат не используется.
-                            </p>
-                            {(() => {
-                              const period = getPreviousCalendarWeekUtc();
-                              return (
-                                <p className="subtitle" style={{ marginTop: 8 }}>
-                                  Следующий обзор:{' '}
-                                  <strong>
-                                    {period.periodFrom} — {period.periodTo}
-                                  </strong>
-                                </p>
-                              );
-                            })()}
-                            <div
-                              className="row"
-                              style={{
-                                flexWrap: 'wrap',
-                                gap: 8,
-                                marginTop: 16,
-                              }}
-                            >
-                              <button
-                                type="button"
-                                disabled={weeklyReviewGenerating}
-                                onClick={requestPreviousWeekWeeklyReview}
-                                title="Сформировать или открыть сохранённый обзор за прошлую неделю"
-                              >
-                                {weeklyReviewGenerating
-                                  ? 'Формируем обзор…'
-                                  : 'Обзор за прошлую неделю'}
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                disabled={weeklyReviewGenerating}
-                                onClick={() =>
-                                  loadWeeklyTrainingReviews(aiToken)
-                                }
-                              >
-                                Обновить список
-                              </button>
-                            </div>
-
-                            <h4 style={{ marginTop: 20 }}>Сохранённые обзоры</h4>
-                            <div className="workout-list">
-                              {weeklyTrainingReviews.length === 0 && (
-                                <div className="workout-empty">
-                                  Пока нет обзоров. Нажмите «Обзор за прошлую
-                                  неделю».
-                                </div>
-                              )}
-                              {weeklyTrainingReviews.map((review) => (
-                                <article
-                                  key={review.id}
-                                  className="workout-item"
-                                >
-                                  <h4>
-                                    {review.periodFrom} — {review.periodTo}
-                                  </h4>
-                                  <div className="workout-meta">
-                                    <span>
-                                      {review.days === 7
-                                        ? 'Неделя'
-                                        : `${review.days} дн.`}
-                                    </span>
-                                    <span>
-                                      Обновл.:{' '}
-                                      {formatReviewDateUtc(
-                                        review.updatedAtUtc,
-                                      )}
-                                    </span>
-                                  </div>
-                                  {review.preview ? (
-                                    <p
-                                      className="subtitle"
-                                      style={{ marginTop: 8, marginBottom: 8 }}
-                                    >
-                                      {review.preview}
-                                    </p>
-                                  ) : null}
-                                  <div className="row">
-                                    <button
-                                      type="button"
-                                      className="ghost-btn"
-                                      onClick={() =>
-                                        openWeeklyReviewModal(review.id)
-                                      }
-                                    >
-                                      Читать полностью
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="danger-btn danger-btn--icon"
-                                      onClick={() =>
-                                        openDeleteWeeklyReviewModal(review)
-                                      }
-                                      title="Удалить обзор"
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
-                                </article>
-                              ))}
-                            </div>
-
-                            <ModalShell
-                              open={isWeeklyReviewModalOpen}
-                              onClose={closeWeeklyReviewModal}
-                              scroll
-                              wide
-                            >
-                              {weeklyReviewModalLoading ? (
-                                <p className="subtitle">Загрузка обзора…</p>
-                              ) : selectedWeeklyReview ? (
-                                <>
-                                  <h3 style={{ marginTop: 0 }}>
-                                    Обзор {selectedWeeklyReview.periodFrom} —{' '}
-                                    {selectedWeeklyReview.periodTo}
-                                  </h3>
-                                  <p className="subtitle">
-                                    {selectedWeeklyReview.days === 7
-                                      ? 'Период: 7 дней'
-                                      : `Период: ${selectedWeeklyReview.days} дн.`}
-                                    {' · '}
-                                    Обновл.:{' '}
-                                    {formatReviewDateUtc(
-                                      selectedWeeklyReview.updatedAtUtc,
-                                    )}
-                                  </p>
-                                  <div
-                                    className="chat-msg assistant"
-                                    style={{
-                                      marginTop: 16,
-                                      maxHeight: 'none',
-                                      whiteSpace: 'pre-wrap',
-                                    }}
-                                  >
-                                    {selectedWeeklyReview.content}
-                                  </div>
-                                  <div className="row" style={{ marginTop: 16 }}>
-                                    <button
-                                      type="button"
-                                      className="ghost-btn"
-                                      onClick={closeWeeklyReviewModal}
-                                    >
-                                      Закрыть
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="danger-btn danger-btn--icon"
-                                      onClick={() =>
-                                        openDeleteWeeklyReviewModal(
-                                          selectedWeeklyReview,
-                                        )
-                                      }
-                                      title="Удалить обзор"
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
-                                </>
-                              ) : null}
-                            </ModalShell>
-
-                            <ModalShell
-                              open={Boolean(pendingDeleteWeeklyReview)}
-                              onClose={() => setPendingDeleteWeeklyReview(null)}
-                            >
-                              <h3>Удалить обзор</h3>
-                              <p className="subtitle">
-                                Удалить обзор за период{' '}
-                                <strong>
-                                  {pendingDeleteWeeklyReview?.periodFrom} —{' '}
-                                  {pendingDeleteWeeklyReview?.periodTo}
-                                </strong>
-                                ? Это действие нельзя отменить.
-                              </p>
-                              <div className="row">
-                                <button
-                                  type="button"
-                                  className="danger-btn danger-btn--icon"
-                                  onClick={() => void confirmDeleteWeeklyReview()}
-                                  title="Удалить"
-                                >
-                                  ×
-                                </button>
-                                <button
-                                  type="button"
-                                  className="ghost-btn"
-                                  onClick={() =>
-                                    setPendingDeleteWeeklyReview(null)
-                                  }
-                                >
-                                  Отмена
-                                </button>
-                              </div>
-                            </ModalShell>
-                          </div>
-                        )}
-
-                      {workoutsSubTab === 'ai-trainer' &&
-                        showWorkoutAiTrainerTab && (
+                      {workoutsSubTab === 'strength' &&
+                        strengthSubTab === 'ai-trainer' &&
+                        showWorkoutAiTrainerNav && (
                           <div
                             className="ai-assistant-chat-panel"
                             style={{
@@ -5307,9 +5075,10 @@ function AppContent() {
                           >
                             <h4 style={{ marginTop: 0 }}>ИИ тренер — чат</h4>
                             <p className="subtitle">
-                              Свободный диалог с помощником «Тренер». Недельные
-                              обзоры — во вкладке «Недельные обзоры».
+                              Свободный диалог с помощником «Тренер».
                             </p>
+                            {showWorkoutAiTrainerTab ? (
+                              <>
                             <div className="row">
                               <select
                                 value={currentDialogId}
@@ -5378,6 +5147,21 @@ function AppContent() {
                                 Отправить
                               </button>
                             </div>
+                              </>
+                            ) : (
+                              <p
+                                className="subtitle"
+                                style={{
+                                  marginTop: 16,
+                                  paddingTop: 16,
+                                  borderTop:
+                                    '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
+                                }}
+                              >
+                                Чат будет доступен после включения помощника
+                                «Тренер» на вкладке «ИИ».
+                              </p>
+                            )}
                           </div>
                         )}
 
@@ -7413,6 +7197,75 @@ function AppContent() {
 
                     {adminSubTab === 'ai-assistants' &&
                       hasPermission(APP_PERMISSION.AdminAiAssistants) && (
+                    <>
+                    <section className="card full-span">
+                      <h3>Модели LLM</h3>
+                      <p className="subtitle">
+                        Каталог моделей для помощников. Идентификатор — имя
+                        модели у провайдера API (например gpt-4o).
+                      </p>
+                      <div className="row">
+                        <button type="button" onClick={openLlmModelCreateModal}>
+                          Новая модель
+                        </button>
+                      </div>
+                      <div className="users-table-wrap">
+                        <table className="users-table">
+                          <thead>
+                            <tr>
+                              <th>Идентификатор</th>
+                              <th>Подпись</th>
+                              <th>По умолчанию</th>
+                              <th>Активна</th>
+                              <th>Порядок</th>
+                              <th>Действия</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {adminLlmModels.length === 0 && (
+                              <tr>
+                                <td colSpan="6">Нет записей</td>
+                              </tr>
+                            )}
+                            {adminLlmModels.map((row) => (
+                              <tr key={row.id}>
+                                <td
+                                  style={{
+                                    fontFamily: 'ui-monospace, monospace',
+                                    fontSize: '0.9em',
+                                  }}
+                                >
+                                  {row.name}
+                                </td>
+                                <td>{row.label || '—'}</td>
+                                <td>{row.isDefault ? 'Да' : 'Нет'}</td>
+                                <td>{row.isActive ? 'Да' : 'Нет'}</td>
+                                <td>{row.sortOrder}</td>
+                                <td className="admin-actions">
+                                  <button
+                                    type="button"
+                                    onClick={() => openLlmModelEditModal(row)}
+                                    title="Редактировать"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPendingDeleteLlmModelId(row.id)
+                                    }
+                                    title="Удалить"
+                                  >
+                                    🗑️
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+
                     <section className="card full-span">
                       <h3>ИИ помощники</h3>
                       <div className="row">
@@ -7431,6 +7284,7 @@ function AppContent() {
                               <th>Код</th>
                               <th>Порядок</th>
                               <th>Активен</th>
+                              <th>Модель</th>
                               <th>Промпт</th>
                               <th>Действия</th>
                             </tr>
@@ -7438,7 +7292,7 @@ function AppContent() {
                           <tbody>
                             {adminAiAssistants.length === 0 && (
                               <tr>
-                                <td colSpan="6">Нет записей</td>
+                                <td colSpan="7">Нет записей</td>
                               </tr>
                             )}
                             {adminAiAssistants.map((row) => (
@@ -7454,6 +7308,14 @@ function AppContent() {
                                 </td>
                                 <td>{row.sortOrder}</td>
                                 <td>{row.isActive ? 'Да' : 'Нет'}</td>
+                                <td
+                                  style={{
+                                    fontFamily: 'ui-monospace, monospace',
+                                    fontSize: '0.9em',
+                                  }}
+                                >
+                                  {row.model || adminDefaultLlmModel || '—'}
+                                </td>
                                 <td className="admin-ai-summary-cell">
                                   {row.systemPrompt
                                     ? `${String(row.systemPrompt).slice(0, 80)}${String(row.systemPrompt).length > 80 ? '…' : ''}`
@@ -7508,6 +7370,7 @@ function AppContent() {
                         </table>
                       </div>
                     </section>
+                    </>
                     )}
 
                     {adminSubTab === 'ai-test-chat' &&
@@ -8191,6 +8054,127 @@ function AppContent() {
                 )}
                 {tab === 'admin' &&
                   isAdmin &&
+                  (adminLlmModelModalKind === 'create' ||
+                    adminLlmModelModalKind === 'edit') && (
+                    <ModalShell
+                      open={Boolean(adminLlmModelModalKind)}
+                      onClose={() => setAdminLlmModelModalKind(null)}
+                    >
+                      <h3>
+                        {adminLlmModelModalKind === 'create'
+                          ? 'Новая модель LLM'
+                          : 'Редактировать модель LLM'}
+                      </h3>
+                      <label>Идентификатор (имя у провайдера)</label>
+                      <input
+                        value={adminLlmModelDraft.name}
+                        onChange={(e) =>
+                          setAdminLlmModelDraft((d) => ({
+                            ...d,
+                            name: e.target.value,
+                          }))
+                        }
+                        placeholder="например gpt-4o"
+                        disabled={adminLlmModelModalKind === 'edit'}
+                      />
+                      {adminLlmModelModalKind === 'edit' && (
+                        <p className="subtitle">
+                          Идентификатор после создания не меняется.
+                        </p>
+                      )}
+                      <label>Подпись в UI</label>
+                      <input
+                        value={adminLlmModelDraft.label}
+                        onChange={(e) =>
+                          setAdminLlmModelDraft((d) => ({
+                            ...d,
+                            label: e.target.value,
+                          }))
+                        }
+                        placeholder="Необязательно"
+                      />
+                      <label>Порядок</label>
+                      <input
+                        type="number"
+                        value={adminLlmModelDraft.sortOrder}
+                        onChange={(e) =>
+                          setAdminLlmModelDraft((d) => ({
+                            ...d,
+                            sortOrder: e.target.value,
+                          }))
+                        }
+                      />
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={adminLlmModelDraft.isActive}
+                          onChange={(e) =>
+                            setAdminLlmModelDraft((d) => ({
+                              ...d,
+                              isActive: e.target.checked,
+                            }))
+                          }
+                        />
+                        Активна
+                      </label>
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={adminLlmModelDraft.isDefault}
+                          onChange={(e) =>
+                            setAdminLlmModelDraft((d) => ({
+                              ...d,
+                              isDefault: e.target.checked,
+                            }))
+                          }
+                        />
+                        Модель по умолчанию
+                      </label>
+                      <div className="row">
+                        <button type="button" onClick={() => void submitLlmModelModal()}>
+                          Сохранить
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setAdminLlmModelModalKind(null)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </ModalShell>
+                  )}
+                {tab === 'admin' && isAdmin && pendingDeleteLlmModelId && (
+                  <ModalShell
+                    open={Boolean(pendingDeleteLlmModelId)}
+                    onClose={() => setPendingDeleteLlmModelId(null)}
+                  >
+                    <h3>Удалить модель</h3>
+                    <p className="subtitle">
+                      Удалить эту модель? Нельзя удалить модель по умолчанию
+                      или ту, что назначена помощникам.
+                    </p>
+                    <div className="row">
+                      <button
+                        type="button"
+                        className="danger-btn danger-btn--icon"
+                        onClick={() => void deleteLlmModel(pendingDeleteLlmModelId)}
+                        title="Удалить"
+                      >
+                        ×
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => setPendingDeleteLlmModelId(null)}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </ModalShell>
+                )}
+                {tab === 'admin' &&
+                  isAdmin &&
                   (assistantModalKind === 'create' ||
                     assistantModalKind === 'edit') && (
                     <ModalShell
@@ -8233,6 +8217,27 @@ function AppContent() {
                         }
                         placeholder="Необязательно"
                       />
+                      <label>Модель LLM</label>
+                      <select
+                        value={assistantDraft.model || ''}
+                        onChange={(e) =>
+                          setAssistantDraft((d) => ({
+                            ...d,
+                            model: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">
+                          {adminDefaultLlmModel
+                            ? `По умолчанию (${adminDefaultLlmModel})`
+                            : 'По умолчанию'}
+                        </option>
+                        {adminActiveLlmModels.map((model) => (
+                          <option key={model.id} value={model.name}>
+                            {formatLlmModelOptionLabel(model)}
+                          </option>
+                        ))}
+                      </select>
                       <label>Системный промпт</label>
                       <p className="subtitle" style={{ margin: '0 0 8px' }}>
                         В тексте можно использовать подстановки из полей
@@ -8692,7 +8697,7 @@ function AppContent() {
                                   </td>
                                 </tr>
                               )}
-                              {programExercisesDraft.map((exercise) => (
+                              {programExercisesDraft.map((exercise, exIdx) => (
                                 <tr key={exercise.id}>
                                   <td className="program-draft-name">
                                     {exercise.name}
@@ -8712,16 +8717,43 @@ function AppContent() {
                                     />
                                   </td>
                                   <td>
-                                    <button
-                                      type="button"
-                                      className="danger-btn danger-btn--icon"
-                                      onClick={() =>
-                                        removeProgramExercise(exercise.id)
-                                      }
-                                      title="Удалить"
-                                    >
-                                      ×
-                                    </button>
+                                    <div className="todo-row-actions">
+                                      <button
+                                        type="button"
+                                        className="ghost-btn"
+                                        title="Выше"
+                                        disabled={exIdx === 0}
+                                        onClick={() =>
+                                          moveProgramExercise(exercise.id, -1)
+                                        }
+                                      >
+                                        ↑
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="ghost-btn"
+                                        title="Ниже"
+                                        disabled={
+                                          exIdx >=
+                                          programExercisesDraft.length - 1
+                                        }
+                                        onClick={() =>
+                                          moveProgramExercise(exercise.id, 1)
+                                        }
+                                      >
+                                        ↓
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="danger-btn danger-btn--icon"
+                                        onClick={() =>
+                                          removeProgramExercise(exercise.id)
+                                        }
+                                        title="Удалить"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               ))}
@@ -9494,7 +9526,7 @@ function AppContent() {
 
                 {(tab === 'ai' ||
                   tab === 'admin' ||
-                  (tab === 'workouts' && workoutsSubTab === 'ai-trainer')) &&
+                  (tab === 'workouts' && isWorkoutAiTrainerStrengthTab())) &&
                   hasAiAccess &&
                   aiDialogModalKind === 'new' && (
                     <ModalShell
@@ -9527,7 +9559,7 @@ function AppContent() {
                   )}
                 {(tab === 'ai' ||
                   tab === 'admin' ||
-                  (tab === 'workouts' && workoutsSubTab === 'ai-trainer')) &&
+                  (tab === 'workouts' && isWorkoutAiTrainerStrengthTab())) &&
                   hasAiAccess &&
                   aiDialogModalKind === 'rename' && (
                     <ModalShell
@@ -9562,7 +9594,7 @@ function AppContent() {
                   )}
                 {(tab === 'ai' ||
                   tab === 'admin' ||
-                  (tab === 'workouts' && workoutsSubTab === 'ai-trainer')) &&
+                  (tab === 'workouts' && isWorkoutAiTrainerStrengthTab())) &&
                   hasAiAccess &&
                   aiDialogModalKind === 'delete' && (
                     <ModalShell

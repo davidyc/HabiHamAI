@@ -298,108 +298,12 @@ public sealed class TrainerDataQueryService
     public (DateOnly From, DateOnly To, int DayCount) ResolveWeeklyPeriod(int? days, string? endingOn)
     {
         var dayCount = days.HasValue
-            ? Math.Clamp(days.Value, 1, _options.MaxWeeklyReviewDays)
-            : Math.Clamp(_options.DefaultWeeklyReviewDays, 1, _options.MaxWeeklyReviewDays);
+            ? Math.Clamp(days.Value, 1, _options.MaxTrainingSummaryDays)
+            : Math.Clamp(_options.DefaultTrainingSummaryDays, 1, _options.MaxTrainingSummaryDays);
 
         var toDate = TryParseDate(endingOn) ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var fromDate = toDate.AddDays(-(dayCount - 1));
         return (fromDate, toDate, dayCount);
-    }
-
-    public async Task<string> ComputeTrainingDataFingerprintAsync(
-        Guid userId,
-        DateOnly fromDate,
-        DateOnly toDate,
-        CancellationToken cancellationToken)
-    {
-        var strengthStats = await _dbContext.WorkoutSessions
-            .AsNoTracking()
-            .Where(x =>
-                x.UserId == userId
-                && EF.Functions.Like(x.SessionCode, "workout::%")
-                && x.IsActive != true
-                && x.Date >= fromDate
-                && x.Date <= toDate)
-            .GroupBy(_ => 1)
-            .Select(g => new
-            {
-                Count = g.Count(),
-                MaxUpdated = g.Max(x => x.UpdatedAtUtc)
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var fromUtc = DateTime.SpecifyKind(fromDate.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-        var toExclusive = DateTime.SpecifyKind(toDate.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-
-        var bikeStats = await _dbContext.UserBikeActivities
-            .AsNoTracking()
-            .Where(x =>
-                x.UserId == userId
-                && EF.Functions.Like(x.Sport, "Biking")
-                && x.StartTimeUtc >= fromUtc
-                && x.StartTimeUtc < toExclusive)
-            .GroupBy(_ => 1)
-            .Select(g => new
-            {
-                Count = g.Count(),
-                MaxImported = g.Max(x => x.ImportedAtUtc)
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var weightStats = await _dbContext.UserWeightEntries
-            .AsNoTracking()
-            .Where(x => x.UserId == userId && x.Date >= fromDate && x.Date <= toDate)
-            .GroupBy(_ => 1)
-            .Select(g => new
-            {
-                Count = g.Count(),
-                MaxUpdated = g.Max(x => x.UpdatedAtUtc)
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var sCount = strengthStats?.Count ?? 0;
-        var sMax = strengthStats?.MaxUpdated ?? DateTime.MinValue;
-        var bCount = bikeStats?.Count ?? 0;
-        var bMax = bikeStats?.MaxImported ?? DateTime.MinValue;
-        var wCount = weightStats?.Count ?? 0;
-        var wMax = weightStats?.MaxUpdated ?? DateTime.MinValue;
-
-        return FormattableString.Invariant(
-            $"s:{sCount}:{sMax:O}|b:{bCount}:{bMax:O}|w:{wCount}:{wMax:O}");
-    }
-
-    public async Task<bool> HasAnyTrainingDataInPeriodAsync(
-        Guid userId,
-        DateOnly fromDate,
-        DateOnly toDate,
-        CancellationToken cancellationToken)
-    {
-        if (await _dbContext.WorkoutSessions.AsNoTracking().AnyAsync(
-                x => x.UserId == userId
-                    && EF.Functions.Like(x.SessionCode, "workout::%")
-                    && x.IsActive != true
-                    && x.Date >= fromDate
-                    && x.Date <= toDate,
-                cancellationToken))
-        {
-            return true;
-        }
-
-        var fromUtc = DateTime.SpecifyKind(fromDate.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-        var toExclusive = DateTime.SpecifyKind(toDate.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-        if (await _dbContext.UserBikeActivities.AsNoTracking().AnyAsync(
-                x => x.UserId == userId
-                    && EF.Functions.Like(x.Sport, "Biking")
-                    && x.StartTimeUtc >= fromUtc
-                    && x.StartTimeUtc < toExclusive,
-                cancellationToken))
-        {
-            return true;
-        }
-
-        return await _dbContext.UserWeightEntries.AsNoTracking().AnyAsync(
-            x => x.UserId == userId && x.Date >= fromDate && x.Date <= toDate,
-            cancellationToken);
     }
 
     public async Task<string> GetWeeklyTrainingSummaryAsync(
@@ -462,7 +366,7 @@ public sealed class TrainerDataQueryService
                 current = SummarizeWeightEntries(currentWeight),
                 previous = SummarizeWeightEntries(previousWeight)
             },
-            hint = "Сводка для недельного обзора. Для деталей подходов вызови get_strength_workout_history с from/to из period."
+            hint = "Сводка за период. Для деталей подходов вызови get_strength_workout_history с from/to из period."
         };
 
         return JsonSerializer.Serialize(payload, JsonOptions);

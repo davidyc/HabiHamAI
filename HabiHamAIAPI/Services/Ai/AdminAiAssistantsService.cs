@@ -8,10 +8,14 @@ namespace HabiHamAIAPI.Services.Ai;
 public sealed class AdminAiAssistantsService : IAdminAiAssistantsService
 {
     private readonly AppDbContext _dbContext;
+    private readonly ILlmModelService _llmModelService;
 
-    public AdminAiAssistantsService(AppDbContext dbContext)
+    public AdminAiAssistantsService(
+        AppDbContext dbContext,
+        ILlmModelService llmModelService)
     {
         _dbContext = dbContext;
+        _llmModelService = llmModelService;
     }
 
     public async Task<IActionResult> ListAsync(CancellationToken cancellationToken)
@@ -48,6 +52,12 @@ public sealed class AdminAiAssistantsService : IAdminAiAssistantsService
             return new BadRequestObjectResult(new { message = "SystemPrompt is required." });
         }
 
+        var model = await NormalizeAssistantModelAsync(request.Model, cancellationToken);
+        if (model is null && !string.IsNullOrWhiteSpace(request.Model))
+        {
+            return new BadRequestObjectResult(new { message = "Model is not available." });
+        }
+
         var now = DateTime.UtcNow;
         var entity = new AiAssistant
         {
@@ -56,6 +66,7 @@ public sealed class AdminAiAssistantsService : IAdminAiAssistantsService
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             SystemPrompt = request.SystemPrompt.Trim(),
             SettingsJson = string.IsNullOrWhiteSpace(request.SettingsJson) ? null : request.SettingsJson.Trim(),
+            Model = model,
             SortOrder = request.SortOrder,
             IsActive = request.IsActive,
             IsSystem = false,
@@ -80,6 +91,12 @@ public sealed class AdminAiAssistantsService : IAdminAiAssistantsService
             return new BadRequestObjectResult(new { message = "SystemPrompt is required." });
         }
 
+        var model = await NormalizeAssistantModelAsync(request.Model, cancellationToken);
+        if (model is null && !string.IsNullOrWhiteSpace(request.Model))
+        {
+            return new BadRequestObjectResult(new { message = "Model is not available." });
+        }
+
         var entity = await _dbContext.AiAssistants.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (entity is null)
         {
@@ -91,6 +108,7 @@ public sealed class AdminAiAssistantsService : IAdminAiAssistantsService
         entity.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         entity.SystemPrompt = request.SystemPrompt.Trim();
         entity.SettingsJson = string.IsNullOrWhiteSpace(request.SettingsJson) ? null : request.SettingsJson.Trim();
+        entity.Model = model;
         entity.SortOrder = request.SortOrder;
         entity.IsActive = request.IsActive;
 
@@ -133,9 +151,21 @@ public sealed class AdminAiAssistantsService : IAdminAiAssistantsService
             Description = x.Description,
             SystemPrompt = x.SystemPrompt,
             SettingsJson = x.SettingsJson,
+            Model = x.Model,
             SortOrder = x.SortOrder,
             IsActive = x.IsActive,
             IsSystem = x.IsSystem,
             CreatedAtUtc = x.CreatedAtUtc
         };
+
+    private async Task<string?> NormalizeAssistantModelAsync(string? model, CancellationToken cancellationToken)
+    {
+        var normalized = ILlmModelService.NormalizeModelOrNull(model);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        return await _llmModelService.IsAllowedModelAsync(normalized, cancellationToken) ? normalized : null;
+    }
 }

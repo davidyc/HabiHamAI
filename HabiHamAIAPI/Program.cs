@@ -55,7 +55,6 @@ builder.Services.PostConfigure<KernestalOptions>(options =>
 {
     options.BaseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL") ?? options.BaseUrl;
     options.ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? options.ApiKey;
-    options.Model = Environment.GetEnvironmentVariable("OPENAI_MODEL") ?? options.Model;
 });
 builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddHttpClient<IKernestalAiService, KernestalAiService>();
@@ -72,6 +71,8 @@ if (trainerMcpEnabled)
         .WithTools<TrainerMcpTools>();
 }
 
+builder.Services.AddScoped<ILlmModelService, LlmModelService>();
+builder.Services.AddScoped<IAdminLlmModelsService, AdminLlmModelsService>();
 builder.Services.AddScoped<IAiUserService, AiUserService>();
 builder.Services.AddScoped<IAdminAiAssistantsService, AdminAiAssistantsService>();
 builder.Services.AddScoped<IAdminAiAssistantExtraFieldsService, AdminAiAssistantExtraFieldsService>();

@@ -9,7 +9,8 @@ public interface ITrainerAgentService
         Guid userId,
         Guid trainerAssistantId,
         IReadOnlyList<KernestalAiService.AiChatMessage> messages,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? model = null);
 }
 
 public sealed class TrainerAgentService : ITrainerAgentService
@@ -35,7 +36,8 @@ public sealed class TrainerAgentService : ITrainerAgentService
         Guid userId,
         Guid trainerAssistantId,
         IReadOnlyList<KernestalAiService.AiChatMessage> messages,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? model = null)
     {
         _context.UserId = userId;
         _context.TrainerAssistantId = trainerAssistantId;
@@ -46,7 +48,7 @@ public sealed class TrainerAgentService : ITrainerAgentService
 
         for (var round = 0; round < _options.MaxAgentRounds; round++)
         {
-            var result = await _kernestalAiService.GetCompletionWithToolsAsync(transcript, tools, cancellationToken);
+            var result = await _kernestalAiService.GetCompletionWithToolsAsync(transcript, tools, cancellationToken, model);
 
             if (!result.HasToolCalls)
             {

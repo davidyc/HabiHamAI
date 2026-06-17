@@ -54,7 +54,6 @@ internal sealed class SqlServerToSqlServerMigrator
             await MigrateWeightEntriesAsync(cancellationToken);
             await MigrateHabitsAsync(cancellationToken);
             await MigrateTodosAsync(cancellationToken);
-            await MigrateWeeklyReviewsAsync(cancellationToken);
             await MigrateWorkoutsAsync(cancellationToken);
             await MigrateBikeActivitiesAsync(cancellationToken);
 
@@ -155,8 +154,28 @@ internal sealed class SqlServerToSqlServerMigrator
 
     private async Task EnsureReferenceDataAsync(CancellationToken cancellationToken)
     {
-        Console.WriteLine("Шаг 2. Справочники (ai_assistants, user_categories)");
+        Console.WriteLine("Шаг 2. Справочники (llm_models, ai_assistants, user_categories)");
         Console.WriteLine("---------------------------------------------------");
+
+        var sourceLlmModels = await _source.LlmModels
+            .AsNoTracking()
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
+        foreach (var model in sourceLlmModels)
+        {
+            var exists = await _target.LlmModels
+                .AnyAsync(x => x.Name == model.Name, cancellationToken);
+            if (exists)
+            {
+                continue;
+            }
+
+            _target.LlmModels.Add(CloneLlmModel(model));
+            await _target.SaveChangesAsync(cancellationToken);
+            Console.WriteLine($"  + llm_model: {model.Name}");
+        }
 
         var assistantIds = await CollectReferencedAssistantIdsAsync(cancellationToken);
         var sourceAssistants = await _source.AiAssistants
@@ -562,47 +581,9 @@ internal sealed class SqlServerToSqlServerMigrator
         Console.WriteLine($"  добавлено: {inserted}");
     }
 
-    private async Task MigrateWeeklyReviewsAsync(CancellationToken cancellationToken)
-    {
-        Console.WriteLine("Шаг 11. user_weekly_training_reviews");
-
-        var items = await _source.UserWeeklyTrainingReviews
-            .AsNoTracking()
-            .Where(x => _sourceUserIds.Contains(x.UserId))
-            .ToListAsync(cancellationToken);
-
-        var inserted = 0;
-        foreach (var item in items)
-        {
-            var userId = MapUserId(item.UserId);
-            if (await _target.UserWeeklyTrainingReviews
-                    .AnyAsync(x => x.UserId == userId && x.PeriodFrom == item.PeriodFrom && x.PeriodTo == item.PeriodTo, cancellationToken))
-            {
-                continue;
-            }
-
-            _target.UserWeeklyTrainingReviews.Add(new UserWeeklyTrainingReview
-            {
-                Id = item.Id,
-                UserId = userId,
-                AiAssistantId = MapAssistantId(item.AiAssistantId),
-                PeriodFrom = item.PeriodFrom,
-                PeriodTo = item.PeriodTo,
-                DataFingerprint = item.DataFingerprint,
-                Content = item.Content,
-                CreatedAtUtc = item.CreatedAtUtc,
-                UpdatedAtUtc = item.UpdatedAtUtc
-            });
-            inserted++;
-        }
-
-        await _target.SaveChangesAsync(cancellationToken);
-        Console.WriteLine($"  добавлено: {inserted}");
-    }
-
     private async Task MigrateWorkoutsAsync(CancellationToken cancellationToken)
     {
-        Console.WriteLine("Шаг 12. workout_sessions, workout_exercises, workout_sets");
+        Console.WriteLine("Шаг 11. workout_sessions, workout_exercises, workout_sets");
 
         var sessions = await _source.WorkoutSessions
             .AsNoTracking()
@@ -795,12 +776,6 @@ internal sealed class SqlServerToSqlServerMigrator
             .Select(x => x.AiAssistantId)
             .ToListAsync(cancellationToken));
 
-        ids.UnionWith(await _source.UserWeeklyTrainingReviews
-            .AsNoTracking()
-            .Where(x => _sourceUserIds.Contains(x.UserId))
-            .Select(x => x.AiAssistantId)
-            .ToListAsync(cancellationToken));
-
         return ids;
     }
 
@@ -895,6 +870,17 @@ internal sealed class SqlServerToSqlServerMigrator
         target.AiSummary = source.AiSummary;
     }
 
+    private static LlmModel CloneLlmModel(LlmModel source) => new()
+    {
+        Id = source.Id,
+        Name = source.Name,
+        Label = source.Label,
+        IsDefault = source.IsDefault,
+        IsActive = source.IsActive,
+        SortOrder = source.SortOrder,
+        CreatedAtUtc = source.CreatedAtUtc
+    };
+
     private static AiAssistant CloneAssistant(AiAssistant source) => new()
     {
         Id = source.Id,
@@ -903,6 +889,7 @@ internal sealed class SqlServerToSqlServerMigrator
         Description = source.Description,
         SystemPrompt = source.SystemPrompt,
         SettingsJson = source.SettingsJson,
+        Model = source.Model,
         SortOrder = source.SortOrder,
         IsActive = source.IsActive,
         IsSystem = source.IsSystem,

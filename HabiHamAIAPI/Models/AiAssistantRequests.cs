@@ -11,6 +11,7 @@ public sealed class AdminCreateAiAssistantRequest
     public string? Description { get; set; }
     public string SystemPrompt { get; set; } = string.Empty;
     public string? SettingsJson { get; set; }
+    public string? Model { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
 }
@@ -21,6 +22,7 @@ public sealed class AdminUpdateAiAssistantRequest
     public string? Description { get; set; }
     public string SystemPrompt { get; set; } = string.Empty;
     public string? SettingsJson { get; set; }
+    public string? Model { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
 }
@@ -33,6 +35,7 @@ public sealed class AdminAiAssistantResponse
     public string? Description { get; set; }
     public string SystemPrompt { get; set; } = string.Empty;
     public string? SettingsJson { get; set; }
+    public string? Model { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
     public bool IsSystem { get; set; }

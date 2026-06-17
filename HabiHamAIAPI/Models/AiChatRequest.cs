@@ -10,4 +10,7 @@ public sealed class AiChatRequest
     /// If omitted, falls back to the user's saved selection.
     /// </summary>
     public Guid? AssistantId { get; set; }
+
+    /// <summary>Модель LLM для этого запроса. Если не задана — выбранная пользователем или значение по умолчанию.</summary>
+    public string? Model { get; set; }
 }

@@ -4,6 +4,7 @@ using HabiHamAIAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HabiHamAIAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260613085426_AddAssistantModel")]
+    partial class AddAssistantModel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -318,6 +321,11 @@ namespace HabiHamAIAPI.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("selected_ai_assistant_id");
 
+                    b.Property<string>("SelectedAiModel")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasColumnName("selected_ai_model");
+
                     b.Property<long?>("TelegramChatId")
                         .HasColumnType("bigint")
                         .HasColumnName("telegram_chat_id");
@@ -431,50 +439,6 @@ namespace HabiHamAIAPI.Migrations
                     b.HasIndex("DialogId", "CreatedAtUtc");
 
                     b.ToTable("chat_messages", (string)null);
-                });
-
-            modelBuilder.Entity("HabiHamAIAPI.Models.LlmModel", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit")
-                        .HasColumnName("is_active");
-
-                    b.Property<bool>("IsDefault")
-                        .HasColumnType("bit")
-                        .HasColumnName("is_default");
-
-                    b.Property<string>("Label")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("label");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)")
-                        .HasColumnName("name");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int")
-                        .HasColumnName("sort_order");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.HasIndex("SortOrder");
-
-                    b.ToTable("llm_models", (string)null);
                 });
 
             modelBuilder.Entity("HabiHamAIAPI.Models.TelegramLinkToken", b =>
