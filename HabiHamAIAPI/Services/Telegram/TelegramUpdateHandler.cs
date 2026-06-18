@@ -24,6 +24,7 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
     private readonly ITelegramUserLinkService _linkService;
     private readonly IUserWeightRecordingService _weightRecording;
     private readonly IBikeActivitiesService _bikeActivities;
+    private readonly ITelegramTrainerChatService _trainerChat;
     private readonly ILogger<TelegramUpdateHandler> _logger;
 
     public TelegramUpdateHandler(
@@ -33,6 +34,7 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
         ITelegramUserLinkService linkService,
         IUserWeightRecordingService weightRecording,
         IBikeActivitiesService bikeActivities,
+        ITelegramTrainerChatService trainerChat,
         ILogger<TelegramUpdateHandler> logger)
     {
         _botClient = botClient;
@@ -41,6 +43,7 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
         _linkService = linkService;
         _weightRecording = weightRecording;
         _bikeActivities = bikeActivities;
+        _trainerChat = trainerChat;
         _logger = logger;
     }
 
@@ -81,7 +84,7 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
                 var linkMsg = linkResult.Status switch
                 {
                     TelegramLinkConsumeStatus.Linked =>
-                        "Telegram подключён к вашему аккаунту. Можно записывать вес и присылать файлы .tcx для велотренировок.",
+                        "Telegram подключён к вашему аккаунту. Можно записывать вес, присылать файлы .tcx и общаться с AI-тренером.",
                     TelegramLinkConsumeStatus.AlreadyLinkedSameChat =>
                         "Этот Telegram уже был подключён к вашему аккаунту.",
                     TelegramLinkConsumeStatus.InvalidOrExpiredToken =>
@@ -109,6 +112,22 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
                     chatId,
                     TelegramBotMenu.Welcome,
                     parseMode: ParseMode.Html,
+                    replyMarkup: TelegramBotMenu.MainKeyboard,
+                    cancellationToken: cancellationToken);
+                return;
+            case "trainer":
+                await _botClient.SendMessage(
+                    chatId,
+                    TelegramBotMenu.TrainerIntro,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: TelegramBotMenu.MainKeyboard,
+                    cancellationToken: cancellationToken);
+                return;
+            case "new":
+                _trainerChat.ResetDialog(chatId);
+                await _botClient.SendMessage(
+                    chatId,
+                    TelegramBotMenu.TrainerNewDialog,
                     replyMarkup: TelegramBotMenu.MainKeyboard,
                     cancellationToken: cancellationToken);
                 return;
@@ -145,6 +164,17 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
                     replyMarkup: new ReplyKeyboardRemove(),
                     cancellationToken: cancellationToken);
                 return;
+        }
+
+        if (text == TelegramBotMenu.BtnTrainer)
+        {
+            await _botClient.SendMessage(
+                chatId,
+                TelegramBotMenu.TrainerIntro,
+                parseMode: ParseMode.Html,
+                replyMarkup: TelegramBotMenu.MainKeyboard,
+                cancellationToken: cancellationToken);
+            return;
         }
 
         if (text == TelegramBotMenu.BtnSendWeight)
@@ -239,10 +269,69 @@ public sealed class TelegramUpdateHandler : ITelegramUpdateHandler
             return;
         }
 
-        await _botClient.SendMessage(
-            chatId,
-            $"Вы написали: {text}",
-            cancellationToken: cancellationToken);
+        await HandleTrainerMessageAsync(chatId, text, cancellationToken);
+    }
+
+    private async Task HandleTrainerMessageAsync(long chatId, string text, CancellationToken cancellationToken)
+    {
+        var appUserId = await _dbContext.Users
+            .AsNoTracking()
+            .Where(u => u.TelegramChatId == chatId)
+            .Select(u => (Guid?)u.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (appUserId is null)
+        {
+            await _botClient.SendMessage(
+                chatId,
+                TelegramBotMenu.LinkRequiredForTrainer,
+                replyMarkup: TelegramBotMenu.MainKeyboard,
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        try
+        {
+            await _botClient.SendChatAction(chatId, ChatAction.Typing, cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Telegram: SendChatAction failed for chat {ChatId}", chatId);
+        }
+
+        TelegramTrainerChatResult result;
+        try
+        {
+            result = await _trainerChat.SendMessageAsync(chatId, appUserId.Value, text, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Telegram: trainer chat failed for chat {ChatId}", chatId);
+            await _botClient.SendMessage(
+                chatId,
+                "Не удалось получить ответ от AI-тренера. Попробуйте позже.",
+                replyMarkup: TelegramBotMenu.MainKeyboard,
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Response))
+        {
+            await _botClient.SendMessage(
+                chatId,
+                result.ErrorMessage ?? "Не удалось получить ответ от AI-тренера.",
+                replyMarkup: TelegramBotMenu.MainKeyboard,
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        foreach (var chunk in TelegramMessageSplitter.Split(result.Response))
+        {
+            await _botClient.SendMessage(
+                chatId,
+                chunk,
+                replyMarkup: TelegramBotMenu.MainKeyboard,
+                cancellationToken: cancellationToken);
+        }
     }
 
     private async Task HandleDocumentAsync(long chatId, Document document, CancellationToken cancellationToken)

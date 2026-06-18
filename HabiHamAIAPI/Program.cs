@@ -73,6 +73,7 @@ if (trainerMcpEnabled)
 
 builder.Services.AddScoped<ILlmModelService, LlmModelService>();
 builder.Services.AddScoped<IAdminLlmModelsService, AdminLlmModelsService>();
+builder.Services.AddScoped<IUserAiChatService, UserAiChatService>();
 builder.Services.AddScoped<IAiUserService, AiUserService>();
 builder.Services.AddScoped<IAdminAiAssistantsService, AdminAiAssistantsService>();
 builder.Services.AddScoped<IAdminAiAssistantExtraFieldsService, AdminAiAssistantExtraFieldsService>();
@@ -97,6 +98,7 @@ if (!string.IsNullOrEmpty(telegramBotToken))
 {
     builder.Services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(telegramBotToken));
     builder.Services.AddSingleton<TelegramChatStateStore>();
+    builder.Services.AddScoped<ITelegramTrainerChatService, TelegramTrainerChatService>();
     builder.Services.AddScoped<ITelegramUpdateHandler, TelegramUpdateHandler>();
     builder.Services.AddHostedService<TelegramWebhookRegistrationHostedService>();
 }

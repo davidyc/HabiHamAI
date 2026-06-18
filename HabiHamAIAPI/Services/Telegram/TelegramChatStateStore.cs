@@ -12,6 +12,7 @@ public enum TelegramChatDialogState
 public sealed class TelegramChatStateStore
 {
     private readonly ConcurrentDictionary<long, TelegramChatDialogState> _byChat = new();
+    private readonly ConcurrentDictionary<long, Guid> _trainerDialogByChat = new();
 
     public TelegramChatDialogState Get(long chatId) =>
         _byChat.GetValueOrDefault(chatId, TelegramChatDialogState.Idle);
@@ -27,4 +28,11 @@ public sealed class TelegramChatStateStore
             _byChat[chatId] = state;
         }
     }
+
+    public Guid? GetTrainerDialogId(long chatId) =>
+        _trainerDialogByChat.TryGetValue(chatId, out var id) ? id : null;
+
+    public void SetTrainerDialogId(long chatId, Guid dialogId) => _trainerDialogByChat[chatId] = dialogId;
+
+    public void ClearTrainerDialogId(long chatId) => _trainerDialogByChat.TryRemove(chatId, out _);
 }

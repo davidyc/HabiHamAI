@@ -11,11 +11,15 @@ internal static class TelegramBotMenu
 
     internal const string BtnImportTcx = "🚴  Импорт TCX";
 
+    internal const string BtnTrainer = "🤖  Спросить тренера";
+
     internal const string BtnCancelWeight = "↩️  Отмена";
 
     internal static readonly IReadOnlyList<BotCommand> BotCommands =
     [
         new() { Command = "start", Description = "Главное меню и кнопка" },
+        new() { Command = "trainer", Description = "Чат с AI-тренером" },
+        new() { Command = "new", Description = "Новый диалог с тренером" },
         new() { Command = "weight", Description = "Записать вес" },
         new() { Command = "tcx", Description = "Как импортировать велозаезд (.tcx)" },
         new() { Command = "help", Description = "Справка по боту" },
@@ -25,13 +29,13 @@ internal static class TelegramBotMenu
 
     internal static readonly ReplyKeyboardMarkup MainKeyboard = new(
         [
-            [new KeyboardButton(BtnSendWeight)],
+            [new KeyboardButton(BtnSendWeight), new KeyboardButton(BtnTrainer)],
             [new KeyboardButton(BtnImportTcx)],
         ])
     {
         ResizeKeyboard = true,
         IsPersistent = true,
-        InputFieldPlaceholder = "Команды — в меню слева от поля ввода",
+        InputFieldPlaceholder = "Сообщение тренеру или команды в меню ☰",
     };
 
     /// <summary>Пока ждём число — одна кнопка отмены.</summary>
@@ -53,10 +57,20 @@ internal static class TelegramBotMenu
         + "Условия: аккаунт привязан к Telegram; в файле активность со спортом <b>Biking</b> (велосипед). "
         + "Лимит размера файла в Telegram — до 20 МБ.";
 
+    internal const string TrainerIntro =
+        "<b>AI-тренер</b>\n"
+        + "───────────────\n"
+        + "Задайте вопрос о тренировках, программе, прогрессе или технике — ответ будет с учётом ваших данных из приложения.\n\n"
+        + "Просто напишите сообщение в чат. /new — начать новый диалог с тренером.";
+
+    internal const string TrainerNewDialog =
+        "Начат новый диалог с AI-тренером. Задайте вопрос.";
+
     internal const string Welcome =
         "✨ <b>HabiHamAI</b>\n"
         + "───────────────\n"
         + "• Дневник веса — кнопка ниже 👇\n"
+        + "• <b>AI-тренер</b> — кнопка «Спросить тренера» или просто напишите сообщение\n"
         + "• Велозаезд — отправьте файл <b>.tcx</b> в чат (или кнопка «Импорт TCX» / команда /tcx)\n\n"
         + "<i>Совет:</i> команды и справка — в меню <b>☰</b> слева от поля ввода.\n\n"
         + "Если аккаунт ещё не привязан, сделайте это в приложении: профиль → «Подключить Telegram».";
@@ -65,10 +79,15 @@ internal static class TelegramBotMenu
         "<b>Что умеет бот</b>\n"
         + "───────────────\n"
         + "• «Записать вес» или /weight — запись веса в дневник (нужна привязка аккаунта)\n"
+        + "• «Спросить тренера» или /trainer — чат с AI-тренером (те же данные, что в приложении)\n"
+        + "• Любой текст (при привязанном аккаунте) — сообщение AI-тренеру\n"
+        + "• /new — новый диалог с тренером\n"
         + "• Отправка файла <b>.tcx</b> — импорт велотренировки (те же правила, что в приложении)\n"
         + "• /tcx — напоминание, как импортировать велозаезд\n"
         + "• /start — приветствие и кнопки меню\n"
         + "• /keyboard — снова показать кнопки\n"
-        + "• /hide — убрать клавиатуру\n\n"
-        + "В обычном режиме произвольный текст бот просто повторяет.";
+        + "• /hide — убрать клавиатуру";
+
+    internal const string LinkRequiredForTrainer =
+        "Чтобы общаться с AI-тренером, привяжите аккаунт в веб-приложении: профиль → «Подключить Telegram».";
 }
