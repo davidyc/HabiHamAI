@@ -22,7 +22,10 @@ export function computeHabitPeriodAnalytics({
   const dailyMap = new Map();
 
   for (const habit of habits) {
-    bestStreak = Math.max(bestStreak, habit.currentStreakDays ?? 0);
+    bestStreak = Math.max(
+      bestStreak,
+      habit.maxStreakDays ?? habit.currentStreakDays ?? 0,
+    );
     const statusMap = checkinsByHabitId[String(habit.id)] ?? {};
     const dates = getDisplayDates(habit);
     for (const date of dates) {

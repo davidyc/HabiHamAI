@@ -5,6 +5,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
 } from 'react-router-dom';
 import TopNav from './TopNav';
@@ -64,6 +65,38 @@ function AppContent() {
     AdminAiTestChat: 'admin.ai_test_chat',
     AdminDialogs: 'admin.dialogs',
   };
+  const APP_SECTION_IDS = [
+    'progress',
+    'workouts',
+    'bike',
+    'habits',
+    'todos',
+    'investments',
+    'profile',
+    'ai',
+    'admin',
+  ];
+  const resolveDefaultAppSection = (permissions) =>
+    [
+      { id: 'progress', permission: APP_PERMISSION.Progress },
+      { id: 'workouts', permission: APP_PERMISSION.Workouts },
+      { id: 'bike', permission: APP_PERMISSION.Bike },
+      { id: 'habits', permission: APP_PERMISSION.Habits },
+      { id: 'todos', permission: APP_PERMISSION.Todos },
+      { id: 'investments', permission: APP_PERMISSION.Investments },
+      { id: 'profile', permission: APP_PERMISSION.Profile },
+      { id: 'ai', permission: APP_PERMISSION.AiAssistant },
+      { id: 'admin', permission: null },
+    ].find((item) => {
+      if (item.id === 'admin') {
+        return permissions.some((perm) => String(perm).startsWith('admin.'));
+      }
+      return permissions.some(
+        (perm) =>
+          String(perm).toLowerCase() ===
+          String(item.permission).toLowerCase(),
+      );
+    })?.id || 'profile';
   const EXERCISE_MUSCLE_GROUP_OPTIONS = [
     'Грудь',
     'Спина',
@@ -213,7 +246,21 @@ function AppContent() {
   };
 
   const navigate = useNavigate();
-  const [tab, setTab] = useState('workouts');
+  const location = useLocation();
+  const sectionFromPath = useMemo(() => {
+    const match = location.pathname.match(/^\/app\/([^/]+)\/?$/);
+    return match?.[1] ?? null;
+  }, [location.pathname]);
+  const tab =
+    sectionFromPath && APP_SECTION_IDS.includes(sectionFromPath)
+      ? sectionFromPath
+      : 'workouts';
+  const setTab = (id) => {
+    const next = APP_SECTION_IDS.includes(id) ? id : 'workouts';
+    if (location.pathname !== `/app/${next}`) {
+      navigate(`/app/${next}`);
+    }
+  };
   const [baseUrl, setBaseUrl] = useState(
     import.meta.env.VITE_API_BASE_URL || 'http://localhost:5193',
   );
@@ -764,30 +811,7 @@ function AppContent() {
       setCurrentUserName(tryGetUserNameFromToken(token) || username.trim());
       setCurrentUserRoles(nextRoles);
       setCurrentUserPermissions(nextPermissions);
-      const defaultTab =
-        [
-          { id: 'progress', permission: APP_PERMISSION.Progress },
-          { id: 'workouts', permission: APP_PERMISSION.Workouts },
-          { id: 'bike', permission: APP_PERMISSION.Bike },
-          { id: 'habits', permission: APP_PERMISSION.Habits },
-          { id: 'todos', permission: APP_PERMISSION.Todos },
-          { id: 'investments', permission: APP_PERMISSION.Investments },
-          { id: 'profile', permission: APP_PERMISSION.Profile },
-          { id: 'ai', permission: APP_PERMISSION.AiAssistant },
-          { id: 'admin', permission: null },
-        ].find((item) => {
-          if (item.id === 'admin') {
-            return nextPermissions.some((perm) =>
-              String(perm).startsWith('admin.'),
-            );
-          }
-          return nextPermissions.some(
-            (perm) =>
-              String(perm).toLowerCase() ===
-              String(item.permission).toLowerCase(),
-          );
-        })?.id || 'profile';
-      setTab(defaultTab);
+      const defaultTab = resolveDefaultAppSection(nextPermissions);
       if (
         nextPermissions.some(
           (item) =>
@@ -799,7 +823,7 @@ function AppContent() {
         await loadAiAssistants(token);
       }
       await loadMyProfile(token);
-      navigate('/app');
+      navigate(`/app/${defaultTab}`);
     } finally {
       setIsLoginLoading(false);
     }
@@ -4767,6 +4791,25 @@ function AppContent() {
             !isLoggedIn ? (
               <Navigate to="/login" replace />
             ) : (
+              <Navigate
+                to={`/app/${resolveDefaultAppSection(currentUserPermissions)}`}
+                replace
+              />
+            )
+          }
+        />
+        <Route
+          path="/app/:section"
+          element={
+            !isLoggedIn ? (
+              <Navigate to="/login" replace />
+            ) : sectionFromPath &&
+              !APP_SECTION_IDS.includes(sectionFromPath) ? (
+              <Navigate
+                to={`/app/${resolveDefaultAppSection(currentUserPermissions)}`}
+                replace
+              />
+            ) : (
               <div className="dashboard-shell">
                 <TopNav
                   tab={tab}
@@ -6390,8 +6433,14 @@ function AppContent() {
                                           <td
                                             className="habit-table__streak"
                                             data-label="Серия"
+                                            title={`Текущая: ${h.currentStreakDays ?? 0} дн., максимум: ${h.maxStreakDays ?? 0} дн.`}
                                           >
-                                            {h.currentStreakDays ?? 0} дн.
+                                            <span className="habit-table__streak-current">
+                                              {h.currentStreakDays ?? 0} дн.
+                                            </span>
+                                            <span className="habit-table__streak-max subtitle">
+                                              макс. {h.maxStreakDays ?? 0}
+                                            </span>
                                           </td>
                                           <td
                                             className={`habit-table__mastery${h.isMastered ? ' habit-table__mastery--done' : ''}`}

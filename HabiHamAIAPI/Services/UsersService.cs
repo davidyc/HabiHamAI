@@ -255,6 +255,7 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
                 .ToList();
 
             var current = HabitMastery.ComputeCurrentStreakDays(doneDates, date);
+            var maxStreak = HabitMastery.ComputeMaxStreakDays(doneDates);
 
             var lastDoneDate = doneDates.Count > 0 ? doneDates.Max() : (DateOnly?)null;
             var todayCheckin = habitCheckins.FirstOrDefault(x => x.Date == date);
@@ -272,6 +273,7 @@ public sealed class UsersService : IUsersService, IUserWeightRecordingService
                 DaysToMaster = h.DaysToMaster,
                 CreatedAtUtc = h.CreatedAtUtc,
                 CurrentStreakDays = current,
+                MaxStreakDays = maxStreak,
                 IsDoneToday = isDoneToday,
                 TodayStatus = todayStatus,
                 LastDoneDate = lastDoneDate

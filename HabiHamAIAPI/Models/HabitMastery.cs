@@ -32,6 +32,36 @@ internal static class HabitMastery
         return current;
     }
 
+    /// <summary>Longest consecutive run of done dates (any historical window in the set).</summary>
+    public static int ComputeMaxStreakDays(IEnumerable<DateOnly> doneDates)
+    {
+        var ordered = doneDates.Distinct().OrderBy(d => d).ToList();
+        if (ordered.Count == 0)
+        {
+            return 0;
+        }
+
+        var max = 1;
+        var run = 1;
+        for (var i = 1; i < ordered.Count; i++)
+        {
+            if (ordered[i] == ordered[i - 1].AddDays(1))
+            {
+                run++;
+                if (run > max)
+                {
+                    max = run;
+                }
+            }
+            else
+            {
+                run = 1;
+            }
+        }
+
+        return max;
+    }
+
     public static bool ShouldMarkMastered(bool isMastered, int daysToMaster, int currentStreakDays) =>
         !isMastered && daysToMaster > 0 && currentStreakDays >= daysToMaster;
 }

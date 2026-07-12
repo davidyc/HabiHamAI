@@ -42,6 +42,7 @@ public sealed class UserHabitOverviewResponse
     public DateTime CreatedAtUtc { get; set; }
 
     public int CurrentStreakDays { get; set; }
+    public int MaxStreakDays { get; set; }
     public bool IsDoneToday { get; set; }
     /// <summary>null — нет отметки сегодня; partial | done | failed.</summary>
     public string? TodayStatus { get; set; }

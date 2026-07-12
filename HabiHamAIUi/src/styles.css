@@ -636,8 +636,19 @@ button:active {
 }
 
 .habit-table__streak {
-  width: 72px;
+  width: 88px;
   white-space: nowrap;
+}
+
+.habit-table__streak-current {
+  display: block;
+}
+
+.habit-table__streak-max {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .habit-table__mastery {
