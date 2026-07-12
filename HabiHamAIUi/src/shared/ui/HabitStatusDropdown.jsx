@@ -17,6 +17,7 @@ export default function HabitStatusDropdown({
   onChange,
   ariaLabel,
   title,
+  compact = false,
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -54,7 +55,7 @@ export default function HabitStatusDropdown({
 
   return (
     <div
-      className={`habit-status-dropdown${open ? ' is-open' : ''}`}
+      className={`habit-status-dropdown${compact ? ' habit-status-dropdown--compact' : ''}${open ? ' is-open' : ''}`}
       ref={rootRef}
     >
       <button
@@ -72,7 +73,9 @@ export default function HabitStatusDropdown({
           className={`habit-status-cell habit-status-cell--${currentOption.statusClass}`}
           aria-hidden="true"
         />
-        <span className="habit-status-dropdown__chevron" aria-hidden="true" />
+        {compact ? null : (
+          <span className="habit-status-dropdown__chevron" aria-hidden="true" />
+        )}
       </button>
       {open ? (
         <ul

@@ -6226,8 +6226,7 @@ function AppContent() {
                       <h3>Привычки</h3>
                       <>
                           <p className="subtitle" style={{ marginTop: 8 }}>
-                            Отмечайте сегодня и вчера по клику. Остальной период
-                            — только просмотр.
+                            Отмечайте дни по клику в периоде.
                           </p>
                           <div className="row">
                             <button
@@ -6331,8 +6330,6 @@ function AppContent() {
                                       ) : null}
                                       <th>Серия</th>
                                       <th>Освоение</th>
-                                      <th>Вчера</th>
-                                      <th>Сегодня</th>
                                       <th>Период</th>
                                       <th aria-label="Действия" />
                                     </tr>
@@ -6343,18 +6340,6 @@ function AppContent() {
                                         habitsCheckinsByHabitId[String(h.id)] ??
                                         {};
                                       const today = getTodayIsoDate();
-                                      const yesterday = getIsoDateDaysAgo(1);
-                                      const created = habitCreatedIsoDate(h);
-                                      const canMarkYesterday =
-                                        !created || created <= yesterday;
-                                      const yesterdayStatus = canMarkYesterday
-                                        ? resolveHabitStatusForDate(
-                                            statusByDate,
-                                            h,
-                                            yesterday,
-                                            null,
-                                          )
-                                        : null;
                                       const todayStatus = resolveHabitTodayStatus(
                                         statusByDate,
                                         h,
@@ -6363,8 +6348,8 @@ function AppContent() {
                                       const displayDates = getHabitDisplayDates(h);
                                       const habitTableColSpan =
                                         activeHabitsCategoryGroup.showCategoryColumn
-                                          ? 8
-                                          : 7;
+                                          ? 6
+                                          : 5;
                                       if (habitRowSavingId === String(h.id)) {
                                         return (
                                           <tr
@@ -6422,48 +6407,6 @@ function AppContent() {
                                             {habitMasteryLabel(h)}
                                           </td>
                                           <td
-                                            className="habit-table__mark"
-                                            data-label="Вчера"
-                                          >
-                                            {canMarkYesterday ? (
-                                              <HabitStatusDropdown
-                                                status={yesterdayStatus}
-                                                title={`Вчера: ${habitStatusLabel(yesterdayStatus)}`}
-                                                ariaLabel={`${h.name}, вчера: ${habitStatusLabel(yesterdayStatus)}`}
-                                                onChange={(next) =>
-                                                  setHabitCheckinStatus(
-                                                    h,
-                                                    yesterday,
-                                                    next,
-                                                  )
-                                                }
-                                              />
-                                            ) : (
-                                              <span
-                                                className="habit-status-cell habit-status-cell--none habit-status-cell--readonly"
-                                                title="Привычка создана сегодня"
-                                                aria-hidden="true"
-                                              />
-                                            )}
-                                          </td>
-                                          <td
-                                            className="habit-table__mark"
-                                            data-label="Сегодня"
-                                          >
-                                            <HabitStatusDropdown
-                                              status={todayStatus}
-                                              title={`Сегодня: ${habitStatusLabel(todayStatus)}`}
-                                              ariaLabel={`${h.name}, сегодня: ${habitStatusLabel(todayStatus)}`}
-                                              onChange={(next) =>
-                                                setHabitCheckinStatus(
-                                                  h,
-                                                  today,
-                                                  next,
-                                                )
-                                              }
-                                            />
-                                          </td>
-                                          <td
                                             className="habit-table__period"
                                             data-label="Период"
                                           >
@@ -6474,23 +6417,36 @@ function AppContent() {
                                             ) : (
                                               <div
                                                 className="habit-analytics-track"
-                                                role="img"
+                                                role="group"
                                                 aria-label={`${h.name}: отметки за период`}
                                               >
                                                 {displayDates.map((d) => {
                                                   const status =
-                                                    statusByDate[d] ?? null;
+                                                    d === today
+                                                      ? todayStatus
+                                                      : resolveHabitStatusForDate(
+                                                          statusByDate,
+                                                          h,
+                                                          d,
+                                                          null,
+                                                        );
                                                   return (
-                                                    <span
+                                                    <HabitStatusDropdown
                                                       key={`${h.id}-${d}`}
-                                                      className={habitStatusCellClass(
-                                                        status,
-                                                      )}
+                                                      compact
+                                                      status={status}
                                                       title={`${d}: ${habitStatusLabel(status)}`}
+                                                      ariaLabel={`${h.name}, ${d}: ${habitStatusLabel(status)}`}
+                                                      onChange={(next) =>
+                                                        setHabitCheckinStatus(
+                                                          h,
+                                                          d,
+                                                          next,
+                                                        )
+                                                      }
                                                     />
                                                   );
-                                                },
-                                                )}
+                                                })}
                                               </div>
                                             )}
                                           </td>
@@ -6558,17 +6514,11 @@ function AppContent() {
                                             masteredHabitsShowCategoryColumn) ? (
                                             <th>Категория</th>
                                           ) : null}
-                                          <th>Серия</th>
                                           <th>Освоение</th>
-                                          <th>Период</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {masteredHabitsInView.map((h) => {
-                                          const statusByDate =
-                                            habitsCheckinsByHabitId[String(h.id)] ??
-                                            {};
-                                          const displayDates = getHabitDisplayDates(h);
                                           const showCategoryColumn =
                                             activeHabitsCategoryGroup?.showCategoryColumn ??
                                             masteredHabitsShowCategoryColumn;
@@ -6589,47 +6539,11 @@ function AppContent() {
                                                 </td>
                                               ) : null}
                                               <td
-                                                className="habit-table__streak"
-                                                data-label="Серия"
-                                              >
-                                                {h.currentStreakDays ?? 0} дн.
-                                              </td>
-                                              <td
                                                 className="habit-table__mastery habit-table__mastery--done"
                                                 data-label="Освоение"
                                                 title="Привычка освоена"
                                               >
                                                 {habitMasteryLabel(h)}
-                                              </td>
-                                              <td
-                                                className="habit-table__period"
-                                                data-label="Период"
-                                              >
-                                                {displayDates.length === 0 ? (
-                                                  <span className="subtitle">
-                                                    Укажите период
-                                                  </span>
-                                                ) : (
-                                                  <div
-                                                    className="habit-analytics-track"
-                                                    role="img"
-                                                    aria-label={`${h.name}: отметки за период`}
-                                                  >
-                                                    {displayDates.map((d) => {
-                                                      const status =
-                                                        statusByDate[d] ?? null;
-                                                      return (
-                                                        <span
-                                                          key={`${h.id}-${d}`}
-                                                          className={habitStatusCellClass(
-                                                            status,
-                                                          )}
-                                                          title={`${d}: ${habitStatusLabel(status)}`}
-                                                        />
-                                                      );
-                                                    })}
-                                                  </div>
-                                                )}
                                               </td>
                                             </tr>
                                           );
