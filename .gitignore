@@ -1,7 +1,18 @@
+# General OS / editor temp files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.temp
+
 # .NET build artifacts
 bin/
 obj/
 obj_temp/
+**/bin/
+**/obj/
+**/PublishCheck/
+**/SearchBuild*/
 
 # Temporary build output folders
 buildtmp*/
@@ -9,26 +20,32 @@ buildtmp*/
 # User-specific files
 *.user
 *.suo
+*.userosscache
+*.sln.docstates
 
 # IDE folders
 .vs/
 .vscode/
+.idea/
+*.iml
 
 # Environment files with secrets
 .env
+.env.*
 **/.env
+**/.env.*
 
 # Local development secrets
 HabiHamAIAPI/appsettings.Development.json
+HabiHamAIAPI/*.Development.json
 
-# UI (Vite/React) artifacts
+# UI (Vite/React)
 HabiHamAIUi/node_modules/
 HabiHamAIUi/dist/
 HabiHamAIUi/.vite/
-HabiHamAIUi/.env.local
-HabiHamAIUi/.env.development.local
-HabiHamAIUi/.env.test.local
-HabiHamAIUi/.env.production.local
+HabiHamAIUi/.env
+HabiHamAIUi/.env.*
+HabiHamAIUi/*.log
 HabiHamAIUi/npm-debug.log*
 HabiHamAIUi/yarn-debug.log*
 HabiHamAIUi/yarn-error.log*
@@ -43,6 +60,7 @@ HabiHamAIMobile/.idea/
 HabiHamAIMobile/*.iml
 HabiHamAIMobile/app/*.iml
 HabiHamAIMobile/captures/
+HabiHamAIMobile/.kotlin/
 
 # Android (HabiHamAITrackingMobile)
 HabiHamAITrackingMobile/.gradle/
@@ -53,3 +71,18 @@ HabiHamAITrackingMobile/.idea/
 HabiHamAITrackingMobile/*.iml
 HabiHamAITrackingMobile/app/*.iml
 HabiHamAITrackingMobile/captures/
+HabiHamAITrackingMobile/.kotlin/
+
+# Local database / migration tooling artifacts
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Coverage / test outputs
+coverage/
+**/coverage/
+
+# Render / deployment local config
+.render/
